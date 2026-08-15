@@ -1,0 +1,2283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>SUNI · Persona</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
+<script src="/i18n.js"></script>
+<script>
+// Apply operator-configurable branding (Admin -> Configuration -> Identity).
+// Ids are optional per page; a missing element is simply skipped.
+function _applyBranding(cfg) {
+  if (!cfg) return;
+  const name = (cfg.display_name || '').trim();
+  const tag  = (cfg.tagline || '').trim();
+  ['brand-name', 'brand-name-2'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && name) el.textContent = name;
+  });
+  ['brand-tagline', 'brand-tagline-2'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = tag;
+  });
+  if (name) document.title = name;
+}
+</script>
+<style>
+:root {
+  --gold:   #c9a227;
+  --gold-b: #f0c040;
+  --cyan:   #00d4ff;
+  --bg:     #000000;
+  --border: rgba(201,162,39,0.15);
+  --text:   rgba(218,215,240,0.88);
+  --dim:    rgba(170,165,210,0.42);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+/* Dropdown option list — dark theme (browser default is white/unreadable) */
+select option,select optgroup{background:#111;color:var(--text)}
+html,body{height:100%;overflow:hidden;background:var(--bg)}
+#app{position:relative;width:100vw;height:100vh;overflow:hidden}
+
+/* ── CANVAS (fullscreen, behind everything) ── */
+#suni-canvas{
+  position:absolute;inset:0;width:100%;height:100%;display:block;z-index:0;
+}
+
+/* ── HEADER ── */
+header{
+  position:absolute;top:0;left:0;right:0;height:48px;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 22px;z-index:20;
+  background:linear-gradient(to bottom,rgba(5,5,20,.92) 0%,transparent 100%);
+}
+.wordmark{
+  font-family:'Syne',sans-serif;font-weight:800;font-size:16px;
+  letter-spacing:.38em;color:var(--gold);text-transform:uppercase;
+}
+.wordmark sub{
+  font-size:7.5px;font-weight:400;letter-spacing:.1em;color:var(--dim);
+  display:block;margin-top:2px;font-family:'DM Mono',monospace;font-style:normal;
+}
+.h-right{display:flex;align-items:center;gap:9px}
+.mtag{
+  padding:2px 6px;border:1px solid var(--border);border-radius:2px;
+  font-size:8.5px;letter-spacing:.06em;color:var(--dim);font-family:'DM Mono',monospace;
+}
+.live-dot{
+  width:6px;height:6px;border-radius:50%;background:#2ecc71;
+  box-shadow:0 0 7px #2ecc71;animation:blink-dot 2.2s ease-in-out infinite;
+}
+@keyframes blink-dot{0%,100%{opacity:1}55%{opacity:.3}}
+
+/* ── STATE LABEL ── */
+#state-label{
+  position:absolute;top:56px;left:22px;
+  font-family:'Syne',sans-serif;font-size:7.5px;letter-spacing:.26em;
+  text-transform:uppercase;color:var(--dim);z-index:10;
+  transition:color .4s;user-select:none;
+}
+#state-label.thinking{color:var(--cyan)}
+#state-label.speaking{color:var(--gold)}
+#state-label.working{color:#14d98c;font-size:8.5px;letter-spacing:.06em}
+#state-label.browsing{color:#09bfd8;font-size:8.5px;letter-spacing:.06em}
+
+/* ── LIVE CAPTION (what SUNI is saying) ── */
+#subtitle{
+  position:fixed;
+  left:50%;transform:translateX(-50%) translateY(6px);
+  bottom:132px;
+  max-width:min(680px,90vw);width:90%;text-align:center;
+  font-family:'DM Mono',monospace;font-style:italic;font-weight:300;font-size:14px;
+  color:var(--gold);line-height:1.62;
+  opacity:0;transition:opacity .5s ease,transform .5s ease;
+  pointer-events:none;
+  /* dark inner shadow keeps it legible over the bright face, gold glow for identity */
+  text-shadow:0 1px 12px rgba(0,0,0,.9),0 0 30px rgba(201,162,39,.42);
+  z-index:10;
+}
+#subtitle.show{opacity:1;transform:translateX(-50%) translateY(0)}
+@media(prefers-reduced-motion:reduce){#subtitle{transition:opacity .3s ease}}
+
+/* ── CHAT DOCK (retractable) ── */
+#chat-overlay{
+  position:fixed;bottom:24px;
+  left:50%;transform:translateX(-50%);
+  width:min(680px,94vw);
+  z-index:15;display:flex;flex-direction:column;
+}
+
+/* Grab handle — always visible; tap to expand/collapse the transcript */
+#dock-handle{
+  position:relative;height:19px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(6,6,22,.74);
+  backdrop-filter:blur(26px);-webkit-backdrop-filter:blur(26px);
+  border:1px solid var(--border);border-bottom:none;
+  border-radius:6px 6px 0 0;
+  cursor:pointer;user-select:none;transition:background .2s;
+}
+#dock-handle:hover{background:rgba(12,14,42,.82)}
+#dock-handle:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+/* CSS chevron — points up when collapsed (pull up), down when expanded */
+#dock-handle .chev{
+  width:8px;height:8px;margin-top:3px;
+  border-right:2px solid rgba(0,212,255,.55);
+  border-bottom:2px solid rgba(0,212,255,.55);
+  transform:rotate(-135deg);transition:transform .34s ease,border-color .2s;
+}
+#dock-handle:hover .chev{border-color:rgba(0,212,255,.85)}
+#chat-overlay:not(.collapsed) #dock-handle .chev{transform:rotate(45deg);margin-top:-3px}
+/* Pin — keep the panel open, immune to auto-collapse */
+#dock-pin{
+  position:absolute;right:7px;top:50%;transform:translateY(-50%);
+  background:none;border:none;color:var(--dim);
+  font-size:10px;line-height:1;cursor:pointer;padding:4px;opacity:.5;
+  transition:opacity .2s,color .2s;
+}
+#dock-pin:hover{opacity:1}
+#dock-pin.pinned{color:var(--cyan);opacity:1}
+#dock-pin:focus-visible{outline:1px solid var(--cyan);outline-offset:1px}
+
+#messages{
+  background:rgba(6,6,22,.74);
+  backdrop-filter:blur(26px);-webkit-backdrop-filter:blur(26px);
+  border-left:1px solid var(--border);border-right:1px solid var(--border);
+  max-height:240px;overflow-y:auto;
+  padding:12px 13px 7px;
+  display:flex;flex-direction:column;gap:11px;
+  scroll-behavior:smooth;
+  font-family:'DM Mono',monospace;color:var(--text);
+  transition:max-height .34s cubic-bezier(.4,0,.2,1),opacity .26s ease,padding .34s ease;
+}
+/* Retracted (collapsed dock) OR nothing to show (empty) → transcript folds away.
+   Handled in ONE place so the handle+input read as a single pill in every state. */
+#chat-overlay.collapsed #messages,
+#messages:empty{
+  max-height:0;opacity:0;padding-top:0;padding-bottom:0;
+  border-top:none;border-bottom:none;overflow:hidden;
+}
+@media(prefers-reduced-motion:reduce){#messages{transition:opacity .2s ease}}
+#messages::-webkit-scrollbar{width:2px}
+#messages::-webkit-scrollbar-track{background:transparent}
+#messages::-webkit-scrollbar-thumb{background:rgba(201,162,39,.28);border-radius:2px}
+
+.msg{max-width:100%;animation:msg-in .2s ease both}
+@keyframes msg-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.msg-role{
+  font-size:7.5px;letter-spacing:.18em;text-transform:uppercase;margin-bottom:3px;
+  font-family:'Syne',sans-serif;
+}
+.msg.user .msg-role{color:var(--gold);text-align:right}
+.msg.suni .msg-role{color:var(--cyan)}
+.msg-body{padding:7px 10px;font-size:12px;line-height:1.65;font-weight:300;border-radius:2px}
+.msg.user .msg-body{
+  background:rgba(201,162,39,.05);border-left:2px solid var(--gold);
+  color:rgba(228,218,186,.88);text-align:right;
+}
+.msg.suni .msg-body{background:rgba(0,212,255,.04);border-left:2px solid var(--cyan)}
+.msg-body strong{color:var(--gold-b);font-weight:500}
+.msg-body em{color:var(--cyan);font-style:italic}
+.msg-body code{
+  background:rgba(201,162,39,.1);border:1px solid rgba(201,162,39,.2);
+  padding:1px 4px;border-radius:2px;font-size:11px;color:var(--gold-b);
+}
+.msg-body p{margin-bottom:5px}.msg-body p:last-child{margin-bottom:0}
+
+.cursor{
+  display:inline-block;width:5px;height:11px;background:var(--cyan);
+  vertical-align:middle;margin-left:2px;animation:blink-c .75s step-end infinite;
+}
+@keyframes blink-c{0%,100%{opacity:1}50%{opacity:0}}
+
+/* ── INPUT AREA ── */
+#input-area{
+  display:flex;gap:6px;align-items:center;padding:9px 11px;
+  background:rgba(5,5,20,.9);
+  backdrop-filter:blur(26px);-webkit-backdrop-filter:blur(26px);
+  border:1px solid var(--border);border-radius:0 0 6px 6px;
+}
+
+#user-input{
+  flex:1;background:rgba(255,255,255,.03);
+  border:1px solid rgba(201,162,39,.11);border-radius:2px;
+  padding:8px 10px;color:var(--text);
+  font-family:'DM Mono',monospace;font-size:12px;font-weight:300;
+  outline:none;transition:border-color .2s,box-shadow .2s;
+}
+#user-input:focus{border-color:rgba(201,162,39,.42);box-shadow:0 0 0 1px rgba(201,162,39,.08)}
+#user-input::placeholder{color:var(--dim);font-style:italic}
+#user-input:disabled{opacity:.4}
+
+/* ── FILE UPLOAD ── */
+#attach-btn{display:flex;align-items:center;justify-content:center;
+  width:30px;height:30px;flex-shrink:0;cursor:pointer;
+  background:rgba(255,255,255,.03);border:1px solid rgba(201,162,39,.11);
+  border-radius:2px;color:var(--dim);transition:all .18s;}
+#attach-btn:hover{color:var(--gold);border-color:rgba(201,162,39,.42)}
+#file-chips{display:flex;flex-wrap:wrap;gap:5px;padding:0 2px;}
+#file-chips:not(:empty){margin-bottom:7px}
+.file-chip{display:flex;align-items:center;gap:5px;
+  background:rgba(0,212,255,.07);border:1px solid rgba(0,212,255,.2);
+  border-radius:3px;padding:3px 8px;font-size:10px;color:var(--cyan);max-width:200px;
+  font-family:'DM Mono',monospace;}
+.file-chip-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.file-chip-remove{background:none;border:none;color:rgba(0,212,255,.5);
+  cursor:pointer;font-size:13px;padding:0;line-height:1;flex-shrink:0;}
+.file-chip-remove:hover{color:#ff5c5c}
+.file-chip.uploading{opacity:.6;animation:chipPulse 1s infinite;}
+@keyframes chipPulse{0%,100%{opacity:.6}50%{opacity:.9}}
+#drop-overlay{position:fixed;inset:0;z-index:500;display:none;
+  align-items:center;justify-content:center;
+  background:rgba(0,212,255,.06);border:2px dashed rgba(0,212,255,.45);
+  backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);
+  font-family:'DM Mono',monospace;font-size:14px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--cyan);pointer-events:none;}
+#drop-overlay.active{display:flex}
+
+#send-btn{
+  background:linear-gradient(135deg,var(--gold) 0%,#896810 100%);
+  border:none;border-radius:2px;padding:8px 14px;color:#05050e;
+  font-family:'Syne',sans-serif;font-weight:700;font-size:10px;
+  letter-spacing:.1em;cursor:pointer;text-transform:uppercase;
+  transition:filter .18s,transform .1s;white-space:nowrap;
+  touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+}
+#send-btn:hover{filter:brightness(1.2)}
+#send-btn:active{transform:scale(.97)}
+#send-btn:disabled{opacity:.35;cursor:not-allowed;filter:none}
+
+#tts-btn{
+  background:transparent;border:1px solid rgba(0,212,255,.18);
+  border-radius:2px;padding:8px 10px;color:var(--dim);
+  font-size:13px;cursor:pointer;transition:all .2s;flex-shrink:0;
+}
+#tts-btn.on{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 8px rgba(0,212,255,.18)}
+
+#snap-btn{
+  background:transparent;border:1px solid rgba(255,255,255,.14);
+  border-radius:2px;padding:8px 10px;color:var(--dim);
+  font-size:13px;cursor:pointer;transition:all .2s;flex-shrink:0;
+}
+#snap-btn:hover{border-color:var(--cyan);color:var(--cyan)}
+#snap-btn.busy{opacity:.5;cursor:progress}
+
+#mic-btn{
+  background:transparent;border:1px solid rgba(255,255,255,.14);
+  border-radius:2px;padding:8px 10px;color:var(--dim);
+  font-size:13px;cursor:pointer;transition:all .2s;flex-shrink:0;
+  touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+}
+#mic-btn.listening{
+  border-color:#e74c3c;color:#e74c3c;
+  box-shadow:0 0 10px rgba(231,76,60,.35);
+  animation:mic-pulse .85s ease-in-out infinite;
+}
+#mic-btn:disabled{opacity:.25;cursor:not-allowed}
+@keyframes mic-pulse{0%,100%{box-shadow:0 0 8px rgba(231,76,60,.3)}50%{box-shadow:0 0 18px rgba(231,76,60,.65)}}
+
+@media(max-width:768px){
+  #subtitle{bottom:118px;font-size:13px}
+  #chat-overlay{bottom:12px;width:96vw;padding-bottom:env(safe-area-inset-bottom,0px)}
+  #input-area{border-radius:0 0 6px 6px}
+  #messages{max-height:150px}
+}
+@media(max-height:520px){
+  #messages{max-height:104px}
+  #chat-overlay{bottom:6px}
+  /* keep the caption — it's the primary response surface now — just tuck it lower/smaller */
+  #subtitle{bottom:92px;font-size:12px}
+}
+
+/* background scanlines removed — head scanlines come from the FS2 shader */
+#app::after{content:'';position:absolute;inset:0;z-index:1;pointer-events:none;background:radial-gradient(ellipse at 50% 42%,transparent 42%,rgba(0,0,0,.5) 100%)}
+/* Prompt "ingest" — words enter large (near/front) then recede & fade into the
+   background, sizes + speeds randomized with variation */
+#ingest-layer{position:absolute;inset:0;z-index:2;pointer-events:none;overflow:hidden}
+.ingest-word{position:absolute;left:0;top:0;font-family:'Syne',sans-serif;font-weight:600;
+  font-size:52px;white-space:nowrap;color:rgba(255,255,255,.92);text-shadow:0 0 22px rgba(255,255,255,.3);
+  will-change:transform,opacity;opacity:0;
+  transform:translate(var(--x0),var(--y0)) scale(var(--s0));
+  animation:recede var(--dur) cubic-bezier(.2,.7,.3,1) var(--delay) forwards}
+@keyframes recede{
+  0%{opacity:0;transform:translate(var(--x0),var(--y0)) scale(var(--s0))}
+  15%{opacity:var(--op)}
+  100%{opacity:0;transform:translate(var(--x1),var(--y1)) scale(var(--s1))}
+}
+/* Content stage (Step A) — appears when the head shrinks to the corner */
+#content-stage{position:absolute;top:60px;left:3.5%;width:60%;bottom:118px;z-index:5;
+  opacity:0;transform:translateY(10px);pointer-events:none;
+  transition:opacity .5s ease,transform .5s ease;display:flex;flex-direction:column}
+#content-stage.on{opacity:1;transform:none;pointer-events:auto}
+#stage-body{flex:1;overflow-y:auto;padding:22px 26px;border-radius:10px;
+  background:linear-gradient(180deg,rgba(6,10,24,.42),rgba(6,10,24,.26));
+  border:1px solid rgba(0,212,255,.14);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
+  color:rgba(228,236,255,.94);font-family:'DM Mono',monospace;font-size:19px;line-height:1.62;font-weight:300}
+#stage-media{display:flex;flex-wrap:wrap;gap:10px}
+#stage-media:not(:empty){margin-bottom:16px}
+#stage-media img,#stage-media video{max-height:230px;max-width:100%;border-radius:8px;border:1px solid rgba(0,212,255,.2);display:block}
+#stage-media .stage-file{flex:1 1 100%}
+#stage-media .sf-name{font-size:12px;color:rgba(0,212,255,.75);margin-bottom:5px;font-family:'DM Mono',monospace}
+#stage-media .sf-text{max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-word;margin:0;
+  font-size:12.5px;line-height:1.5;color:rgba(220,228,245,.85);background:rgba(0,0,0,.25);
+  padding:10px 12px;border-radius:6px;border:1px solid rgba(255,255,255,.08)}
+#stage-media .sf-table{border-collapse:collapse;font-size:12px;display:block;overflow:auto;max-height:300px;max-width:100%}
+#stage-media .sf-table th,#stage-media .sf-table td{border:1px solid rgba(255,255,255,.12);padding:4px 8px;text-align:left;white-space:nowrap}
+#stage-media .sf-table th{color:rgba(0,212,255,.8);position:sticky;top:0;background:rgba(6,10,24,.92)}
+#stage-media .stage-doc{flex:1 1 100%;width:100%;height:min(58vh,520px);border:1px solid rgba(0,212,255,.2);border-radius:8px;background:#fff}
+#stage-media .stage-card{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;text-decoration:none;
+  border:1px solid rgba(0,212,255,.2);border-radius:8px;color:rgba(220,228,245,.9);font-family:'DM Mono',monospace;font-size:13px}
+#stage-text .tstamp,#stage-text .pg{color:#00d4ff;cursor:pointer;border-bottom:1px dashed rgba(0,212,255,.6);white-space:nowrap}
+#stage-text .tstamp:hover,#stage-text .pg:hover{background:rgba(0,212,255,.12)}
+#stage-media mark{background:rgba(0,212,255,.32);color:#eaf6ff;border-radius:2px;padding:0 2px;scroll-margin:60px}
+#stage-media .stage-img-wrap{position:relative;display:inline-block;max-width:100%;line-height:0}
+.focus-box{position:absolute;border:2px solid #00e5ff;border-radius:4px;pointer-events:none;
+  box-shadow:0 0 12px rgba(0,229,255,.6),inset 0 0 12px rgba(0,229,255,.22);animation:focusPulse 1.5s ease-in-out infinite}
+.focus-note{position:absolute;left:-1px;top:-20px;background:rgba(0,190,230,.94);color:#03121a;
+  font-family:'DM Mono',monospace;font-size:11px;padding:1px 6px;border-radius:3px;white-space:nowrap;line-height:1.4}
+@keyframes focusPulse{0%,100%{box-shadow:0 0 12px rgba(0,229,255,.6),inset 0 0 12px rgba(0,229,255,.22)}
+  50%{box-shadow:0 0 22px rgba(0,229,255,.95),inset 0 0 16px rgba(0,229,255,.4)}}
+#stage-text img,#stage-text video{max-width:100%;border-radius:8px;margin:8px 0;display:block}
+#stage-body::-webkit-scrollbar{width:3px}
+#stage-body::-webkit-scrollbar-thumb{background:rgba(0,212,255,.3);border-radius:2px}
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="suni-canvas"></canvas>
+  <div id="ingest-layer"></div>
+  <div id="content-stage"><div id="stage-body"><div id="stage-media"></div><div id="stage-text"></div></div></div>
+  <!-- background scanlines removed — the head keeps its own scanlines from the FS2 shader -->
+  <header>
+    <div class="wordmark"><span id="brand-name">SUNI</span><sub id="brand-tagline"></sub></div>
+    <div class="h-right">
+      <div id="header-meta"></div>
+      <select id="mode-select" title="Conversation mode"
+        style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
+               color:rgba(255,255,255,.6);font-family:'DM Mono',monospace;font-size:9px;
+               letter-spacing:.08em;padding:3px 7px;border-radius:3px;cursor:pointer;
+               display:none">
+        <option value="assistant">● assistant</option>
+        <option value="task">◈ task</option>
+        <option value="read-only">◌ read-only</option>
+        <option value="collaborate">✦ collaborate</option>
+      </select>
+      <a href="/" title="Switch to Orb mode"
+         style="padding:3px 8px;border:1px solid rgba(201,162,39,.28);border-radius:2px;
+                font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.08em;
+                color:rgba(201,162,39,.6);text-decoration:none;transition:all .2s;"
+         onmouseover="this.style.color='#c9a227';this.style.borderColor='rgba(201,162,39,.6)'"
+         onmouseout="this.style.color='rgba(201,162,39,.6)';this.style.borderColor='rgba(201,162,39,.28)'">
+        ◎ ORB
+      </a>
+      <a href="/chat" title="Switch to Chat mode"
+         style="padding:3px 8px;border:1px solid rgba(201,162,39,.28);border-radius:2px;
+                font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.08em;
+                color:rgba(201,162,39,.6);text-decoration:none;transition:all .2s;"
+         onmouseover="this.style.color='#c9a227';this.style.borderColor='rgba(201,162,39,.6)'"
+         onmouseout="this.style.color='rgba(201,162,39,.6)';this.style.borderColor='rgba(201,162,39,.28)'">
+        ☰ CHAT
+      </a>
+      <button id="stage-btn" aria-pressed="false" title="Stage view — shrink the head to the corner and open a content panel"
+         style="background:none;border:1px solid rgba(201,162,39,.28);border-radius:2px;
+                font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.08em;padding:3px 8px;
+                color:rgba(201,162,39,.6);cursor:pointer;transition:all .2s;"
+         onmouseover="if(!this.classList.contains('on')){this.style.color='#c9a227';this.style.borderColor='rgba(201,162,39,.6)'}"
+         onmouseout="if(!this.classList.contains('on')){this.style.color='rgba(201,162,39,.6)';this.style.borderColor='rgba(201,162,39,.28)'}">
+        ▣ STAGE
+      </button>
+      <button id="cam-btn" aria-pressed="false"
+         title="Camera off — click to let SUNI follow your movement (stays on this device)"
+         style="background:none;border:1px solid rgba(201,162,39,.28);border-radius:2px;
+                font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.08em;padding:3px 8px;
+                color:rgba(201,162,39,.6);cursor:pointer;transition:all .2s;"
+         onmouseover="if(!this.classList.contains('on')){this.style.color='#c9a227';this.style.borderColor='rgba(201,162,39,.6)'}"
+         onmouseout="if(!this.classList.contains('on')){this.style.color='rgba(201,162,39,.6)';this.style.borderColor='rgba(201,162,39,.28)'}">
+        ◉ CAM
+      </button>
+      <button id="orb-settings-btn" title="Language &amp; voice settings"
+         style="background:none;border:1px solid rgba(201,162,39,.28);border-radius:2px;
+                font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.08em;padding:3px 8px;
+                color:rgba(201,162,39,.6);cursor:pointer;transition:all .2s;"
+         onmouseover="this.style.color='#c9a227';this.style.borderColor='rgba(201,162,39,.6)'"
+         onmouseout="this.style.color='rgba(201,162,39,.6)';this.style.borderColor='rgba(201,162,39,.28)'">
+        ⚙
+      </button>
+      <div class="live-dot" title="Connected"></div>
+    </div>
+  </header>
+  <div id="state-label" data-i18n="orb.idle">IDLE</div>
+  <div id="subtitle"></div>
+  <div id="chat-overlay" class="collapsed">
+    <div id="dock-handle" role="button" tabindex="0" aria-label="Show conversation" aria-expanded="false">
+      <span class="chev"></span>
+      <button id="dock-pin" type="button" aria-label="Keep panel open" aria-pressed="false" title="Keep open">⇧</button>
+    </div>
+    <div id="messages"></div>
+    <div id="file-chips"></div>
+    <div id="input-area">
+      <label id="attach-btn" data-i18n-title="chat.attach_file" title="Attach a file">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+        <input type="file" id="file-input" style="display:none" multiple>
+      </label>
+      <button id="snap-btn" type="button" title="Snapshot — capture what the camera sees, then ask about it">📷</button>
+      <input id="user-input" type="text"
+             data-i18n-placeholder="orb.placeholder"
+             placeholder="Speak your mind. I shall observe."
+             autocomplete="off" spellcheck="false"/>
+      <button id="mic-btn" data-i18n-title="orb.mic_hold"  title="Hold to speak">🎤</button>
+      <button id="tts-btn" data-i18n-title="orb.tts_toggle" title="Toggle voice">🔊</button>
+      <button id="send-btn" data-i18n="chat.send">Send</button>
+    </div>
+    <!-- EU AI Act Art. 50(1): persistent AI-interaction disclosure -->
+    <div class="ai-disclosure" data-i18n="common.ai_disclosure"
+         style="text-align:center;font-size:11px;color:var(--text);opacity:.72;margin-top:8px">SUNI is an AI assistant — responses are AI-generated and may be inaccurate.</div>
+  </div>
+</div>
+<!-- drag-drop overlay (full viewport) -->
+<div id="drop-overlay" data-i18n="chat.drop_files">Drop files here</div>
+<!-- Webcam motion tracking — client-side only; frames are sampled to a 64×48
+     canvas in-page and NEVER sent anywhere. Hidden from view. -->
+<video id="cam-video" playsinline muted autoplay style="display:none"></video>
+<canvas id="cam-canvas" width="64" height="48" style="display:none"></canvas>
+<!-- ══ SETTINGS MODAL (orb) ══ -->
+<div id="orb-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);
+     z-index:200;align-items:center;justify-content:center;backdrop-filter:blur(4px);">
+  <div style="background:#0a0a22;border:1px solid rgba(201,162,39,.14);border-radius:5px;
+       width:min(420px,92vw);padding:28px 28px 24px;font-family:'DM Mono',monospace;">
+    <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:14px;letter-spacing:.1em;
+         color:#c9a227;text-transform:uppercase;margin-bottom:20px;
+         display:flex;align-items:center;justify-content:space-between;">
+      <span data-i18n="settings.title">Language &amp; Voice</span>
+      <button id="orb-modal-close" data-i18n-title="common.close" style="background:none;border:none;color:rgba(170,165,210,.45);
+        font-size:16px;cursor:pointer;padding:0;line-height:1;">✕</button>
+    </div>
+    <div style="font-size:10px;color:rgba(170,165,210,.45);margin-bottom:16px;line-height:1.5;
+         padding:8px 10px;background:rgba(201,162,39,.05);border:1px solid rgba(201,162,39,.12);
+         border-radius:3px;">
+      <span data-i18n-html="orb.settings_note">Leave a field on <strong style="color:rgba(201,162,39,.8)">System default</strong>
+      to use the global setting from Admin → Configuration.</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:14px">
+      <label style="font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:rgba(255,255,255,.5)" data-i18n="settings.resp_lang">Response Language</label>
+      <select id="orb-resp-lang" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);
+        color:rgba(218,215,240,.9);padding:8px 10px;border-radius:3px;
+        font-family:'DM Mono',monospace;font-size:12px;outline:none;cursor:pointer;width:100%">
+        <option value="" data-i18n="common.sys_default">System default</option>
+        <option value="en-GB">English (UK)</option>
+        <option value="en-US">English (US)</option>
+        <option value="pt-PT">Português (Portugal)</option>
+        <option value="pt-BR">Português (Brasil)</option>
+        <option value="es-ES">Español</option>
+        <option value="fr-FR">Français</option>
+        <option value="de-DE">Deutsch</option>
+      </select>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:14px">
+      <label style="font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:rgba(255,255,255,.5)" data-i18n="settings.stt_lang">Voice Input Language (STT)</label>
+      <select id="orb-stt-lang" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);
+        color:rgba(218,215,240,.9);padding:8px 10px;border-radius:3px;
+        font-family:'DM Mono',monospace;font-size:12px;outline:none;cursor:pointer;width:100%">
+        <option value="" data-i18n="common.sys_default">System default</option>
+        <option value="en-GB">English (UK)</option>
+        <option value="en-US">English (US)</option>
+        <option value="pt-PT">Português (Portugal)</option>
+        <option value="pt-BR">Português (Brasil)</option>
+        <option value="es-ES">Español</option>
+        <option value="fr-FR">Français</option>
+        <option value="de-DE">Deutsch</option>
+      </select>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:20px">
+      <label style="font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:rgba(255,255,255,.5)" data-i18n="settings.tts_voice">TTS Voice</label>
+      <select id="orb-tts-voice" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);
+        color:rgba(218,215,240,.9);padding:8px 10px;border-radius:3px;
+        font-family:'DM Mono',monospace;font-size:12px;outline:none;cursor:pointer;width:100%">
+        <option value="" data-i18n="common.sys_default">System default</option>
+      </select>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:20px">
+      <label style="font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:rgba(255,255,255,.5)">Face colour</label>
+      <div style="display:flex;align-items:center;gap:10px">
+        <input type="color" id="orb-face-color" value="#00d4ff"
+          style="width:52px;height:34px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:3px;padding:2px;cursor:pointer;">
+        <button id="orb-face-color-reset" type="button"
+          style="background:transparent;border:1px solid rgba(255,255,255,.14);border-radius:3px;padding:6px 12px;color:rgba(170,165,210,.55);font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.06em;cursor:pointer;">Reset</button>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+      <button id="orb-modal-logout" data-i18n="common.sign_out"
+        style="background:transparent;border:1px solid rgba(255,69,96,.28);
+        border-radius:3px;padding:8px 14px;color:rgba(255,69,96,.6);
+        font-family:'Syne',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;
+        text-transform:uppercase;cursor:pointer;transition:all .18s;"
+        onmouseover="this.style.borderColor='#ff4560';this.style.color='#ff4560'"
+        onmouseout="this.style.borderColor='rgba(255,69,96,.28)';this.style.color='rgba(255,69,96,.6)'">
+        Sign out</button>
+      <div style="display:flex;gap:8px">
+        <button id="orb-modal-cancel" data-i18n="common.cancel"
+          style="background:transparent;border:1px solid rgba(255,255,255,.14);
+          border-radius:3px;padding:8px 16px;color:rgba(170,165,210,.45);
+          font-family:'Syne',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;
+          text-transform:uppercase;cursor:pointer;">Cancel</button>
+        <button id="orb-modal-save" data-i18n="common.save"
+          style="background:linear-gradient(135deg,#c9a227 0%,#896810 100%);
+          border:none;border-radius:3px;padding:8px 18px;color:#05050e;
+          font-family:'Syne',sans-serif;font-size:10px;font-weight:700;letter-spacing:.1em;
+          text-transform:uppercase;cursor:pointer;">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<audio id="tts-audio" style="display:none" crossorigin="anonymous"></audio>
+
+<script>
+'use strict';
+// ═══════════════════════════════════════════════════════════════════
+//  CANVAS-2D STYLIZED HEAD  —  SUNI persona (state + audio driven)
+// ═══════════════════════════════════════════════════════════════════
+
+const canvas = document.getElementById('suni-canvas');
+
+let W = window.innerWidth, H = window.innerHeight, DPR = 1;
+
+/* ── holographic palette (state-driven) ── */
+const COL  = { idle:[70,170,225], think:[0,212,255], speak:[150,225,255], work:[40,220,150], brws:[20,200,235] };
+const CORE = [225,246,255];
+function lerp(a,b,t){ return a+(b-a)*t; }
+function mix3(a,b,t){ return [lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)]; }
+function stateColor(ss){
+  const A=[COL.idle,COL.think,COL.speak,COL.work,COL.brws];
+  const i=Math.max(0,Math.min(3,Math.floor(ss)));
+  return mix3(A[i],A[i+1],Math.min(1,Math.max(0,ss-i)));
+}
+
+/* ── user-chosen base colour (persisted per browser) ────────────────
+   Derives the whole state palette from one hue, keeping brightness
+   variation so idle/thinking/speaking still read differently. */
+const COL_DEFAULT = JSON.parse(JSON.stringify(COL));   // the hand-tuned default
+const FACE_COLOR_KEY = 'suni_face_color';
+const FACE_COLOR_HINT = '#00d4ff';                      // picker's default swatch
+function _hexToRgb(h){ const m=/^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(h||''); return m?[parseInt(m[1],16),parseInt(m[2],16),parseInt(m[3],16)]:[0,212,255]; }
+function _clampRgb(c){ return c.map(v=>Math.max(0,Math.min(255,Math.round(v)))); }
+function _scaleRgb(c,f){ return _clampRgb([c[0]*f,c[1]*f,c[2]*f]); }
+function applyFaceColor(hex){
+  const B=_hexToRgb(hex);
+  COL.idle  = _scaleRgb(B,0.72);
+  COL.think = _clampRgb(B.slice());
+  COL.speak = _clampRgb(mix3(B,[255,255,255],0.45));
+  COL.work  = _scaleRgb(B,0.90);
+  COL.brws  = _scaleRgb(B,0.82);
+}
+function resetFaceColor(){ Object.assign(COL, JSON.parse(JSON.stringify(COL_DEFAULT))); }
+(function(){ const saved=localStorage.getItem(FACE_COLOR_KEY); if(saved) applyFaceColor(saved); })();
+{
+  const _fc = document.getElementById('orb-face-color');
+  const _fcReset = document.getElementById('orb-face-color-reset');
+  if(_fc){
+    _fc.value = localStorage.getItem(FACE_COLOR_KEY) || FACE_COLOR_HINT;
+    _fc.addEventListener('input', ()=>{ applyFaceColor(_fc.value); localStorage.setItem(FACE_COLOR_KEY, _fc.value); });
+  }
+  if(_fcReset){
+    _fcReset.addEventListener('click', ()=>{ resetFaceColor(); localStorage.removeItem(FACE_COLOR_KEY); if(_fc) _fc.value = FACE_COLOR_HINT; });
+  }
+}
+
+/* ── audio RMS → jaw (analyser created later in TTS section) ── */
+let _wave=null;
+function audioLevel(){
+  if(!analyser) return 0;
+  if(!_wave||_wave.length!==analyser.fftSize) _wave=new Uint8Array(analyser.fftSize);
+  try{ analyser.getByteTimeDomainData(_wave); }catch(e){ return 0; }
+  let s=0; for(let i=0;i<_wave.length;i++){ const v=(_wave[i]-128)/128; s+=v*v; }
+  return Math.sqrt(s/_wave.length);
+}
+
+/* ── animation state ── */
+let mouthOpen=0, gazeX=0, gazeY=0, gazeTX=0, gazeTY=0, gazeRetarget=0;
+let _camGaze={active:false, x:0, y:0, hold:0};   // webcam motion target (opt-in)
+let _stageMode=false, _stageT=0;   // Step A: 0 = head full/centre, 1 = head shrunk to top-right + content stage
+
+/* ── minimal mat4 (column-major) ── */
+function m4ident(){ const o=new Float32Array(16); o[0]=o[5]=o[10]=o[15]=1; return o; }
+function m4mul(a,b){ const o=new Float32Array(16);
+  for(let r=0;r<4;r++)for(let c=0;c<4;c++){ let s=0; for(let k=0;k<4;k++) s+=a[k*4+r]*b[c*4+k]; o[c*4+r]=s; } return o; }
+function m4persp(fovy,asp,n,f){ const t=1/Math.tan(fovy/2); const o=new Float32Array(16);
+  o[0]=t/asp; o[5]=t; o[10]=(f+n)/(n-f); o[11]=-1; o[14]=(2*f*n)/(n-f); return o; }
+function m4trans(x,y,z){ const o=m4ident(); o[12]=x;o[13]=y;o[14]=z; return o; }
+function m4scale(x,y,z){ const o=m4ident(); o[0]=x;o[5]=y;o[10]=z; return o; }
+function m4rotY(a){ const c=Math.cos(a),s=Math.sin(a); const o=m4ident(); o[0]=c;o[2]=-s;o[8]=s;o[10]=c; return o; }
+function m4rotX(a){ const c=Math.cos(a),s=Math.sin(a); const o=m4ident(); o[5]=c;o[6]=s;o[9]=-s;o[10]=c; return o; }
+
+/* ── build a generic head mesh (original geometry; reference used only for style) ── */
+let headPos,headJaw,headIdx,headLineCount,eyePos;
+function smoothstep(a,b,x){ let t=(x-a)/(b-a); t=Math.max(0,Math.min(1,t)); return t*t*(3-2*t); }
+function buildHead(){
+  const NP=38, NT=42, pos=[], jw=[];
+  for(let i=0;i<=NP;i++){
+    const phi=(i/NP)*Math.PI;
+    for(let j=0;j<=NT;j++){
+      const theta=(j/NT)*Math.PI*2;
+      let rx=0.70, ry=0.96, rz=0.80;
+      let x=rx*Math.sin(phi)*Math.sin(theta);
+      let y=ry*Math.cos(phi);
+      let z=rz*Math.sin(phi)*Math.cos(theta);
+      /* jaw / chin taper (lower face narrows) */
+      if(y<0){ const tp=1-smoothstep(0,-0.95,y)*0.34; x*=tp; if(z>0) z*=1-smoothstep(0,-0.95,y)*0.12; }
+      const front=Math.max(0,z)/rz, f2=front*front;
+      /* nose: ridge brow->tip, tip bulb */
+      const nBand=smoothstep(0.36,0.02,y)*smoothstep(-0.16,0.05,y);
+      z += f2*nBand*Math.exp(-(x*x)/0.010)*0.34;
+      z += f2*Math.exp(-((x*x)/0.014+Math.pow((y+0.02)/0.05,2)))*0.10;
+      /* brow ridge */
+      z += f2*Math.exp(-(Math.pow((y-0.30)/0.05,2)))*Math.exp(-(x*x)/0.18)*0.09;
+      /* eye sockets (deep) + eyeball bulge */
+      for(const sx of [-1,1]){
+        const dx=x-sx*0.29, dy=y-0.15;
+        z -= f2*Math.exp(-((dx*dx)/0.020+(dy*dy)/0.011))*0.16;
+        z += f2*Math.exp(-((dx*dx)/0.006+(dy*dy)/0.004))*0.045;
+      }
+      /* cheekbones */
+      for(const sx of [-1,1]) z += f2*Math.exp(-((x-sx*0.40)*(x-sx*0.40)/0.030+(y+0.02)*(y+0.02)/0.05))*0.05;
+      /* lips: ridge + groove */
+      z += f2*Math.exp(-(Math.pow((y+0.30)/0.045,2)+x*x/0.045))*0.05;
+      z -= f2*Math.exp(-(Math.pow((y+0.30)/0.012,2)+x*x/0.05))*0.035;
+      /* chin */
+      z += f2*Math.exp(-(Math.pow((y+0.70)/0.11,2)+x*x/0.05))*0.11;
+      pos.push(x,y,z);
+      jw.push( smoothstep(-0.20,-0.62,y) * smoothstep(-0.05,0.5,z) );
+    }
+  }
+  const idx=[], cols=NT+1;
+  for(let i=0;i<=NP;i++) for(let j=0;j<=NT;j++){
+    const a=i*cols+j;
+    if(j<NT) idx.push(a,a+1);
+    if(i<NP) idx.push(a,a+cols);
+  }
+  headPos=new Float32Array(pos); headJaw=new Float32Array(jw);
+  headIdx=new Uint16Array(idx); headLineCount=idx.length;
+  eyePos=new Float32Array([-0.29,0.15,0.72, 0.29,0.15,0.72]);
+}
+
+/* ── WebGL setup ── */
+const VS=`attribute vec3 a_pos; attribute float a_jaw;
+uniform mat4 u_mvp; uniform float u_jaw,u_hingeY,u_hingeZ,u_point;
+varying float v_depth;
+void main(){
+  vec3 p=a_pos; float ja=u_jaw*a_jaw;
+  vec3 piv=vec3(0.0,u_hingeY,u_hingeZ); vec3 r=p-piv;
+  float c=cos(ja), s=sin(ja);
+  r=vec3(r.x, c*r.y - s*r.z, s*r.y + c*r.z);
+  p=piv+r;
+  vec4 mp=u_mvp*vec4(p,1.0);
+  gl_Position=mp; v_depth=mp.z/mp.w; gl_PointSize=u_point;
+}`;
+const FS=`precision mediump float;
+uniform vec3 u_color; uniform float u_bright, u_round;
+varying float v_depth;
+void main(){
+  float f=smoothstep(1.0,-1.0,v_depth);
+  float a=mix(0.14,1.0,f)*u_bright;
+  if(u_round>0.5){ vec2 d=gl_PointCoord-vec2(0.5); float r=length(d); if(r>0.5) discard; float ring=smoothstep(0.5,0.33,r)*smoothstep(0.13,0.25,r); float core=smoothstep(0.10,0.0,r); a*=max(ring,core); }
+  gl_FragColor=vec4(u_color*(0.55+0.45*f), a);
+}`;
+
+let gl,prog,aPos,aJaw,uMVP,uJaw,uHY,uHZ,uCol,uBri,uPt,uRound;
+let bPos,bJaw,bIdx,bEye,glReady=false;
+try{
+  gl=canvas.getContext('webgl')||canvas.getContext('experimental-webgl');
+  if(gl){
+    const mk=(ty,src)=>{ const s=gl.createShader(ty); gl.shaderSource(s,src); gl.compileShader(s);
+      if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+    prog=gl.createProgram();
+    gl.attachShader(prog,mk(gl.VERTEX_SHADER,VS)); gl.attachShader(prog,mk(gl.FRAGMENT_SHADER,FS));
+    gl.linkProgram(prog);
+    if(!gl.getProgramParameter(prog,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+    gl.useProgram(prog);
+    aPos=gl.getAttribLocation(prog,'a_pos'); aJaw=gl.getAttribLocation(prog,'a_jaw');
+    uMVP=gl.getUniformLocation(prog,'u_mvp'); uJaw=gl.getUniformLocation(prog,'u_jaw');
+    uHY=gl.getUniformLocation(prog,'u_hingeY'); uHZ=gl.getUniformLocation(prog,'u_hingeZ');
+    uCol=gl.getUniformLocation(prog,'u_color'); uBri=gl.getUniformLocation(prog,'u_bright');
+    uPt=gl.getUniformLocation(prog,'u_point'); uRound=gl.getUniformLocation(prog,'u_round');
+    buildHead();
+    bPos=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,bPos); gl.bufferData(gl.ARRAY_BUFFER,headPos,gl.STATIC_DRAW);
+    bJaw=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,bJaw); gl.bufferData(gl.ARRAY_BUFFER,headJaw,gl.STATIC_DRAW);
+    bIdx=gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,bIdx); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,headIdx,gl.STATIC_DRAW);
+    bEye=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,bEye); gl.bufferData(gl.ARRAY_BUFFER,eyePos,gl.STATIC_DRAW);
+    gl.disable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
+    glReady=true;
+  }
+}catch(e){ console.warn('WebGL head init failed:',e); }
+
+/* ── user head mesh (OBJ) → wireframe; overrides the procedural head ── */
+const MODEL_YAW = 0.0;   /* set to Math.PI if the mesh faces away from camera */
+let modelReady=false, modelEyes=false, solidReady=false, mode='solid', mCount=0, sCount=0;
+let extU32=null, sIdxType=0;
+let bmPos=null, bmJaw=null, bsPos=null, bsNrm=null, bsJaw=null, bsIdx=null;
+const EXCLUDE = {'Group16029':1,'Group64944':1};   /* dense eyeball geometry (wireframe only) */
+
+/* ── lit shader program for solid mode ── */
+const VS2=`attribute vec3 a_pos; attribute vec3 a_nrm; attribute float a_jaw;
+uniform mat4 u_mvp,u_model; uniform float u_jaw,u_hingeY,u_hingeZ;
+varying vec3 v_n;
+vec3 jr(vec3 p,float w){ float ja=u_jaw*w; vec3 pv=vec3(0.0,u_hingeY,u_hingeZ); vec3 r=p-pv; float c=cos(ja),s=sin(ja); return pv+vec3(r.x,c*r.y-s*r.z,s*r.y+c*r.z); }
+vec3 jn(vec3 n,float w){ float ja=u_jaw*w; float c=cos(ja),s=sin(ja); return vec3(n.x,c*n.y-s*n.z,s*n.y+c*n.z); }
+void main(){ vec3 p=jr(a_pos,a_jaw); vec3 n=jn(a_nrm,a_jaw); gl_Position=u_mvp*vec4(p,1.0); v_n=mat3(u_model)*n; }`;
+const FS2=`precision mediump float;
+uniform vec3 u_color; uniform float u_bright; uniform float u_time; varying vec3 v_n;
+float hash(float n){ return fract(sin(n)*43758.5453); }
+void main(){
+  vec3 N=normalize(v_n);
+  float diff=max(0.0,dot(N,normalize(vec3(-0.35,0.45,0.82))));
+  float fres=pow(1.0-max(0.0,dot(N,vec3(0.0,0.0,1.0))),2.2);
+  /* holographic shading: low ambient, cool body, strong glowing fresnel rim */
+  vec3 col=u_color*(0.12+0.50*diff) + vec3(0.50,0.85,1.0)*fres*1.5;
+  /* fine static scanlines (holographic texture, no sweeping bar) */
+  float sl=0.5+0.5*sin(gl_FragCoord.y*1.5);
+  col*=0.80+0.20*sl;
+  /* subtle per-frame flicker */
+  col*=0.95+0.05*hash(floor(u_time*15.0));
+  gl_FragColor=vec4(col*u_bright, 1.0);
+}`;
+let progS=null, aSp,aSn,aSj, uSmvp,uSmodel,uSjaw,uShy,uShz,uScol,uSbri,uStime;
+function ensureSolidProgram(){
+  if(progS||!glReady) return;
+  const mk=(ty,src)=>{ const s=gl.createShader(ty); gl.shaderSource(s,src); gl.compileShader(s);
+    if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+  progS=gl.createProgram();
+  gl.attachShader(progS,mk(gl.VERTEX_SHADER,VS2)); gl.attachShader(progS,mk(gl.FRAGMENT_SHADER,FS2));
+  gl.linkProgram(progS);
+  if(!gl.getProgramParameter(progS,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(progS));
+  aSp=gl.getAttribLocation(progS,'a_pos'); aSn=gl.getAttribLocation(progS,'a_nrm'); aSj=gl.getAttribLocation(progS,'a_jaw');
+  uSmvp=gl.getUniformLocation(progS,'u_mvp'); uSmodel=gl.getUniformLocation(progS,'u_model');
+  uSjaw=gl.getUniformLocation(progS,'u_jaw'); uShy=gl.getUniformLocation(progS,'u_hingeY'); uShz=gl.getUniformLocation(progS,'u_hingeZ');
+  uScol=gl.getUniformLocation(progS,'u_color'); uSbri=gl.getUniformLocation(progS,'u_bright');
+  uStime=gl.getUniformLocation(progS,'u_time');
+}
+
+function parseOBJ(text){
+  const V=[], seen=new Set(), Eln=[], eyeAcc=[], tris=[]; let cur='';
+  const lines=text.split('\n');
+  for(let li=0; li<lines.length; li++){
+    const ln=lines[li], c0=ln.charCodeAt(0), c1=ln.charCodeAt(1);
+    if(c0===118 && c1===32){ const p=ln.split(/\s+/); V.push([+p[1],+p[2],+p[3]]); }
+    else if(c0===103 && c1===32){ cur=ln.trim().slice(2); }
+    else if(c0===102 && c1===32){
+      const excl=!!EXCLUDE[cur]||/eye/i.test(cur||'');
+      const p=ln.trim().split(/\s+/), n=p.length-1; const ids=[];
+      for(let k=1;k<=n;k++){ let a=parseInt(p[k],10); if(!a) continue; a=(a<0?V.length+a:a-1); if(a>=0&&a<V.length) ids.push(a); }
+      if(ids.length<2) continue;
+      for(let k=0;k<ids.length;k++){                                  /* wireframe edges */
+        const a=ids[k], b=ids[(k+1)%ids.length];
+        if(excl){ eyeAcc.push(a,b); continue; }
+        const key=a<b?(a*1e7+b):(b*1e7+a); if(seen.has(key)) continue; seen.add(key); Eln.push(a,b);
+      }
+      for(let k=1;k<ids.length-1;k++){ tris.push(ids[0],ids[k],ids[k+1]); }   /* solid tris (all groups) */
+    }
+  }
+  if(!V.length) return null;
+  let mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
+  for(const v of V) for(let k=0;k<3;k++){ if(v[k]<mn[k])mn[k]=v[k]; if(v[k]>mx[k])mx[k]=v[k]; }
+  const cen=[(mn[0]+mx[0])/2,(mn[1]+mx[1])/2,(mn[2]+mx[2])/2];
+  const scl=1.7/Math.max(mx[0]-mn[0],mx[1]-mn[1],mx[2]-mn[2],1e-6);
+  const NN=v=>[(v[0]-cen[0])*scl,(v[1]-cen[1])*scl,(v[2]-cen[2])*scl];
+  const yLo=(mn[1]-cen[1])*scl, yHi=(mx[1]-cen[1])*scl, yRange=Math.max(1e-6,yHi-yLo);
+  const jawOf=(q)=>smoothstep(0.38,0.05,(q[1]-yLo)/yRange)*smoothstep(-0.10,0.35,q[2]);
+
+  /* smooth normals from original verts */
+  const nrm=new Float32Array(V.length*3);
+  for(let i=0;i<tris.length;i+=3){
+    const a=tris[i],b=tris[i+1],c=tris[i+2], pa=V[a],pb=V[b],pc=V[c];
+    const ux=pb[0]-pa[0],uy=pb[1]-pa[1],uz=pb[2]-pa[2], vx=pc[0]-pa[0],vy=pc[1]-pa[1],vz=pc[2]-pa[2];
+    const nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx;
+    nrm[a*3]+=nx;nrm[a*3+1]+=ny;nrm[a*3+2]+=nz; nrm[b*3]+=nx;nrm[b*3+1]+=ny;nrm[b*3+2]+=nz; nrm[c*3]+=nx;nrm[c*3+1]+=ny;nrm[c*3+2]+=nz;
+  }
+  const sPos=new Float32Array(V.length*3), sNrm=new Float32Array(V.length*3), sJaw=new Float32Array(V.length);
+  for(let i=0;i<V.length;i++){
+    const q=NN(V[i]); sPos[i*3]=q[0];sPos[i*3+1]=q[1];sPos[i*3+2]=q[2];
+    let X=nrm[i*3],Y=nrm[i*3+1],Z=nrm[i*3+2]; const L=Math.sqrt(X*X+Y*Y+Z*Z)||1;
+    sNrm[i*3]=X/L;sNrm[i*3+1]=Y/L;sNrm[i*3+2]=Z/L; sJaw[i]=jawOf(q);
+  }
+  const lPos=[], lJaw=[];
+  for(let i=0;i<Eln.length;i++){ const q=NN(V[Eln[i]]); lPos.push(q[0],q[1],q[2]); lJaw.push(jawOf(q)); }
+  let eyeL=null,eyeR=null;
+  if(eyeAcc.length){ let l=[0,0,0,0],r=[0,0,0,0];
+    for(const idx of eyeAcc){ const q=NN(V[idx]); const s=q[0]<0?l:r; s[0]+=q[0];s[1]+=q[1];s[2]+=q[2];s[3]++; }
+    if(l[3]&&r[3]){ eyeL=[l[0]/l[3],l[1]/l[3],l[2]/l[3]+0.06]; eyeR=[r[0]/r[3],r[1]/r[3],r[2]/r[3]+0.06]; }
+  }
+  return { line:{pos:new Float32Array(lPos),jaw:new Float32Array(lJaw),count:lPos.length/3},
+           solid:{pos:sPos,nrm:sNrm,jaw:sJaw,idx:new Uint16Array(tris),count:tris.length},
+           eyeL, eyeR };
+}
+(function loadModel(){
+  fetch('/persona-model?ts='+Date.now())
+    .then(r=> r.ok ? r.text() : Promise.reject(0))
+    .then(txt=>{
+      if(!glReady) return;
+      const m=parseOBJ(txt); if(!m) return;
+      if(m.line.count>=4){
+        bmPos=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,bmPos); gl.bufferData(gl.ARRAY_BUFFER,m.line.pos,gl.STATIC_DRAW);
+        bmJaw=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,bmJaw); gl.bufferData(gl.ARRAY_BUFFER,m.line.jaw,gl.STATIC_DRAW);
+        mCount=m.line.count; modelReady=true;
+      }
+      if(m.eyeL&&m.eyeR){
+        eyeBaseL=m.eyeL.slice(); eyeBaseR=m.eyeR.slice(); applyEyes(); modelEyes=true;
+      }
+      /* solid mesh loaded separately (decimated) via loadSolid() */
+    })
+    .catch(()=>{});
+})();
+
+function parseSolidMesh(text){
+  const V=[]; let tris=[]; let cur=''; const lines=text.split('\n');
+  for(let li=0; li<lines.length; li++){
+    const ln=lines[li], c0=ln.charCodeAt(0), c1=ln.charCodeAt(1);
+    if(c0===118 && c1===32){ const p=ln.split(/\s+/); V.push([+p[1],+p[2],+p[3]]); }
+    else if(c0===103 && c1===32){ cur=ln.trim().slice(2); }   /* g <group> */
+    else if(c0===102 && c1===32){
+      /* Skip eyeball groups' faces — realistic procedural eyeballs are drawn
+         in their place. Vertices stay in V so the bbox/normalisation (and thus
+         the eye centres) are unchanged. */
+      if(/eye/i.test(cur)) continue;
+      const p=ln.trim().split(/\s+/), n=p.length-1, ids=[];
+      for(let k=1;k<=n;k++){ let a=parseInt(p[k],10); if(!a) continue; a=(a<0?V.length+a:a-1); if(a>=0&&a<V.length) ids.push(a); }
+      for(let k=1;k<ids.length-1;k++) tris.push(ids[0],ids[k],ids[k+1]);
+    }
+  }
+  if(V.length<3||!tris.length) return null;
+  let mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
+  for(const v of V) for(let k=0;k<3;k++){ if(v[k]<mn[k])mn[k]=v[k]; if(v[k]>mx[k])mx[k]=v[k]; }
+  const cen=[(mn[0]+mx[0])/2,(mn[1]+mx[1])/2,(mn[2]+mx[2])/2];
+  const scl=1.7/Math.max(mx[0]-mn[0],mx[1]-mn[1],mx[2]-mn[2],1e-6);
+  const NN=v=>[(v[0]-cen[0])*scl,(v[1]-cen[1])*scl,(v[2]-cen[2])*scl];
+  const yLo=(mn[1]-cen[1])*scl, yHi=(mx[1]-cen[1])*scl, yR=Math.max(1e-6,yHi-yLo);
+  const nrm=new Float32Array(V.length*3);
+  for(let i=0;i<tris.length;i+=3){
+    const a=tris[i],b=tris[i+1],c=tris[i+2], pa=V[a],pb=V[b],pc=V[c];
+    const ux=pb[0]-pa[0],uy=pb[1]-pa[1],uz=pb[2]-pa[2], vx=pc[0]-pa[0],vy=pc[1]-pa[1],vz=pc[2]-pa[2];
+    const nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx;
+    nrm[a*3]+=nx;nrm[a*3+1]+=ny;nrm[a*3+2]+=nz; nrm[b*3]+=nx;nrm[b*3+1]+=ny;nrm[b*3+2]+=nz; nrm[c*3]+=nx;nrm[c*3+1]+=ny;nrm[c*3+2]+=nz;
+  }
+  const sPos=new Float32Array(V.length*3), sNrm=new Float32Array(V.length*3), sJaw=new Float32Array(V.length);
+  for(let i=0;i<V.length;i++){
+    const q=NN(V[i]); sPos[i*3]=q[0];sPos[i*3+1]=q[1];sPos[i*3+2]=q[2];
+    let X=nrm[i*3],Y=nrm[i*3+1],Z=nrm[i*3+2]; const L=Math.sqrt(X*X+Y*Y+Z*Z)||1;
+    sNrm[i*3]=X/L;sNrm[i*3+1]=Y/L;sNrm[i*3+2]=Z/L;
+    sJaw[i]=smoothstep(0.38,0.05,(q[1]-yLo)/yR)*smoothstep(-0.10,0.35,q[2]);
+  }
+  const big=V.length>65535;
+  return { pos:sPos, nrm:sNrm, jaw:sJaw, idx:(big?new Uint32Array(tris):new Uint16Array(tris)), count:tris.length, big };
+}
+/* ── live-tunable eyeball removal (window.setEyeCut(x,y,z)) ── */
+/* persona_b: eyeball groups are excluded at parse time (parseSolidMesh), so the
+   old ellipsoid eyeball-cut is a no-op (EYE_CUT=0 keeps every head triangle —
+   avoids carving the eyelids/forehead). Kept for the live setEyeCut() tuner. */
+let sPosArr=null, sAllTris=null, sBig=false, EYE_CUT=[0,0,0];
+const EYE_CEN=[[-0.291,-0.096,0.333],[0.280,-0.096,0.333]];
+function applyEyeCut(sz){
+  if(!sPosArr||!sAllTris||!bsIdx) return;
+  const keep=[];
+  for(let i=0;i<sAllTris.length;i+=3){
+    const a=sAllTris[i],b=sAllTris[i+1],c=sAllTris[i+2];
+    const mx=(sPosArr[a*3]+sPosArr[b*3]+sPosArr[c*3])/3;
+    const my=(sPosArr[a*3+1]+sPosArr[b*3+1]+sPosArr[c*3+1])/3;
+    const mz=(sPosArr[a*3+2]+sPosArr[b*3+2]+sPosArr[c*3+2])/3;
+    let drop=false;
+    for(let e=0;e<2;e++){ const dx=(mx-EYE_CEN[e][0])/sz[0], dy=(my-EYE_CEN[e][1])/sz[1], dz=(mz-EYE_CEN[e][2])/sz[2];
+      if(dx*dx+dy*dy+dz*dz<1.0){ drop=true; break; } }
+    if(!drop) keep.push(a,b,c);
+  }
+  const idx = sBig ? new Uint32Array(keep) : new Uint16Array(keep);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,bsIdx); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,idx,gl.STATIC_DRAW);
+  sCount=keep.length;
+}
+window.setEyeCut=function(x,y,z){ EYE_CUT=[x,y,z]; applyEyeCut(EYE_CUT); };
+
+(function loadSolid(){
+  fetch('/persona-model-solid?ts='+Date.now())
+    .then(r=> r.ok ? r.text() : Promise.reject(0))
+    .then(txt=>{
+      if(!glReady) return;
+      const m=parseSolidMesh(txt); if(!m) return;
+      if(m.big){ extU32=extU32||gl.getExtension('OES_element_index_uint'); if(!extU32){ console.warn('uint32 indices unsupported'); return; } }
+      try{ ensureSolidProgram();
+        bsPos=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,bsPos); gl.bufferData(gl.ARRAY_BUFFER,m.pos,gl.STATIC_DRAW);
+        bsNrm=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,bsNrm); gl.bufferData(gl.ARRAY_BUFFER,m.nrm,gl.STATIC_DRAW);
+        bsJaw=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,bsJaw); gl.bufferData(gl.ARRAY_BUFFER,m.jaw,gl.STATIC_DRAW);
+        bsIdx=gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,bsIdx); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,m.idx,gl.STATIC_DRAW);
+        sPosArr=m.pos; sAllTris=m.idx; sBig=m.big;
+        sIdxType=m.big?gl.UNSIGNED_INT:gl.UNSIGNED_SHORT; solidReady=true;
+        applyEyeCut(EYE_CUT);
+      }catch(e){ console.warn('solid(hi) init:',e); }
+    })
+    .catch(()=>{});
+})();
+
+/* ── iris fine-tune (rebuild bEye from base positions) ── */
+let eyeBaseL=null, eyeBaseR=null, eyeSX=0.90, eyeDY=-0.015, eyeDZ=0.02;
+function applyEyes(){
+  if(!eyeBaseL||!bEye) return;
+  gl.bindBuffer(gl.ARRAY_BUFFER,bEye);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([
+    eyeBaseL[0]*eyeSX, eyeBaseL[1]+eyeDY, eyeBaseL[2]+eyeDZ,
+    eyeBaseR[0]*eyeSX, eyeBaseR[1]+eyeDY, eyeBaseR[2]+eyeDZ]),gl.STATIC_DRAW);
+}
+window.setEyes=function(sx,dy,dz){ eyeSX=sx; eyeDY=dy; eyeDZ=dz; applyEyes(); };
+
+/* ── animated background: nebula + parallax stars, tinted by state ── */
+const BG_VS=`attribute vec2 a_p; void main(){ gl_Position=vec4(a_p,0.0,1.0); }`;
+const BG_FS=`precision highp float;
+uniform vec2 u_res; uniform float u_t; uniform vec3 u_col;
+float hash(vec2 p){p=fract(p*vec2(127.1,311.7));p+=dot(p,p.yx+19.19);return fract((p.x+p.y)*p.x);}
+float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);
+  return mix(mix(hash(i),hash(i+vec2(1.0,0.0)),f.x),mix(hash(i+vec2(0.0,1.0)),hash(i+vec2(1.0,1.0)),f.x),f.y);}
+float fbm(vec2 p){float v=0.0,a=0.5;for(int i=0;i<4;i++){v+=a*noise(p);p=p*2.03+3.1;a*=0.5;}return v;}
+float starL(vec2 uv,float sc,float sp,float sz){
+  vec2 dr=vec2(sin(u_t*sp*0.3)*0.02,cos(u_t*sp*0.2)*0.015);
+  vec2 id=floor((uv+dr)*sc); vec2 f=fract((uv+dr)*sc)-0.5;
+  float h=hash(id); float vis=step(0.972,h);
+  float tw=0.5+0.5*sin(u_t*sp*(1.5+h*3.0)+h*6.28); float d=length(f);
+  return smoothstep(sz,0.0,d)*vis*tw;
+}
+void main(){
+  vec2 uv=gl_FragCoord.xy/u_res; vec2 p=uv-0.5; p.x*=u_res.x/u_res.y;
+  float n=fbm(p*2.5+vec2(u_t*0.03,u_t*0.02));
+  float n2=fbm(p*1.4-vec2(u_t*0.02,0.0)+5.0);
+  float n3=fbm(p*1.8+vec2(-u_t*0.018,u_t*0.024)+11.0);
+  float neb=pow(clamp(n*0.6+n2*0.4,0.0,1.0),1.9);
+  vec3 col=mix(vec3(0.02,0.06,0.14), u_col, neb*0.85)*neb*1.5;
+  /* complementary WARM nebula (amber↔magenta) opposite the cool blue tint. */
+  float warm=pow(clamp(n2-n*0.30,0.0,1.0),2.1);
+  col+=mix(vec3(0.98,0.52,0.16), vec3(0.78,0.16,0.66), n)*warm*0.42;
+  /* multi-hue accent layer — a smooth cosine palette shifts through gold →
+     magenta → violet → teal across cloud regions. Kept SUBTLE so the nebula
+     reads as gently multi-coloured, not a rainbow. */
+  float acc=pow(clamp(n3*0.72+n2*0.25,0.0,1.0),2.3);
+  vec3 accCol=0.5+0.5*cos(6.2831853*(vec3(1.0,0.9,0.72)*(n3*1.35+n*0.45)+vec3(0.0,0.33,0.60)));
+  col+=accCol*acc*0.34;
+  float s=starL(uv,26.0,0.4,0.012)*0.9+starL(uv,13.0,0.7,0.02)*1.2+starL(uv,7.0,1.1,0.03)*1.5;
+  col+=s*vec3(0.82,0.92,1.12);
+  col*=smoothstep(1.6,0.14,length(p));
+  gl_FragColor=vec4(col,1.0);
+}`;
+let progBG=null, aBGp,uBGres,uBGt,uBGcol, bQuad=null;
+function ensureBG(){
+  if(progBG||!glReady) return;
+  try{
+    const mk=(ty,src)=>{const s=gl.createShader(ty);gl.shaderSource(s,src);gl.compileShader(s);
+      if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(s));return s;};
+    progBG=gl.createProgram();
+    gl.attachShader(progBG,mk(gl.VERTEX_SHADER,BG_VS)); gl.attachShader(progBG,mk(gl.FRAGMENT_SHADER,BG_FS));
+    gl.linkProgram(progBG);
+    if(!gl.getProgramParameter(progBG,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(progBG));
+    aBGp=gl.getAttribLocation(progBG,'a_p');
+    uBGres=gl.getUniformLocation(progBG,'u_res'); uBGt=gl.getUniformLocation(progBG,'u_t'); uBGcol=gl.getUniformLocation(progBG,'u_col');
+    bQuad=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,bQuad);
+    gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1, 1,-1, -1,1, 1,-1, 1,1, -1,1]),gl.STATIC_DRAW);
+  }catch(e){ console.warn('bg init:',e); progBG=null; }
+}
+function drawBackground(){
+  ensureBG(); if(!progBG) return;
+  gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
+  gl.useProgram(progBG);
+  gl.uniform2f(uBGres,canvas.width,canvas.height); gl.uniform1f(uBGt,T);
+  const c=stateColor(stateSmooth); gl.uniform3f(uBGcol,c[0]/255,c[1]/255,c[2]/255);
+  gl.bindBuffer(gl.ARRAY_BUFFER,bQuad); gl.enableVertexAttribArray(aBGp); gl.vertexAttribPointer(aBGp,2,gl.FLOAT,false,0,0);
+  gl.drawArrays(gl.TRIANGLES,0,6);
+  gl.enable(gl.BLEND); gl.useProgram(prog);
+}
+
+/* ── real 3D eyeballs (depth-tested spheres with iris/pupil shaded on) ── */
+/* persona_b.obj: eyeballs auto-detected from the named "Eyes_*_Eye_Ball" groups
+   (centres ≈ [±0.29,-0.096,0.333] in normalised space). The mesh's own eyeball
+   is a large fully-embedded sphere (r≈0.205); rendering it whole bulged past the
+   lids. Tuned to a wide/tall but ROUNDED ellipsoid (ex/ey widen+heighten to fill
+   the almond opening with white sclera out to the corners; ez≈1 keeps real depth
+   curvature so the edges RECEDE behind the eyelids — the face then cleanly
+   occludes the boundary, no coplanar z-fighting/tearing). dz recesses it into the
+   socket so it doesn't protrude. No polygon-offset needed. Browser-verified
+   (2026-07-17). */
+let EB = { sx:1.0, dy:0.015, dz:-0.075, r:0.105, gaze:0.10, lx:0.0, rx:0.0, ex:1.72, ey:1.45, ez:0.95, pf:0.0, pu:0.0 };
+window.EB = EB;
+let eyeReady=false, eyeDirs=null, eyeIdx=null, eyeIdxCount=0, bEdir=null, bEidx=null;
+let progEye=null, aEdir, uEmvp,uEcenter,uEr,uEgaze,uEiris,uEsclera,uEbri,uEsc;
+const EYE_VS=`attribute vec3 a_dir; uniform mat4 u_mvp; uniform vec3 u_center,u_esc; uniform float u_r;
+varying vec3 v_dir; void main(){ v_dir=a_dir; gl_Position=u_mvp*vec4(u_center+a_dir*u_r*u_esc,1.0); }`;
+const EYE_FS=`precision mediump float;
+uniform vec3 u_iris,u_sclera,u_gaze; uniform float u_bright; varying vec3 v_dir;
+void main(){
+  vec3 n=normalize(v_dir); float d=dot(n,normalize(u_gaze));
+  float iris=smoothstep(0.938,0.953,d);       /* smaller, realistic iris   */
+  float ring=iris*(1.0-smoothstep(0.951,0.972,d)); /* darker limbal ring   */
+  float pupil=smoothstep(0.985,0.993,d);      /* proportional pupil        */
+  vec3 col=u_sclera;                           /* white of the eye          */
+  col=mix(col,u_iris,iris);
+  col=mix(col,u_iris*0.35,ring*0.55);          /* limbal ring               */
+  col+=u_iris*smoothstep(0.908,0.965,d)*0.30;  /* iris inner glow           */
+  col=mix(col,vec3(0.02,0.03,0.05),pupil);     /* dark pupil                */
+  gl_FragColor=vec4(col*u_bright,1.0);
+}`;
+function ensureEye(){
+  if(eyeReady||!glReady) return;
+  try{
+    const NA=20,NB=14,dirs=[],idx=[];
+    for(let i=0;i<=NB;i++){ const phi=i/NB*Math.PI;
+      for(let j=0;j<=NA;j++){ const th=j/NA*6.2831853; dirs.push(Math.sin(phi)*Math.sin(th),Math.cos(phi),Math.sin(phi)*Math.cos(th)); } }
+    const cols=NA+1;
+    for(let i=0;i<NB;i++)for(let j=0;j<NA;j++){ const a=i*cols+j; idx.push(a,a+1,a+cols, a+1,a+cols+1,a+cols); }
+    eyeDirs=new Float32Array(dirs); eyeIdx=new Uint16Array(idx); eyeIdxCount=idx.length;
+    const mk=(ty,src)=>{const s=gl.createShader(ty);gl.shaderSource(s,src);gl.compileShader(s);
+      if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(s));return s;};
+    progEye=gl.createProgram(); gl.attachShader(progEye,mk(gl.VERTEX_SHADER,EYE_VS)); gl.attachShader(progEye,mk(gl.FRAGMENT_SHADER,EYE_FS)); gl.linkProgram(progEye);
+    if(!gl.getProgramParameter(progEye,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(progEye));
+    aEdir=gl.getAttribLocation(progEye,'a_dir');
+    uEmvp=gl.getUniformLocation(progEye,'u_mvp'); uEcenter=gl.getUniformLocation(progEye,'u_center'); uEr=gl.getUniformLocation(progEye,'u_r'); uEsc=gl.getUniformLocation(progEye,'u_esc');
+    uEgaze=gl.getUniformLocation(progEye,'u_gaze'); uEiris=gl.getUniformLocation(progEye,'u_iris'); uEsclera=gl.getUniformLocation(progEye,'u_sclera'); uEbri=gl.getUniformLocation(progEye,'u_bright');
+    bEdir=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,bEdir); gl.bufferData(gl.ARRAY_BUFFER,eyeDirs,gl.STATIC_DRAW);
+    bEidx=gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,bEidx); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,eyeIdx,gl.STATIC_DRAW);
+    eyeReady=true;
+  }catch(e){ console.warn('eye init:',e); progEye=null; }
+}
+function drawEyeballs(mvp, act){
+  ensureEye(); if(!eyeReady||!eyeBaseL) return;
+  gl.useProgram(progEye);
+  gl.uniformMatrix4fv(uEmvp,false,mvp);
+  gl.uniform1f(uEr, EB.r); gl.uniform3f(uEsc, EB.ex, EB.ey, EB.ez);
+  gl.uniform3f(uEgaze, gazeX*EB.gaze, gazeY*EB.gaze-0.01, 1.0);
+  gl.uniform3f(uEiris, 0.16,0.62,0.92);
+  gl.uniform3f(uEsclera, 0.94,0.97,1.0);
+  gl.uniform1f(uEbri, 1.15+act*0.35);
+  gl.bindBuffer(gl.ARRAY_BUFFER,bEdir); gl.enableVertexAttribArray(aEdir); gl.vertexAttribPointer(aEdir,3,gl.FLOAT,false,0,0);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,bEidx);
+  const L=[eyeBaseL[0]*EB.sx+EB.lx, eyeBaseL[1]+EB.dy, eyeBaseL[2]+EB.dz];
+  const R=[eyeBaseR[0]*EB.sx+EB.rx, eyeBaseR[1]+EB.dy, eyeBaseR[2]+EB.dz];
+  /* pull the eyeball slightly toward the camera in depth so it wins against the
+     mesh's own (blue) eyeball at coincident depth, while the eyelids — clearly
+     closer — still occlude it. */
+  gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(EB.pf, EB.pu);
+  for(const e of [L,R]){ gl.uniform3f(uEcenter,e[0],e[1],e[2]); gl.drawElements(gl.TRIANGLES,eyeIdxCount,gl.UNSIGNED_SHORT,0); }
+  gl.disable(gl.POLYGON_OFFSET_FILL);
+}
+
+function renderHead(dt){
+  if(!glReady) return;
+  const ss=stateSmooth, act=Math.min(1,ss), speaking=(state==='speaking'), col=stateColor(ss);
+  let mT=0;
+  if(speaking){ const amp=audioLevel(); mT = amp>0.02?Math.min(1,amp*3.2):0.25+0.35*Math.abs(Math.sin(T*10)); }
+  mouthOpen += (mT-mouthOpen)*Math.min(1,16*dt);
+  if(_camGaze.active){
+    // Webcam is driving the gaze — follow the user, skip the idle saccades.
+    gazeTX=_camGaze.x; gazeTY=_camGaze.y; gazeRetarget=0;
+  } else {
+    gazeRetarget-=dt;
+    if(gazeRetarget<=0){ const rng=(state==='thinking')?1:0.5;
+      gazeTX=(Math.random()*2-1)*rng; gazeTY=(Math.random()*2-1)*rng;
+      gazeRetarget=(state==='thinking')?0.6+Math.random():2+Math.random()*3; }
+  }
+  gazeX+=(gazeTX-gazeX)*Math.min(1,3*dt); gazeY+=(gazeTY-gazeY)*Math.min(1,3*dt);
+
+  const yaw=Math.sin(T*0.22)*0.20+gazeX*0.12+(modelReady?MODEL_YAW:0);
+  const pitch=Math.sin(T*0.18)*0.07+gazeY*0.08-0.03;
+  const jaw=mouthOpen*0.34;
+  const breath=1+Math.sin(T*0.9)*0.010;
+
+  const asp=canvas.width/canvas.height;
+  const proj=m4persp(0.80,asp,0.1,100);
+  let view=m4mul(m4trans(0,0.24,-3.05), m4mul(m4rotX(pitch), m4rotY(yaw)));
+  view=m4mul(view, m4scale(breath,breath,breath));
+  const mvp=m4mul(proj,view);
+
+  gl.viewport(0,0,canvas.width,canvas.height);
+  gl.clearColor(0,0,0,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+  drawBackground();
+  // Stage mode (Step A): the background just drew full-screen; now shrink the
+  // head+eyes into the top-right corner so the freed space can host content.
+  // Aspect is preserved (same shrink on W and H) so the head never distorts.
+  _stageT += ((_stageMode ? 1 : 0) - _stageT) * Math.min(1, 4 * dt);
+  if (_stageT > 0.002){
+    const f = 1 - 0.62 * _stageT;                       // shrink toward ~38%
+    const vpW = canvas.width * f, vpH = canvas.height * f;
+    const mx = canvas.width * 0.015, my = canvas.height * 0.06;   // larger top margin — head sits lower from the top edge
+    gl.viewport((canvas.width - vpW - mx) * _stageT, (canvas.height - vpH - my) * _stageT, vpW, vpH);
+  }
+  gl.useProgram(prog);
+  gl.uniformMatrix4fv(uMVP,false,mvp);
+  gl.uniform1f(uJaw,jaw); gl.uniform1f(uHY,-0.08); gl.uniform1f(uHZ,-0.25);
+  gl.uniform3f(uCol,col[0]/255,col[1]/255,col[2]/255);
+  gl.uniform1f(uBri, 0.85+act*0.5+(speaking?mouthOpen*0.25:0));
+
+  if(modelReady && mode==='solid' && solidReady){
+    gl.enable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
+    gl.useProgram(progS);
+    gl.uniformMatrix4fv(uSmvp,false,mvp);
+    gl.uniformMatrix4fv(uSmodel,false,m4mul(m4rotX(pitch),m4rotY(yaw)));
+    gl.uniform1f(uSjaw,jaw); gl.uniform1f(uShy,-0.08); gl.uniform1f(uShz,-0.25);
+    gl.uniform3f(uScol,col[0]/255,col[1]/255,col[2]/255);
+    gl.uniform1f(uSbri, 0.72+act*0.4+(speaking?mouthOpen*0.2:0));
+    gl.uniform1f(uStime, T);
+    gl.bindBuffer(gl.ARRAY_BUFFER,bsPos); gl.enableVertexAttribArray(aSp); gl.vertexAttribPointer(aSp,3,gl.FLOAT,false,0,0);
+    gl.bindBuffer(gl.ARRAY_BUFFER,bsNrm); gl.enableVertexAttribArray(aSn); gl.vertexAttribPointer(aSn,3,gl.FLOAT,false,0,0);
+    gl.bindBuffer(gl.ARRAY_BUFFER,bsJaw); gl.enableVertexAttribArray(aSj); gl.vertexAttribPointer(aSj,1,gl.FLOAT,false,0,0);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,bsIdx);
+    gl.drawElements(gl.TRIANGLES,sCount,sIdxType,0);
+    if(modelEyes) drawEyeballs(mvp, act);
+    gl.disable(gl.DEPTH_TEST); gl.enable(gl.BLEND);
+    gl.useProgram(prog);
+    return;
+  }
+  if(modelReady){
+    gl.uniform1f(uPt,1.0);
+    gl.bindBuffer(gl.ARRAY_BUFFER,bmPos); gl.enableVertexAttribArray(aPos); gl.vertexAttribPointer(aPos,3,gl.FLOAT,false,0,0);
+    gl.bindBuffer(gl.ARRAY_BUFFER,bmJaw); gl.enableVertexAttribArray(aJaw); gl.vertexAttribPointer(aJaw,1,gl.FLOAT,false,0,0);
+    gl.drawArrays(gl.LINES,0,mCount);
+    if(modelEyes){
+      gl.uniform1f(uBri, 0.95+act*0.6+Math.abs(Math.sin(T*2))*0.2);
+      gl.uniform1f(uPt, 24.0*DPR); gl.uniform1f(uRound,1.0);
+      gl.uniform3f(uCol, 0.80, 0.95, 1.0);
+      gl.bindBuffer(gl.ARRAY_BUFFER,bEye); gl.enableVertexAttribArray(aPos); gl.vertexAttribPointer(aPos,3,gl.FLOAT,false,0,0);
+      gl.disableVertexAttribArray(aJaw); gl.vertexAttrib1f(aJaw,0.0);
+      gl.drawArrays(gl.POINTS,0,2);
+      gl.uniform1f(uRound,0.0);
+    }
+    return;
+  }
+
+  /* wireframe */
+  gl.uniform1f(uPt,1.0);
+  gl.bindBuffer(gl.ARRAY_BUFFER,bPos); gl.enableVertexAttribArray(aPos); gl.vertexAttribPointer(aPos,3,gl.FLOAT,false,0,0);
+  gl.bindBuffer(gl.ARRAY_BUFFER,bJaw); gl.enableVertexAttribArray(aJaw); gl.vertexAttribPointer(aJaw,1,gl.FLOAT,false,0,0);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,bIdx);
+  gl.drawElements(gl.LINES,headLineCount,gl.UNSIGNED_SHORT,0);
+
+  /* faint vertex points for a data-ish shimmer */
+  gl.uniform1f(uPt,1.6*DPR);
+  gl.uniform1f(uBri,(0.35+act*0.35));
+  gl.drawArrays(gl.POINTS,0,headPos.length/3);
+
+  /* glowing eyes */
+  gl.uniform1f(uBri, 0.85+act*0.6+Math.abs(Math.sin(T*2))*0.2);
+  gl.uniform1f(uPt, 10.0*DPR);
+  gl.uniform3f(uCol, Math.min(1,col[0]/255+0.25),Math.min(1,col[1]/255+0.2),1.0);
+  gl.bindBuffer(gl.ARRAY_BUFFER,bEye); gl.enableVertexAttribArray(aPos); gl.vertexAttribPointer(aPos,3,gl.FLOAT,false,0,0);
+  gl.disableVertexAttribArray(aJaw); gl.vertexAttrib1f(aJaw,0.0);
+  gl.drawArrays(gl.POINTS,0,2);
+}
+
+function resizeCanvas() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  if (gl) gl.viewport(0, 0, canvas.width, canvas.height);
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// Keep chat overlay above virtual keyboard on mobile
+const _overlay = document.getElementById('chat-overlay');
+if (window.visualViewport) {
+  const _adjustOverlay = () => {
+    const vvH = window.visualViewport.height;
+    const winH = window.innerHeight;
+    const kbH = Math.max(0, winH - vvH - window.visualViewport.offsetTop);
+    _overlay.style.bottom = (Math.max(4, kbH + 8)) + 'px';
+  };
+  window.visualViewport.addEventListener('resize', _adjustOverlay);
+  window.visualViewport.addEventListener('scroll', _adjustOverlay);
+}
+
+// ── Auth: JWT from localStorage only ──────────────────────────────────────────
+// Server injects a fresh access token here when the session cookie is valid,
+// so a cleared localStorage never triggers a redirect loop.
+(function(){ const t='__SUNI_JWT__'; if(t && !t.startsWith('__')) localStorage.setItem('suni_jwt',t); })();
+const _ST = localStorage.getItem('suni_jwt') || '';
+function _apiFetch(url, opts={}){
+  opts.headers = {...(opts.headers||{}),"Authorization":"Bearer "+_ST};
+  return fetch(url, opts);
+}
+// Auth check + mode selector init
+let _sessionMode = 'assistant';
+const _sessionId  = localStorage.getItem('suni_session') || (() => {
+  const id = crypto.randomUUID();
+  localStorage.setItem('suni_session', id);
+  return id;
+})();
+
+(async()=>{
+  const fr = await fetch('/api/auth/first-run').then(r=>r.json()).catch(()=>({first_run:false}));
+  if(fr.first_run){ location.href='/login?setup=1'; return; }
+  if(!_ST) { location.href='/login?next=/'; return; }
+  // Detect UI language early from user settings
+  try {
+    const [uSettings, uCfg] = await Promise.all([
+      _apiFetch('/api/users/me/settings').then(r=>r.json()).catch(()=>({})),
+      _apiFetch('/api/config').then(r=>r.json()).catch(()=>({})),
+    ]);
+    _applyBranding(uCfg);
+    const uiLang = uSettings.response_language || uCfg.response_language || 'en';
+    if (typeof setLang !== 'undefined') setLang(uiLang);
+  } catch {}
+  // Load session info (role, mode, allowed modes)
+  const info = await _apiFetch('/api/session/info',
+    {headers:{'x-session-id':_sessionId}}).then(r=>r.json()).catch(()=>null);
+  if(info){
+    _sessionMode = info.mode || 'assistant';
+    const sel = document.getElementById('mode-select');
+    if(sel && info.allowed_modes && info.allowed_modes.length > 1){
+      // Only show selector if user has more than one mode available
+      sel.style.display = '';
+      // Remove options the user can't use
+      Array.from(sel.options).forEach(o => {
+        if(!info.allowed_modes.includes(o.value)) o.remove();
+      });
+      sel.value = _sessionMode;
+      sel.addEventListener('change', async () => {
+        _sessionMode = sel.value;
+        await _apiFetch('/api/session/mode', {
+          method:'POST',
+          headers:{'Content-Type':'application/json','x-session-id':_sessionId},
+          body: JSON.stringify({mode:_sessionMode, session_id:_sessionId}),
+        });
+        // Visual feedback
+        sel.style.color = _sessionMode === 'read-only'   ? 'rgba(255,180,0,.7)'
+                        : _sessionMode === 'task'        ? 'rgba(0,212,255,.7)'
+                        : _sessionMode === 'collaborate' ? 'rgba(190,130,255,.85)'
+                        : 'rgba(255,255,255,.6)';
+      });
+      // Initial colour
+      sel.style.color = _sessionMode === 'read-only'   ? 'rgba(255,180,0,.7)'
+                      : _sessionMode === 'task'        ? 'rgba(0,212,255,.7)'
+                      : _sessionMode === 'collaborate' ? 'rgba(190,130,255,.85)'
+                      : 'rgba(255,255,255,.6)';
+    }
+  }
+})();
+
+// ── State machine ────────────────────────────────────────────────────
+let state = 'idle', stateSmooth = 0;
+// State 3 = working (tool executing), state 4 = browsing (playwright active)
+const STATE_TARGET = { idle: 0, thinking: 1, speaking: 2, working: 3, browsing: 4 };
+const stateLabel  = document.getElementById('state-label');
+let   _activeToolName = '';
+
+const _STATE_KEYS = {idle:'orb.idle', thinking:'orb.thinking', speaking:'orb.speaking', working:'orb.working', browsing:'orb.browsing'};
+function setState(s, toolName) {
+  state = s;
+  _activeToolName = toolName || '';
+  stateLabel.className = s;
+  stateLabel.textContent = toolName
+    ? toolName.replace(/_/g,' ').replace(/^playwright /,'').toUpperCase()
+    : (typeof t !== 'undefined' && _STATE_KEYS[s] ? t(_STATE_KEYS[s]) : s.toUpperCase());
+  // Voice-first: retract the transcript to the face while SUNI is speaking
+  // (unless the user has pinned it open).
+  if (s === 'speaking' && typeof collapseDock === 'function') collapseDock();
+}
+
+// ── Retractable dock (voice-first: collapsed by default) ──────────────
+const _dockHandle = document.getElementById('dock-handle');
+const _dockPin    = document.getElementById('dock-pin');
+let _dockPinned = false, _dockIdleT = null;
+
+function expandDock() {
+  _overlay.classList.remove('collapsed');
+  _dockHandle.setAttribute('aria-expanded', 'true');
+  _armDockIdle();
+}
+function collapseDock() {
+  if (_dockPinned) return;
+  _overlay.classList.add('collapsed');
+  _dockHandle.setAttribute('aria-expanded', 'false');
+  clearTimeout(_dockIdleT);
+}
+// While open-but-not-pinned, fold away after a lull. Reset on interaction.
+function _armDockIdle() {
+  clearTimeout(_dockIdleT);
+  if (_dockPinned) return;
+  _dockIdleT = setTimeout(() => {
+    if (!_dockPinned && state !== 'speaking') collapseDock();
+  }, 12000);
+}
+_dockHandle.addEventListener('click', e => {
+  if (e.target === _dockPin) return;               // pin is handled on its own
+  if (_overlay.classList.contains('collapsed')) {
+    expandDock();
+  } else {                                         // manual collapse also unpins
+    _dockPinned = false;
+    _dockPin.classList.remove('pinned');
+    _dockPin.setAttribute('aria-pressed', 'false');
+    _overlay.classList.add('collapsed');
+    _dockHandle.setAttribute('aria-expanded', 'false');
+    clearTimeout(_dockIdleT);
+  }
+});
+_dockHandle.addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _dockHandle.click(); }
+});
+_dockPin.addEventListener('click', e => {
+  e.stopPropagation();
+  _dockPinned = !_dockPinned;
+  _dockPin.classList.toggle('pinned', _dockPinned);
+  _dockPin.setAttribute('aria-pressed', String(_dockPinned));
+  if (_dockPinned) expandDock(); else _armDockIdle();
+});
+// Reading the transcript keeps it open
+document.getElementById('messages')
+  .addEventListener('scroll', _armDockIdle, { passive: true });
+
+// ── Animation loop ───────────────────────────────────────────────────
+let lastTs = 0, T = 0;
+function frame(ts) {
+  const dt = Math.min((ts - lastTs) / 1000, 0.05);
+  lastTs = ts; T += dt;
+
+  const tgt = STATE_TARGET[state] ?? 0;
+  const rate = 4.5 * dt;
+  stateSmooth += (tgt - stateSmooth) * Math.min(rate * 3, 1);
+
+  renderHead(dt);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(ts => { lastTs = ts; requestAnimationFrame(frame); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'w' && e.target && e.target.id !== 'user-input') {
+    mode = (mode === 'solid') ? 'wire' : 'solid';
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  TTS
+// ═══════════════════════════════════════════════════════════════════
+const audioEl = document.getElementById('tts-audio');
+const ttsBtn  = document.getElementById('tts-btn');
+let ttsOn = true;
+ttsBtn.classList.add('on');
+ttsBtn.addEventListener('click', () => {
+  ttsOn = !ttsOn;
+  ttsBtn.classList.toggle('on', ttsOn);
+});
+
+let audioCtx = null, analyser = null;
+function setupAudio(el) {
+  if (audioCtx) return;
+  try {
+    audioCtx  = new (window.AudioContext || window.webkitAudioContext)();
+    analyser  = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    const src = audioCtx.createMediaElementSource(el);
+    src.connect(analyser);
+    analyser.connect(audioCtx.destination);
+  } catch(e) {}
+}
+
+// Fetch synthesized audio for one clip → object URL (or null on failure).
+async function _fetchTts(text) {
+  try {
+    const res = await _apiFetch('/api/tts', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({text, voice: window._suniTtsVoice || ''})
+    });
+    if (!res.ok) throw new Error('tts fail');
+    return URL.createObjectURL(await res.blob());
+  } catch(e) { console.warn('TTS:', e); return null; }
+}
+
+// Play one pre-fetched clip; the caption is bound here (not at fetch) so it
+// tracks the audio that's actually sounding.
+async function _playUrl(url, text) {
+  try {
+    setupAudio(audioEl);
+    if (audioCtx?.state === 'suspended') await audioCtx.resume();
+    audioEl.src = url;
+    setState('speaking'); showSub(text);
+    await audioEl.play();
+    // Resolve on natural end/error OR on interrupt: send() calls _ttsResolve()
+    // after pausing, since pause() fires no event this await would otherwise see
+    // — without it a re-send mid-speech would park here forever and wedge TTS.
+    await new Promise(r => { _ttsResolve = r; audioEl.onended = r; audioEl.onerror = r; });
+  } catch(e) { console.warn('TTS:', e); }
+  finally { _ttsResolve = null; if (audioEl.src.startsWith('blob:')) URL.revokeObjectURL(audioEl.src); }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  SUBTITLE
+// ═══════════════════════════════════════════════════════════════════
+const subEl = document.getElementById('subtitle');
+let _capHideT;
+function showSub(text) {
+  clearTimeout(_capHideT);
+  // Stage mode: the content panel is the display — render the reply there (rich
+  // markdown) and skip the floating caption over the face.
+  if (_stageMode && _stageText){
+    if (text && text.trim()){ _stageText.innerHTML = md(text); _stageBody.scrollTop = _stageBody.scrollHeight; }
+    return;
+  }
+  const clean = text
+    .replace(/\*{1,2}([^*]+)\*{1,2}/g,'$1')
+    .replace(/`([^`]+)`/g,'$1')
+    .replace(/#{1,6}\s+/g,'')
+    .replace(/\n+/g,' ').trim().slice(0, 600);   // wraps freely now — no CSS clamp
+  if (!clean) return;
+  subEl.textContent = clean;
+  subEl.classList.add('show');
+}
+function hideSub() { clearTimeout(_capHideT); subEl.classList.remove('show'); }
+// When TTS is off there's no audio 'ended' to key off — fade the caption on a
+// timer scaled to how much there is to read.
+function scheduleCaptionHide(len) {
+  clearTimeout(_capHideT);
+  _capHideT = setTimeout(hideSub, Math.min(3200 + (len || 0) * 22, 9000));
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  MARKDOWN (minimal)
+// ═══════════════════════════════════════════════════════════════════
+function md(raw) {
+  raw = _parseFocus(raw || '').clean;   // never show ```suni-focus``` directive blocks to the user
+  const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return esc(raw)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .split(/\n{2,}/)
+    .map(p => `<p>${p.replace(/\n/g,'<br>')}</p>`)
+    .join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  CHAT
+// ═══════════════════════════════════════════════════════════════════
+const msgsEl  = document.getElementById('messages');
+const inputEl = document.getElementById('user-input');
+const sendBtn = document.getElementById('send-btn');
+
+function addMsg(role, text = '', streaming = false) {
+  const wrap = document.createElement('div');
+  wrap.className = `msg ${role}`;
+
+  const lbl = document.createElement('div');
+  lbl.className   = 'msg-role';
+  lbl.textContent = role === 'user' ? 'YOU' : 'SUNI';
+
+  const body = document.createElement('div');
+  body.className = 'msg-body';
+
+  if (streaming) {
+    const cur = document.createElement('span');
+    cur.className = 'cursor';
+    body.appendChild(cur);
+    wrap._cur = cur; wrap._raw = '';
+  } else {
+    body.innerHTML = md(text);
+  }
+  wrap._body = body;
+  wrap.appendChild(lbl); wrap.appendChild(body);
+  msgsEl.appendChild(wrap);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+  return wrap;
+}
+
+function appendTok(wrap, tok) {
+  wrap._raw += tok;
+  wrap._body.innerHTML = md(wrap._raw);
+  if (wrap._cur) wrap._body.appendChild(wrap._cur);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+}
+
+function finalMsg(wrap, full) {
+  wrap._body.innerHTML = md(full);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+}
+
+// ── Streaming TTS queue — speak sentence-by-sentence as they arrive ──
+const _ttsQueue = [];
+let _ttsBusy = false, _ttsGen = 0, _ttsFirst = true, _ttsResolve = null, _waitDrainTimer = null;
+
+async function _drainTts() {
+  if (_ttsBusy) return;
+  _ttsBusy = true;
+  const myGen = _ttsGen;
+  // Pipeline: fetch the next clip while the current one plays so network latency
+  // overlaps playback. A new send() bumps _ttsGen; this loop then bails so it
+  // never fights a fresh one over the single <audio> element.
+  let curText = null, curFetch = null;
+  if (_ttsQueue.length) { curText = _ttsQueue.shift(); curFetch = _fetchTts(curText); }
+  while (curFetch && _ttsGen === myGen) {
+    const url = await curFetch, text = curText;
+    if (_ttsGen === myGen && _ttsQueue.length) { curText = _ttsQueue.shift(); curFetch = _fetchTts(curText); }
+    else { curText = null; curFetch = null; }
+    if (url && _ttsGen === myGen) await _playUrl(url, text);
+    else if (url) URL.revokeObjectURL(url);
+  }
+  _ttsBusy = false;
+  // The queue can empty transiently mid-reply (we drain faster than the model
+  // generates) — do NOT go idle here or the state/caption would flicker. The
+  // send() done-handler's waitDrain owns the final idle once streaming ends.
+  if (_ttsQueue.length) _drainTts();   // items enqueued as we wound down
+}
+
+function _enqueueSentence(s) {
+  if (s.trim().length < 4) return;
+  _ttsQueue.push(s);
+  _drainTts();
+}
+
+// Emit each complete sentence in `buf` to voice (TTS on) or straight to the
+// caption (muted). Returns the trailing incomplete remainder. `onEmit` fires
+// once per surfaced sentence (used to mark that the reply reached the face).
+function _emitSentences(buf, onEmit) {
+  const re = /[^.!?]*[.!?]+(?:\s+|$)/g;
+  let m, last = 0;
+  while ((m = re.exec(buf)) !== null) {
+    _ttsFirst = false;
+    if (ttsOn) _enqueueSentence(m[0]);
+    else       showSub(m[0].trim());
+    if (onEmit) onEmit();
+    last = m.index + m[0].length;
+  }
+  let rest = buf.slice(last);
+  // Voice only: get the first fragment out fast instead of waiting for a full
+  // stop, so speech starts sooner. Captions stay sentence-based (not split).
+  if (ttsOn && _ttsFirst) {
+    const clause = rest.search(/[,;:]\s/);
+    if (clause >= 12) { _ttsFirst = false; _enqueueSentence(rest.slice(0, clause + 1)); if (onEmit) onEmit(); return rest.slice(clause + 2); }
+    if (rest.length >= 50) {
+      const sp = rest.lastIndexOf(' ');
+      if (sp >= 24) { _ttsFirst = false; _enqueueSentence(rest.slice(0, sp)); if (onEmit) onEmit(); return rest.slice(sp + 1); }
+    }
+  }
+  // Voice only: break a very long running sentence at its last clause.
+  if (ttsOn && rest.length >= 90) {
+    const idx = Math.max(rest.lastIndexOf(', '), rest.lastIndexOf('; '), rest.lastIndexOf(': '));
+    if (idx > 20) { _enqueueSentence(rest.slice(0, idx + 1)); if (onEmit) onEmit(); return rest.slice(idx + 2); }
+  }
+  return rest; // remainder (incomplete sentence)
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  WEBCAM MOTION TRACKING  (opt-in; frames NEVER leave the browser)
+//  Samples the camera to a tiny in-page canvas, finds where movement is,
+//  and steers the shared gaze target so the head + eyes follow you.
+// ═══════════════════════════════════════════════════════════════════
+const _camBtn    = document.getElementById('cam-btn');
+const _camVideo  = document.getElementById('cam-video');
+const _camCanvas = document.getElementById('cam-canvas');
+const _camCtx    = _camCanvas.getContext('2d', { willReadFrequently: true });
+let _camStream = null, _camTimer = null, _camPrev = null;
+
+// Tunable feel. Flip signX/signY if the head tracks the wrong way for your camera.
+// signX/signY confirmed correct (2026-07-24); gainY raised so vertical still
+// reads for a seated user, whose head barely moves up/down.
+const CAM = { W:64, H:48, fps:15, thresh:22, minPix:14,
+              gainX:1.25, gainY:1.4, signX:-1, signY:-1, ease:0.4, decay:0.045 };
+
+function _setCamBtn(on){
+  _camBtn.classList.toggle('on', on);
+  _camBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  _camBtn.style.color       = on ? '#00d4ff' : 'rgba(201,162,39,.6)';
+  _camBtn.style.borderColor = on ? 'rgba(0,212,255,.6)' : 'rgba(201,162,39,.28)';
+  _camBtn.style.boxShadow   = on ? '0 0 8px rgba(0,212,255,.35)' : 'none';
+  _camBtn.title = on
+    ? 'Camera on — SUNI follows your movement (stays on this device). Click to turn off.'
+    : 'Camera off — click to let SUNI follow your movement (stays on this device)';
+}
+
+async function _camStart(){
+  if(!navigator.mediaDevices?.getUserMedia){ showSub('CAMERA UNSUPPORTED'); return; }
+  try{
+    _camStream = await navigator.mediaDevices.getUserMedia({ video:{ width:{ideal:320}, height:{ideal:240} }, audio:false });
+  }catch(e){ console.warn('camera:', e); showSub('CAMERA UNAVAILABLE'); _setCamBtn(false); return; }
+  _camVideo.srcObject = _camStream;
+  try { await _camVideo.play(); } catch {}
+  _camPrev = null; _setCamBtn(true);
+  _camTimer = setInterval(_camTick, Math.round(1000/CAM.fps));
+}
+
+function _camStop(){
+  clearInterval(_camTimer); _camTimer = null;
+  if(_camStream){ _camStream.getTracks().forEach(t=>t.stop()); _camStream = null; }
+  _camVideo.srcObject = null;
+  _camGaze.active = false; _camGaze.hold = 0; _camPrev = null;
+  _setCamBtn(false);
+}
+
+function _camTick(){
+  if(!_camVideo.videoWidth) return;
+  _camCtx.drawImage(_camVideo, 0, 0, CAM.W, CAM.H);
+  let px;
+  try { px = _camCtx.getImageData(0,0,CAM.W,CAM.H).data; } catch { return; }
+  const n = CAM.W*CAM.H, cur = new Uint8Array(n);
+  for(let i=0,j=0;i<n;i++,j+=4){ cur[i] = (px[j]*0.3 + px[j+1]*0.59 + px[j+2]*0.11)|0; }
+  if(_camPrev){
+    let sx=0, sy=0, cnt=0;
+    for(let y=0,i=0;y<CAM.H;y++) for(let x=0;x<CAM.W;x++,i++){
+      if(Math.abs(cur[i]-_camPrev[i]) > CAM.thresh){ sx+=x; sy+=y; cnt++; }
+    }
+    if(cnt > CAM.minPix){
+      const cx = sx/cnt/CAM.W, cy = sy/cnt/CAM.H;               // motion centroid, 0..1
+      const tx = Math.max(-1,Math.min(1,(cx-0.5)*2*CAM.gainX*CAM.signX));
+      const ty = Math.max(-1,Math.min(1,(cy-0.5)*2*CAM.gainY*CAM.signY));
+      _camGaze.x += (tx - _camGaze.x) * CAM.ease;
+      _camGaze.y += (ty - _camGaze.y) * CAM.ease;
+      _camGaze.active = true; _camGaze.hold = 1;                // fresh fix
+    } else if(_camGaze.active){
+      _camGaze.hold -= CAM.decay;                              // no motion → relax to idle saccades
+      if(_camGaze.hold <= 0) _camGaze.active = false;
+    }
+  }
+  _camPrev = cur;
+}
+
+_camBtn.addEventListener('click', () => { if(_camStream) _camStop(); else _camStart(); });
+
+// ── Content stage toggle (Step A) — head to corner + content panel ────
+const _stageBtn  = document.getElementById('stage-btn');
+const _stageEl   = document.getElementById('content-stage');
+const _stageBody = document.getElementById('stage-body');
+const _stageMedia= document.getElementById('stage-media');
+const _stageText = document.getElementById('stage-text');
+function _setStage(on){
+  _stageMode = on;
+  _stageEl.classList.toggle('on', on);
+  _stageBtn.classList.toggle('on', on);
+  _stageBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  _stageBtn.style.color       = on ? '#00d4ff' : 'rgba(201,162,39,.6)';
+  _stageBtn.style.borderColor = on ? 'rgba(0,212,255,.6)' : 'rgba(201,162,39,.28)';
+  if(!on){ _stageMedia.innerHTML = ''; _stageText.innerHTML = ''; } else { hideSub(); }
+}
+// Render attached files into the stage by type (Step D). Free-win tier:
+// image · video · audio · PDF (iframe) · text/code/csv (fetched) · else a card.
+const _EXT = {
+  img: /\.(jpe?g|png|gif|webp|bmp|avif|svg)$/i,
+  vid: /\.(mp4|webm|mov|m4v|ogv)$/i,
+  aud: /\.(mp3|wav|ogg|oga|m4a|flac|aac)$/i,
+  pdf: /\.pdf$/i,
+  csv: /\.(csv|tsv)$/i,
+  txt: /\.(txt|md|markdown|json|log|xml|ya?ml|ini|conf|cfg|js|ts|py|css|html?|sql|sh|c|cpp|h|java|go|rs)$/i,
+  office: /\.(docx?|xlsx?|pptx?|odt|ods|odp)$/i,
+};
+function _officeCard(url, n, name){
+  const xls = /\.(xlsx?|ods)$/i.test(name), ppt = /\.(pptx?|odp)$/i.test(name);
+  const icon = xls ? '▦' : ppt ? '◈' : '▤';
+  const kind = xls ? 'spreadsheet' : ppt ? 'presentation' : 'document';
+  return `<a class="stage-card" href="${url}" target="_blank" rel="noopener"
+      style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:22px 18px;text-decoration:none">
+      <span style="font-size:34px;line-height:1">${icon}</span>
+      <span style="font-weight:600">${n}</span>
+      <span style="font-size:11px;color:rgba(255,255,255,.5)">${kind} · open ↗</span></a>`;
+}
+function _serveUrl(f){
+  const tok = _ST ? '&token=' + encodeURIComponent(_ST) : '';
+  return `/api/files/serve?path=${encodeURIComponent(f.path)}${tok}`;
+}
+// Remove /api/files/serve URLs from text that gets SPOKEN or CAPTIONED — the file
+// is shown on the stage instead, so SUNI shouldn't read the path/URL aloud.
+function _stripServeUrls(t){
+  return (t||'').replace(/\/api\/files\/serve\?\S*/g, '').replace(/\n{2,}\s*$/, '').replace(/[ \t]+$/,'');
+}
+// Extract media/files SUNI generated in a reply (serve links) so the stage can
+// auto-open to show them — the reply-side counterpart of upload auto-staging.
+function _replyMediaItems(text){
+  const items = [], seen = new Set();
+  const re = /\/api\/files\/serve\?path=([^)\s"'&]+)/g;
+  let m;
+  while ((m = re.exec(text || ''))){
+    let p; try { p = decodeURIComponent(m[1]); } catch { p = m[1]; }
+    if (seen.has(p)) continue; seen.add(p);
+    items.push({ path: p, filename: p.split(/[\\/]/).pop() });
+  }
+  return items;
+}
+function _stageShowFiles(files){
+  if (!_stageMedia || !files || !files.length) return;
+  _stageMedia.innerHTML = files.map(f => {
+    const url = _serveUrl(f), n = _escFile(f.filename || ''), name = f.filename || '';
+    if (_EXT.img.test(name)) return `<div class="stage-img-wrap" data-file="${n}"><img src="${url}" alt="${n}"></div>`;
+    if (_EXT.vid.test(name)) return `<video src="${url}" controls preload="metadata"></video>`;
+    if (_EXT.aud.test(name)) return `<div class="stage-file"><div class="sf-name">🔊 ${n}</div><audio src="${url}" controls></audio></div>`;
+    if (_EXT.pdf.test(name)) return `<iframe class="stage-doc" src="${url}" title="${n}"></iframe>`;
+    if (_EXT.csv.test(name) || _EXT.txt.test(name))
+      return `<div class="stage-file"><div class="sf-name">▤ ${n}</div><pre class="sf-text" data-src="${url}" data-csv="${_EXT.csv.test(name)?1:0}">Loading…</pre></div>`;
+    if (_EXT.office.test(name)) return _officeCard(url, n, name);
+    return `<a class="stage-card" href="${url}" target="_blank" rel="noopener">▤ ${n}</a>`;
+  }).join('');
+  _stageMedia.querySelectorAll('.sf-text[data-src]').forEach(_loadStageText);
+}
+async function _loadStageText(pre){
+  try{
+    const r = await _apiFetch(pre.dataset.src);
+    if(!r.ok) throw 0;
+    const t = await r.text();
+    if (pre.dataset.csv === '1'){
+      const rows = t.trim().split(/\r?\n/).slice(0, 200).map(r => r.split(/[,\t]/));
+      pre.outerHTML = '<table class="sf-table">' + rows.map((row,i) =>
+        '<tr>' + row.map(c => `<${i?'td':'th'}>${_escFile(c)}</${i?'td':'th'}>`).join('') + '</tr>').join('') + '</table>';
+    } else {
+      pre.textContent = t.slice(0, 20000);
+    }
+  }catch(e){ pre.textContent = '(could not load)'; }
+}
+// Make a completed staged reply interactive from SUNI's natural prose: timestamps
+// seek the media, quoted phrases highlight in the shown file, "page N" jumps a
+// PDF. Heuristic — no special output protocol required from the model.
+function _enhanceStage(fullText){
+  if (!_stageMode || !_stageText) return;
+  const { clean, directives } = _parseFocus(fullText);
+  let html = md(clean || '');
+  html = html.replace(/\b(\d{1,2}):([0-5]\d)(?::([0-5]\d))?\b/g, (m,a,b,c) => {
+    const t = (c!==undefined) ? (+a*3600 + +b*60 + +c) : (+a*60 + +b);
+    return `<a class="tstamp" data-t="${t}">${m}</a>`;
+  });
+  html = html.replace(/\b(pages?|p\.|páginas?|pág\.)\s*(\d{1,4})\b/gi, (m,_w,n) => `<a class="pg" data-p="${n}">${m}</a>`);
+  _stageText.innerHTML = html;
+  _applyFocus(directives);   // draw region boxes on images (Claude-Code vision, no VLM needed)
+  const quotes = [...(clean.match(/["“]([^"”\n]{4,120})["”]/g) || [])].map(q => q.replace(/^["“]|["”]$/g,'').trim());
+  if (quotes.length){
+    _stageMedia.querySelectorAll('.sf-text, .sf-table').forEach(el => {
+      let h = el.innerHTML;
+      quotes.forEach(q => {
+        const re = new RegExp('(?![^<]*>)(' + q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + ')', 'i');
+        h = h.replace(re, '<mark>$1</mark>');
+      });
+      el.innerHTML = h;
+    });
+    const fm = _stageMedia.querySelector('mark');
+    if (fm) fm.scrollIntoView({ block:'center', behavior:'smooth' });
+  }
+  _stageText.querySelectorAll('.tstamp').forEach(a => a.addEventListener('click', () => {
+    const media = _stageMedia.querySelector('video, audio');
+    if (media){ try{ media.currentTime = +a.dataset.t; if(media.play) media.play(); }catch(e){} media.scrollIntoView({ block:'center', behavior:'smooth' }); }
+  }));
+  _stageText.querySelectorAll('.pg').forEach(a => a.addEventListener('click', () => {
+    const doc = _stageMedia.querySelector('.stage-doc');
+    if (doc){ doc.src = doc.src.split('#')[0] + '#page=' + a.dataset.p; }
+  }));
+}
+// Parse SUNI's ```suni-focus``` directives out of a reply; returns the reply
+// without them + the parsed list. She emits these to point at image regions.
+function _parseFocus(text){
+  const directives = [];
+  // Tolerant of the fence the model actually emits (2, 3, or no backticks): key on
+  // the `suni-focus` marker and grab the JSON object that follows.
+  const clean = (text || '').replace(/`{0,4}\s*suni-focus\s*`{0,4}\s*(\{[\s\S]*?\})\s*`{0,4}/gi, (m, json) => {
+    try{ const o = JSON.parse(json); if(o) directives.push(o); }catch(e){}
+    return '';
+  });
+  return { clean, directives };
+}
+function _focusImageWrap(target){
+  const wraps = [..._stageMedia.querySelectorAll('.stage-img-wrap')];
+  if (!wraps.length) return null;
+  if (typeof target === 'number') return wraps[target-1] || null;
+  if (/^\d+$/.test(String(target||''))) return wraps[+target-1] || null;
+  const t = String(target||'').toLowerCase();
+  return wraps.find(w => (w.dataset.file||'').toLowerCase().includes(t)) || wraps[0];
+}
+function _applyFocus(directives){
+  if (!directives || !directives.length) return;
+  directives.forEach(d => {
+    if (!d || !Array.isArray(d.box) || d.box.length < 4) return;
+    const wrap = _focusImageWrap(d.target);
+    if (!wrap) return;
+    const [x,y,w,h] = d.box.map(Number);
+    const box = document.createElement('div');
+    box.className = 'focus-box';
+    box.style.left   = (Math.max(0,Math.min(1,x))*100) + '%';
+    box.style.top    = (Math.max(0,Math.min(1,y))*100) + '%';
+    box.style.width  = (Math.max(0,Math.min(1,w))*100) + '%';
+    box.style.height = (Math.max(0,Math.min(1,h))*100) + '%';
+    if (d.note){ const lbl=document.createElement('span'); lbl.className='focus-note'; lbl.textContent=d.note; box.appendChild(lbl); }
+    wrap.appendChild(box);
+    wrap.scrollIntoView({ block:'center', behavior:'smooth' });
+  });
+}
+_stageBtn.addEventListener('click', () => _setStage(!_stageMode));
+// Auto-retract: after a reply, wait a bit then close the stage + restore the head.
+// Extended while the user is engaging with the stage; cancelled on a new send.
+let _stageCloseT = null;
+function _armStageClose(){
+  clearTimeout(_stageCloseT);
+  _stageCloseT = setTimeout(() => {
+    if (state === 'speaking'){ _armStageClose(); return; }   // still talking — wait, don't retract mid-speech
+    _stageCloseT = null;
+    if (_stageMode) _setStage(false);
+  }, 14000);
+}
+function _cancelStageClose(){ clearTimeout(_stageCloseT); _stageCloseT = null; }
+['mousemove','wheel','click','keydown'].forEach(ev =>
+  _stageEl.addEventListener(ev, () => { if (_stageCloseT) _armStageClose(); }, { passive:true }));
+// Release the camera when the tab is hidden or the page unloads.
+document.addEventListener('visibilitychange', () => { if(document.hidden && _camStream) _camStop(); });
+window.addEventListener('beforeunload', () => { if(_camStream) _camStop(); });
+
+// ── Vision snapshot ──────────────────────────────────────────────────
+// Capture a still and attach it (reuses the upload → file_ids flow) so you can
+// ask SUNI about what the camera sees. Needs a configured VLM — or Claude Code,
+// which can read the saved image file — to actually interpret it. If tracking
+// isn't already running, the camera is acquired just for the shot and released.
+const _snapBtn = document.getElementById('snap-btn');
+async function _snapshot(){
+  if(_snapBtn.classList.contains('busy')) return;
+  _snapBtn.classList.add('busy');
+  let temp = null;
+  try {
+    if(!_camVideo.videoWidth){
+      if(!navigator.mediaDevices?.getUserMedia){ showSub('CAMERA UNSUPPORTED'); return; }
+      try { temp = await navigator.mediaDevices.getUserMedia({ video:{ width:{ideal:1280}, height:{ideal:720} }, audio:false }); }
+      catch(e){ console.warn('camera:', e); showSub('CAMERA UNAVAILABLE'); return; }
+      _camVideo.srcObject = temp; try { await _camVideo.play(); } catch {}
+      await new Promise(r => setTimeout(r, 350));   // let exposure settle
+    }
+    const w = _camVideo.videoWidth||640, h = _camVideo.videoHeight||480;
+    const cnv = document.createElement('canvas'); cnv.width = w; cnv.height = h;
+    cnv.getContext('2d').drawImage(_camVideo, 0, 0, w, h);
+    const blob = await new Promise(res => cnv.toBlob(res, 'image/jpeg', 0.85));
+    if(!blob){ showSub('SNAPSHOT FAILED'); return; }
+    const file = new File([blob], `snapshot-${Date.now()}.jpg`, { type:'image/jpeg' });
+    expandDock();
+    await _uploadFile(file);
+    showSub('Snapshot attached — ask me about it.');
+    inputEl.focus();
+  } finally {
+    if(temp){ temp.getTracks().forEach(t=>t.stop()); _camVideo.srcObject = _camStream || null; }
+    _snapBtn.classList.remove('busy');
+  }
+}
+_snapBtn?.addEventListener('click', _snapshot);
+
+// ═══════════════════════════════════════════════════════════════════
+//  FILE UPLOAD  (attach button + drag-and-drop)
+// ═══════════════════════════════════════════════════════════════════
+const _escFile = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+let _attachedFiles = [];   // [{file_id, filename, path}]
+
+// ── File-processing status words (Step C) — reuse the ingest recede animation
+// to show the pipeline as SUNI takes in a file, in the selected language. ──
+const _FILE_STATUS = {
+  en: { uploading:'uploading',  acquiring:'acquiring information', analyzing:'analyzing' },
+  pt: { uploading:'a carregar', acquiring:'a adquirir informação', analyzing:'a analisar' },
+};
+function _fileStatus(key){
+  const lang = (typeof getLang === 'function' ? getLang() : 'en');
+  const phrase = (_FILE_STATUS[lang] || _FILE_STATUS.en)[key];
+  if (phrase) _ingestPrompt(phrase);
+}
+
+async function _uploadFile(file) {
+  const chip = _addFileChip(file.name, null);
+  chip.classList.add('uploading');
+  _fileStatus('uploading');
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res = await _apiFetch('/api/files/upload', { method: 'POST', body: fd });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || 'Upload failed'); }
+    const d = await res.json();
+    chip.classList.remove('uploading');
+    chip.dataset.fileId = d.file_id;
+    _attachedFiles.push({ file_id: d.file_id, filename: d.filename, path: d.path });
+    _fileStatus('acquiring');
+    setTimeout(() => _fileStatus('analyzing'), 1300);
+    return d;
+  } catch (e) {
+    chip.remove();
+    showSub('UPLOAD FAILED: ' + e.message);
+    return null;
+  }
+}
+
+function _addFileChip(name, fileId) {
+  const chip = document.createElement('div');
+  chip.className = 'file-chip';
+  chip.dataset.fileId = fileId || '';
+  chip.innerHTML = `<span class="file-chip-name" title="${_escFile(name)}">${_escFile(name)}</span>`
+    + `<button class="file-chip-remove" title="Remove">×</button>`;
+  chip.querySelector('.file-chip-remove').addEventListener('click', () => {
+    if (chip.dataset.fileId) _attachedFiles = _attachedFiles.filter(f => f.file_id !== chip.dataset.fileId);
+    chip.remove();
+  });
+  document.getElementById('file-chips').appendChild(chip);
+  return chip;
+}
+
+function _clearFileChips() {
+  document.getElementById('file-chips').innerHTML = '';
+  _attachedFiles = [];
+}
+
+document.getElementById('file-input').addEventListener('change', async e => {
+  for (const f of Array.from(e.target.files)) await _uploadFile(f);
+  e.target.value = '';
+});
+
+// Drag-and-drop anywhere over the face; expand the dock so chips are visible
+const _dropOverlay = document.getElementById('drop-overlay');
+window.addEventListener('dragenter', e => {
+  if (!e.dataTransfer || !e.dataTransfer.types.includes('Files')) return;
+  e.preventDefault();
+  _dropOverlay.classList.add('active');
+});
+window.addEventListener('dragleave', e => {
+  if (e.relatedTarget) return;               // ignore inner-element transitions
+  _dropOverlay.classList.remove('active');
+});
+window.addEventListener('dragover', e => {
+  if (e.dataTransfer && e.dataTransfer.types.includes('Files')) e.preventDefault();
+});
+window.addEventListener('drop', async e => {
+  _dropOverlay.classList.remove('active');
+  if (!e.dataTransfer || !e.dataTransfer.files.length) return;
+  e.preventDefault();
+  expandDock();
+  for (const f of Array.from(e.dataTransfer.files)) await _uploadFile(f);
+  inputEl.focus();
+});
+
+// Prompt "ingest" (Step B) — scatter the prompt's words in the space, then draw
+// them up and into SUNI as she starts to think. Ambient: low opacity, no input
+// capture. cx/cy is the head's screen position (updated when the head relocates).
+function _ingestPrompt(text){
+  const layer = document.getElementById('ingest-layer');
+  if (!layer || !text) return;
+  const words = text.split(/\s+/).filter(Boolean).slice(0, 24);
+  const W = window.innerWidth, H = window.innerHeight;
+  const cx = _stageMode ? W * 0.82 : W * 0.5;         // recede toward the head (top-right when staged)
+  const cy = _stageMode ? H * 0.20 : H * 0.5;
+  for (let i = 0; i < words.length; i++){
+    const el = document.createElement('span');
+    el.className = 'ingest-word';
+    el.textContent = words[i];
+    const x0 = 40 + Math.random() * (W - 80);
+    const y0 = 40 + Math.random() * (H - 80);          // spread across the space
+    const f  = 0.12 + Math.random() * 0.22;            // slight recede only — keep words spread out
+    el.style.setProperty('--x0', x0.toFixed(0) + 'px');
+    el.style.setProperty('--y0', y0.toFixed(0) + 'px');
+    el.style.setProperty('--x1', (x0 + (cx - x0) * f).toFixed(0) + 'px');
+    el.style.setProperty('--y1', (y0 + (cy - y0) * f).toFixed(0) + 'px');
+    el.style.setProperty('--s0',  (1.7 + Math.random() * 2.2).toFixed(2));   // big — near / front
+    el.style.setProperty('--s1',  (0.22 + Math.random() * 0.30).toFixed(2)); // small — far / back
+    el.style.setProperty('--dur', (2.4 + Math.random() * 2.4).toFixed(2) + 's');   // slower
+    el.style.setProperty('--delay',(i * 0.06 + Math.random() * 0.35).toFixed(2) + 's');
+    el.style.setProperty('--op',  (0.30 + Math.random() * 0.40).toFixed(2)); // transparent white
+    el.addEventListener('animationend', () => el.remove());
+    layer.appendChild(el);
+  }
+}
+
+async function send() {
+  const text = inputEl.value.trim();
+  const fileIds = _attachedFiles.map(f => f.file_id);
+  if ((!text && !fileIds.length) || sendBtn.disabled) return;
+  const displayText = text || `[${_attachedFiles.map(f => f.filename).join(', ')}]`;
+  const _sentFiles = _attachedFiles.slice();
+  _clearFileChips();
+  _cancelStageClose();   // a reply is coming — don't retract mid-flight
+  if (_sentFiles.length){ _setStage(true); _stageShowFiles(_sentFiles); }
+  inputEl.value = ''; sendBtn.disabled = true; inputEl.disabled = true;
+
+  addMsg('user', displayText);
+  _ingestPrompt(text);
+  setState('thinking');
+  const suniWrap = addMsg('suni', '', true);
+  let full = '', sentenceBuf = '', surfaced = false;
+  // Retire any still-draining TTS from a previous reply: bump the generation so
+  // the old loop bails, clear the queue, reset first-fragment, stop audio. Do
+  // NOT flip _ttsBusy here — a fresh drain must not start while the old loop is
+  // mid-play, or both would fight the single <audio> element.
+  _ttsGen++; _ttsQueue.length = 0; _ttsFirst = true;
+  try { audioEl.pause(); } catch {}
+  if (_ttsResolve) { _ttsResolve(); _ttsResolve = null; }  // unblock any parked play so the old drain bails
+  clearInterval(_waitDrainTimer);   // stop a previous reply's idle-poll so it can't fire during this one
+
+  try {
+    const res = await _apiFetch('/api/chat', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json', 'x-session-id': _sessionId},
+      body: JSON.stringify({message: text || displayText, session_id: _sessionId, mode: _sessionMode, file_ids: fileIds, ui: 'face'})
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const reader = res.body.getReader(), dec = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, {stream: true});
+      const lines = buf.split('\n'); buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        let ev; try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+        if (ev.type === 'token') {
+          // Strip any file-serve URL so it's neither captioned nor spoken.
+          const _tk = ev.text.includes('/api/files/serve') ? _stripServeUrls(ev.text) : ev.text;
+          if (!_tk && ev.text.includes('/api/files/serve')) continue;
+          appendTok(suniWrap, _tk);
+          // Extract complete sentences as they stream. TTS on → feed the audio
+          // queue (_playUrl drives the synced caption). TTS off → show the sentence
+          // directly, so the caption still works when 🔊 is muted.
+          sentenceBuf += _tk;
+          sentenceBuf = _emitSentences(sentenceBuf, () => { surfaced = true; });
+        } else if (ev.type === 'done') {
+          full = ev.text;
+          // Extract media from the RAW reply (still has the serve URL) for the stage,
+          // but display/enhance the CLEANED text (no URL to read aloud).
+          const _rm = _replyMediaItems(full);
+          const _cleanFull = _stripServeUrls(full);
+          finalMsg(suniWrap, _cleanFull);
+          if (_rm.length && !_stageMode){ _setStage(true); _stageShowFiles(_rm); }
+          if (_stageMode) _enhanceStage(_cleanFull);   // boxes/text now; close is armed once she stops speaking
+          // If nothing streamed (e.g. Claude Code returns the reply whole, not as
+          // tokens), surface the full reply now so the face is never left blank.
+          let buf = surfaced ? sentenceBuf : full;
+          sentenceBuf = '';
+          buf = _emitSentences(buf, () => { surfaced = true; });
+          const tail = buf.trim();
+          if (tail.length > 1) { if (ttsOn) _enqueueSentence(tail); else showSub(tail); surfaced = true; }
+          if (ttsOn) {
+            // wait for the audio queue to drain before resetting state + hiding
+            // caption (module-level handle so a re-send can cancel this poll)
+            clearInterval(_waitDrainTimer);
+            _waitDrainTimer = setInterval(() => {
+              if (_ttsQueue.length === 0 && !_ttsBusy) {
+                clearInterval(_waitDrainTimer); setState('idle'); hideSub();
+                if (_stageMode) _armStageClose();   // she's done speaking → start the retract countdown
+              }
+            }, 200);
+          } else {
+            setState('idle');
+            scheduleCaptionHide(full.length);
+            if (_stageMode) _armStageClose();
+          }
+        } else if (ev.type === 'error') {
+          finalMsg(suniWrap, `— ${ev.text}`); setState('idle');
+        } else if (ev.type === 'tool_start') {
+          const isBrowser = ev.name && ev.name.startsWith('playwright');
+          setState(isBrowser ? 'browsing' : 'working', ev.name);
+        } else if (ev.type === 'tool_end') {
+          setState('thinking');  // back to thinking between tools
+        } else if (ev.type === 'skill_used') {
+          showSub('SKILL: ' + (ev.name || ''));
+          setTimeout(() => { if (state==='thinking') hideSub(); }, 2500);
+        } else if (ev.type === 'collab') {
+          // Multi-model collaboration phases (Mode 2) — keep the face "working"
+          // and surface the current phase as a sub-caption for the multi-minute run.
+          const PH = { draft:'consulting Claude + Codex', critique:'cross-checking',
+                       synthesize:'synthesizing', single:'thinking' };
+          setState('working', 'collaborate');
+          showSub('✦ ' + (PH[ev.phase] || ev.phase));
+        }
+      }
+    }
+  } catch(e) {
+    finalMsg(suniWrap, `Connection error: ${e.message}`);
+    setState('idle');
+  } finally {
+    sendBtn.disabled = false; inputEl.disabled = false; inputEl.focus();
+  }
+}
+
+sendBtn.addEventListener('click', send);
+inputEl.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  SPEECH TO TEXT
+// ═══════════════════════════════════════════════════════════════════
+const micBtn = document.getElementById('mic-btn');
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+if (SR) {
+  const recognition = new SR();
+  recognition.continuous     = true;
+  recognition.interimResults = true;
+  recognition.lang           = 'en-GB'; // overridden by config below
+
+  let listening     = false;
+  let silenceTimer  = null;
+  let accTranscript = '';
+  let SILENCE_MS    = 2500;
+
+  // Read language: user settings override global config
+  Promise.all([
+    _apiFetch('/api/users/me/settings').then(r => r.json()).catch(() => ({})),
+    _apiFetch('/api/config').then(r => r.json()).catch(() => ({})),
+  ]).then(([prefs, cfg]) => {
+    const sttLang = prefs.stt_language || cfg.stt_language;
+    if (sttLang) recognition.lang = sttLang;
+    if (cfg.silence_ms) SILENCE_MS = cfg.silence_ms;
+    // Store effective tts voice for per-request use
+    window._suniTtsVoice = prefs.tts_voice || cfg.tts_voice || '';
+  }).catch(() => {});
+
+  function _stopAndSend() {
+    clearTimeout(silenceTimer);
+    if (!listening) return;
+    listening = false;
+    recognition.stop();
+    micBtn.classList.remove('listening');
+    inputEl.placeholder = 'Speak your mind. I shall observe.';
+    if (inputEl.value.trim()) send();
+  }
+
+  recognition.onstart = () => {
+    listening = true;
+    micBtn.classList.add('listening');
+    if (!accTranscript) {
+      inputEl.value = '';
+      inputEl.placeholder = 'Listening…';
+    }
+  };
+
+  recognition.onresult = e => {
+    let text = '';
+    for (let i = 0; i < e.results.length; i++) text += e.results[i][0].transcript;
+    inputEl.value = accTranscript ? (accTranscript + ' ' + text).trim() : text;
+    // reset inactivity timer on every speech fragment
+    clearTimeout(silenceTimer);
+    silenceTimer = setTimeout(_stopAndSend, SILENCE_MS);
+  };
+
+  recognition.onend = () => {
+    clearTimeout(silenceTimer);
+    if (listening) {
+      // browser closed the session on its own (long silence / network blip)
+      // save what we have and restart transparently
+      accTranscript = inputEl.value.trim();
+      try { recognition.start(); } catch(err) { _stopAndSend(); }
+    }
+  };
+
+  recognition.onerror = e => {
+    clearTimeout(silenceTimer);
+    listening = false;
+    micBtn.classList.remove('listening');
+    inputEl.placeholder = 'Speak your mind. I shall observe.';
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      micBtn.disabled = true;
+      micBtn.title = t('orb.mic_blocked');
+      _showToast(t('orb.mic_blocked'));
+    } else if (e.error !== 'no-speech') {
+      console.warn('STT:', e.error);
+    }
+  };
+
+  micBtn.addEventListener('click', () => {
+    if (listening) { _stopAndSend(); return; }
+    accTranscript = '';
+    inputEl.value = '';
+    try { recognition.start(); } catch(err) { console.warn('STT start:', err); }
+  });
+
+  // Warn proactively if on HTTP (VPN/IP access) — mic will be blocked by browser
+  if (location.protocol !== 'https:' &&
+      location.hostname !== 'localhost' &&
+      location.hostname !== '127.0.0.1') {
+    micBtn.title = t('orb.mic_https');
+    micBtn.style.opacity = '0.45';
+  }
+} else {
+  micBtn.disabled = true;
+  micBtn.title = t('orb.speech_unavail');
+}
+
+function _showToast(msg) {
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;bottom:100px;left:50%;transform:translateX(-50%);' +
+    'background:rgba(220,60,40,.92);color:#fff;padding:9px 16px;border-radius:4px;' +
+    'font-family:DM Mono,monospace;font-size:12px;z-index:200;white-space:nowrap;' +
+    'pointer-events:none;transition:opacity .4s';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 500); }, 3500);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  STATUS + WELCOME
+// ═══════════════════════════════════════════════════════════════════
+(async () => {
+  try {
+    const d = await (await _apiFetch('/api/status')).json();
+    document.getElementById('header-meta').innerHTML = [
+      `<span class="mtag">${d.model}</span>`,
+      `<span class="mtag">${d.memory} mem</span>`,
+      d.claude_code ? `<span class="mtag">CC ✓</span>` : '',
+    ].join('');
+  } catch {}
+})();
+
+setTimeout(() => {
+  const greeting = 'Make yourself comfortable. I have been expecting you — statistically speaking.';
+  addMsg('suni', greeting);
+  // Dock starts collapsed, so surface the greeting as a caption over the face.
+  showSub(greeting);
+  scheduleCaptionHide(greeting.length);
+}, 500);
+
+// ── Settings modal (orb) ──────────────────────────────────────────
+let _orbUserSettings = {};
+const _orbModal = document.getElementById('orb-modal');
+
+async function _openOrbSettings() {
+  // Load voices if not yet populated
+  const voiceSel = document.getElementById('orb-tts-voice');
+  if (voiceSel.options.length === 1) {
+    const data = await _apiFetch('/api/tts/voices').then(r=>r.json()).catch(()=>({voices:[]}));
+    for (const v of data.voices||[]) {
+      const opt = document.createElement('option'); opt.value = v; opt.textContent = v;
+      voiceSel.appendChild(opt);
+    }
+  }
+  const prefs = await _apiFetch('/api/users/me/settings').then(r=>r.json()).catch(()=>({}));
+  _orbUserSettings = prefs;
+  document.getElementById('orb-resp-lang').value  = prefs.response_language || '';
+  document.getElementById('orb-stt-lang').value   = prefs.stt_language      || '';
+  document.getElementById('orb-tts-voice').value  = prefs.tts_voice         || '';
+  _orbModal.style.display = 'flex';
+}
+
+function _closeOrbModal() { _orbModal.style.display = 'none'; }
+
+document.getElementById('orb-settings-btn').addEventListener('click', _openOrbSettings);
+document.getElementById('orb-modal-close').addEventListener('click', _closeOrbModal);
+document.getElementById('orb-modal-cancel').addEventListener('click', _closeOrbModal);
+_orbModal.addEventListener('click', e => { if (e.target === _orbModal) _closeOrbModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') _closeOrbModal(); });
+
+async function _orbLogout() {
+  try { await _apiFetch('/api/auth/logout', { method: 'POST' }); } catch {}
+  localStorage.removeItem('suni_jwt');
+  localStorage.removeItem('suni_refresh_token');
+  location.href = '/login';
+}
+document.getElementById('orb-modal-logout').addEventListener('click', _orbLogout);
+
+document.getElementById('orb-modal-save').addEventListener('click', async () => {
+  const data = {
+    response_language: document.getElementById('orb-resp-lang').value,
+    stt_language:      document.getElementById('orb-stt-lang').value,
+    tts_voice:         document.getElementById('orb-tts-voice').value,
+  };
+  const result = await _apiFetch('/api/users/me/settings', {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(data),
+  }).then(r=>r.json()).catch(()=>null);
+  if (result) {
+    _orbUserSettings = result;
+    window._suniTtsVoice = result.tts_voice || '';
+    // Apply new STT language immediately
+    if (typeof recognition !== 'undefined') {
+      const cfg = await _apiFetch('/api/config').then(r=>r.json()).catch(()=>({}));
+      recognition.lang = result.stt_language || cfg.stt_language || 'en-GB';
+    }
+    _closeOrbModal();
+    _showToast(t('orb.settings_saved'));
+  } else {
+    _showToast(t('orb.settings_error'));
+  }
+});
+</script>
+</body>
+</html>

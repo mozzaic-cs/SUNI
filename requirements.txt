@@ -1,0 +1,69 @@
+# ── SUNI core dependencies ───────────────────────────────────────────────────
+# Pinned to a known-good set (Python 3.12). All have prebuilt wheels on Windows
+# and Linux, so `pip install -r requirements.txt` should never need a compiler.
+#
+# The document knowledge base's 384-dim embeddings need a heavy optional extra
+# (torch + sentence-transformers) — see requirements-embeddings.txt. Without it,
+# SUNI runs fine; only the Tier-3 document-KB semantic search is unavailable.
+
+# Web server
+fastapi==0.136.0
+uvicorn==0.44.0
+slowapi==0.1.9
+python-multipart==0.0.26
+
+# HTTP / websockets (channels, gateways)
+httpx==0.28.1
+requests==2.32.3
+websockets==12.0
+
+# Models & providers
+ollama==0.6.1
+anthropic==0.86.0
+openai==2.29.0
+mcp==1.27.0
+
+# Vector search / numerics
+numpy==1.26.4
+faiss-cpu==1.13.2
+
+# Auth & security
+bcrypt==5.0.0
+python-jose==3.5.0
+cryptography==46.0.7
+
+# Config & data
+pydantic==2.12.5
+python-dotenv==1.2.1
+PyYAML==6.0.3
+
+# Voice (text-to-speech)
+edge-tts==7.2.8
+
+# Files, documents & images (uploads, PDF/DOCX/XLSX/PPTX, email files)
+pillow==10.2.0
+PyMuPDF==1.27.2.3
+python-docx==1.2.0
+python-pptx==1.0.2
+openpyxl==3.1.5
+fpdf2==2.8.7
+extract-msg==0.55.0
+
+# Calendar (CalDAV)
+caldav==3.2.1
+vobject==0.9.9
+
+# NOTE: pyodbc moved to requirements-articles.txt — it is only needed for the
+# optional SQL Server article source. Its wheel installs fine everywhere, but
+# `import pyodbc` itself fails without the unixODBC runtime (libodbc.so.2), so
+# keeping it here made SUNI unstartable on a stock Linux box.
+
+# System / monitoring
+psutil==7.2.2
+watchdog==6.0.0
+
+# Messaging (WhatsApp via Twilio webhook)
+twilio==9.10.5
+
+# CLI / logging
+rich==14.3.3

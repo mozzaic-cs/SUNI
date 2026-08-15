@@ -1,0 +1,78 @@
+[Unit]
+# systemd unit for SUNI — the Linux counterpart of the Windows scheduled task
+# that runs start_suni.bat.
+#
+# Install:
+#   sudo cp deploy/suni.service /etc/systemd/system/suni.service
+#   sudo ${EDITOR:-nano} /etc/systemd/system/suni.service   # set User and paths
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now suni
+#
+# Check:  systemctl status suni
+# Logs:   journalctl -u suni -f      (plus logs/ inside the install directory)
+#
+Description=SUNI — self-hosted AI assistant
+Documentation=file:///opt/suni/README.md
+# Ollama is the local model backend. Wants= rather than Requires= so SUNI still
+# starts (and reports the backend as down) if Ollama is failed or absent —
+# a chat UI that loads and says "backend unavailable" beats no service at all.
+After=network-online.target ollama.service
+Wants=network-online.target ollama.service
+
+# Give up if it crash-loops: 5 restarts within 5 minutes means a real fault
+# (bad config, missing dependency) that retrying will not fix. These belong in
+# [Unit], not [Service] — systemd ignores them there, which would silently
+# leave the service restarting forever.
+StartLimitBurst=5
+StartLimitIntervalSec=300
+
+[Service]
+Type=exec
+
+# ── EDIT THESE THREE ─────────────────────────────────────────────────────────
+# Never run this as root: SUNI executes model-selected shell commands via
+# run_shell, and its guard is a heuristic, not a sandbox.
+User=suni
+Group=suni
+WorkingDirectory=/opt/suni
+# ─────────────────────────────────────────────────────────────────────────────
+
+ExecStart=/opt/suni/start_suni.sh
+
+# Credentials live in .env, never in this unit file — systemd unit files are
+# world-readable by default. `-` means "start even if the file is absent",
+# since .env is optional when everything is configured in the admin panel.
+EnvironmentFile=-/opt/suni/.env
+
+Restart=on-failure
+RestartSec=10
+
+# Model loading and the initial document scan are slow on a large corpus;
+# don't let systemd kill a legitimately slow start.
+TimeoutStartSec=300
+TimeoutStopSec=30
+
+# ── Hardening ────────────────────────────────────────────────────────────────
+# Deliberately moderate. SUNI's whole purpose includes running commands and
+# reading files the operator points it at, so an aggressive sandbox would break
+# the product. These stop privilege escalation and protect the rest of the host
+# without constraining normal operation.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectControlGroups=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+RestrictSUIDSGID=true
+# ReadWritePaths must include the install directory: SUNI writes its databases,
+# memory stores, uploads and logs there. Add any external document or output
+# directory you configure in the admin panel.
+ReadWritePaths=/opt/suni
+
+# GPU access needs the NVIDIA device nodes; harmless on a CPU-only host.
+DeviceAllow=/dev/nvidia0 rw
+DeviceAllow=/dev/nvidiactl rw
+DeviceAllow=/dev/nvidia-uvm rw
+
+[Install]
+WantedBy=multi-user.target

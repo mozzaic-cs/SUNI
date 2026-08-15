@@ -1,0 +1,68 @@
+[build-system]
+requires      = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name            = "suni"
+version         = "0.1.0"
+description     = "Self-hosted, privacy-first AI assistant and orchestrator"
+readme          = "README.md"
+# Table form, not the PEP 639 SPDX string: setuptools 69 (what this project
+# builds with) rejects `license = "MIT"` alongside `license-files` as an
+# ambiguous schema match. The table form works on both old and new setuptools.
+license         = { file = "LICENSE" }
+# 3.10, matching install.py. Verified: the full suite passes on 3.10, and no
+# 3.11-only syntax or stdlib is used. Ubuntu 22.04 LTS ships 3.10.
+requires-python = ">=3.10"
+keywords        = ["ai", "assistant", "llm", "ollama", "self-hosted", "rag", "agent"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Operating System :: OS Independent",
+]
+
+# Dependencies are read from the requirements files rather than duplicated
+# here. Two lists drift, and the pinned set in requirements.txt is what is
+# actually tested and what the Dockerfile installs.
+dynamic = ["dependencies", "optional-dependencies"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+# Optional feature sets. Each pulls something large or system-dependent, which
+# is why none of them are core:
+#   embeddings  torch + sentence-transformers (~2.5GB) for doc-KB search
+#   imagegen    torch + diffusers for local image generation
+#   articles    pyodbc, which also needs the unixODBC system library
+optional-dependencies.embeddings = { file = ["requirements-embeddings.txt"] }
+optional-dependencies.imagegen   = { file = ["requirements-imagegen.txt"] }
+optional-dependencies.articles   = { file = ["requirements-articles.txt"] }
+
+[tool.setuptools.packages.find]
+include = ["suni*"]
+
+# NOTE — deliberately no [project.scripts].
+#
+# SUNI resolves its state with paths relative to the current directory
+# (memory/, logs/, certs/, files/). A console script installed on PATH would
+# therefore create a fresh, empty instance in whatever directory it happened to
+# be run from, which is a worse failure than having no console script: it looks
+# like it worked. Entry points can be added once SUNI_DATA_DIR is implemented
+# and state no longer depends on the working directory.
+#
+# Until then, start SUNI from its own directory:
+#   python web.py          the web UI
+#   python -m suni.main    the CLI
+#   ./start_suni.sh        or start_suni.bat, which handle this for you
+
+[project.urls]
+Repository = "https://github.com/mozzaic-cs/SUNI"
+
+# Test configuration stays in pytest.ini. pytest prefers pytest.ini over
+# pyproject.toml when both exist, so duplicating it here would create a file
+# that looks authoritative and is silently ignored.

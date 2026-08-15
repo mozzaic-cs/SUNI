@@ -1,0 +1,1673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SUNI Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:ital,wght@0,300;0,400;1,300&display=swap">
+<style>
+:root{
+  --bg:#070710;--bg2:rgba(255,255,255,.03);--bg3:rgba(255,255,255,.055);
+  --gold:#c9a227;--gold-d:#8a6b18;--cyan:#00d4ff;--cyan-d:#007a99;
+  --green:#00e396;--red:#ff4560;--purple:#9b59b6;--orange:#e67e22;
+  --teal:#14d98c;--navy:#0f2850;
+  --text:#d8d4c8;--muted:#4a4a5a;--border:rgba(255,255,255,.07);
+  --r:6px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:var(--bg);color:var(--text);font-family:'DM Mono',monospace;font-size:12px;scroll-behavior:smooth}
+body{min-height:100vh;padding:32px 24px 80px;max-width:1600px;margin:0 auto;position:relative;overflow-x:hidden}
+
+/* ── grain ── */
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  opacity:.4;}
+
+/* ── node entrance animation ── */
+@keyframes nodeIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes pulseBorder{0%,100%{box-shadow:0 0 0 0 transparent}50%{box-shadow:0 0 12px 2px rgba(20,217,140,.18)}}
+@keyframes badgePulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.7;transform:scale(1.05)}}
+@keyframes pipelineWave{0%{background:var(--bg2);border-color:var(--border)}
+  50%{background:rgba(201,162,39,.06);border-color:rgba(201,162,39,.35)}
+  100%{background:var(--bg2);border-color:var(--border)}}
+
+/* SVG overlay – full page */
+#svg-overlay{position:absolute;top:0;left:0;width:100%;pointer-events:none;z-index:1}
+
+/* ── header ── */
+header{position:relative;z-index:2;margin-bottom:36px;padding-bottom:18px;
+  border-bottom:1px solid rgba(201,162,39,.2);
+  animation:nodeIn .6s ease both;}
+.hdr-top{display:flex;align-items:baseline;gap:20px;margin-bottom:6px}
+h1{font-family:'Syne',sans-serif;font-size:28px;font-weight:800;letter-spacing:.04em;color:var(--gold)}
+.hdr-sub{font-size:11px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase}
+.sys-badge{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px}
+.badge{font-size:10px;letter-spacing:.08em;padding:3px 10px;border-radius:3px;
+  background:rgba(255,255,255,.04);border:1px solid var(--border)}
+.badge.gpu{border-color:rgba(0,227,150,.3);color:var(--green)}
+.badge.ram{border-color:rgba(0,212,255,.3);color:var(--cyan)}
+.badge.cpu{border-color:rgba(201,162,39,.3);color:var(--gold)}
+.badge.phase{border-color:rgba(155,89,182,.35);color:var(--purple);font-size:9px;
+  animation:badgePulse 3s ease-in-out infinite;}
+
+/* ── lanes ── */
+.lane{position:relative;z-index:2;margin-bottom:10px}
+.lane-header{font-family:'Syne',sans-serif;font-size:9px;font-weight:700;
+  letter-spacing:.3em;text-transform:uppercase;padding:6px 12px 6px 0;margin-bottom:10px;
+  display:flex;align-items:center;gap:12px;}
+.lane-header::after{content:'';flex:1;height:1px;background:var(--border)}
+.lane-content{display:flex;gap:10px;align-items:stretch;flex-wrap:wrap}
+
+/* ── node ── */
+.node{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);
+  padding:12px 14px;position:relative;flex-shrink:0;
+  transition:border-color .3s,box-shadow .3s,background .3s,transform .2s;}
+.node:hover{background:var(--bg3);transform:translateY(-1px);}
+.node-tag{font-size:8px;letter-spacing:.12em;text-transform:uppercase;padding:2px 7px;
+  border-radius:2px;display:inline-block;margin-bottom:7px}
+.node-title{font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:var(--text);margin-bottom:6px}
+.node-detail{font-size:10px;color:var(--muted);line-height:1.7}
+.node-detail span{color:var(--text);display:block;margin-bottom:3px}
+.c-gold{border-color:rgba(201,162,39,.3)}
+.c-gold:hover{border-color:rgba(201,162,39,.6);box-shadow:0 0 20px rgba(201,162,39,.1)}
+.c-cyan{border-color:rgba(0,212,255,.25)}
+.c-cyan:hover{border-color:rgba(0,212,255,.55);box-shadow:0 0 18px rgba(0,212,255,.08)}
+.c-green{border-color:rgba(0,227,150,.25)}
+.c-green:hover{border-color:rgba(0,227,150,.55);box-shadow:0 0 18px rgba(0,227,150,.08)}
+.c-purple{border-color:rgba(155,89,182,.3)}
+.c-purple:hover{border-color:rgba(155,89,182,.6);box-shadow:0 0 18px rgba(155,89,182,.08)}
+.c-navy{border-color:rgba(74,144,217,.25)}
+.c-navy:hover{border-color:rgba(74,144,217,.5)}
+.c-teal{border-color:rgba(20,217,140,.25)}
+.c-teal:hover{border-color:rgba(20,217,140,.55);box-shadow:0 0 18px rgba(20,217,140,.08)}
+.c-orange{border-color:rgba(230,126,34,.25)}
+.c-orange:hover{border-color:rgba(230,126,34,.55)}
+
+/* ── pipeline ── */
+.pipeline{display:flex;align-items:stretch;flex-wrap:nowrap;overflow-x:auto;padding-bottom:8px;gap:0}
+.pipeline-step{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);
+  padding:12px 13px;min-width:128px;max-width:155px;flex:1;
+  transition:border-color .25s,background .25s,box-shadow .25s,transform .2s;}
+.pipeline-step:hover{background:var(--bg3);transform:translateY(-1px)}
+.step-num{font-family:'Syne',sans-serif;font-weight:800;font-size:15px;
+  color:rgba(201,162,39,.2);margin-bottom:4px}
+.step-name{font-family:'Syne',sans-serif;font-weight:700;font-size:10px;
+  color:var(--text);margin-bottom:5px;letter-spacing:.02em}
+.step-detail{font-size:9.5px;color:var(--muted);line-height:1.65}
+.pipe-arrow{display:flex;align-items:center;color:rgba(201,162,39,.35);
+  font-size:13px;padding:0 3px;flex-shrink:0;align-self:center}
+.bypass-badge{font-size:8px;background:rgba(255,69,96,.12);color:var(--red);
+  padding:1px 5px;border-radius:2px;border:1px solid rgba(255,69,96,.25)}
+.new-badge{font-size:8px;background:rgba(20,217,140,.1);color:var(--teal);
+  padding:1px 5px;border-radius:2px;border:1px solid rgba(20,217,140,.3);
+  animation:badgePulse 2.5s ease-in-out infinite;}
+
+/* ── tool grid ── */
+.tool-grid{display:flex;gap:8px;flex-wrap:wrap}
+.tool-group{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);
+  padding:10px 12px;min-width:175px;transition:border-color .2s}
+.tool-group:hover{border-color:rgba(255,255,255,.15)}
+.tg-header{font-family:'Syne',sans-serif;font-weight:700;font-size:9px;letter-spacing:.15em;
+  text-transform:uppercase;color:var(--muted);margin-bottom:7px}
+.tool-pill{display:inline-block;font-size:9.5px;padding:2px 7px;border-radius:3px;
+  border:1px solid var(--border);margin:2px 2px 2px 0;color:var(--text);
+  transition:border-color .15s,color .15s;}
+.tool-pill:hover{border-color:rgba(255,255,255,.25);color:var(--gold)}
+.tool-pill.new{border-color:rgba(20,217,140,.35);color:var(--teal)}
+.tool-pill.new:hover{border-color:var(--teal)}
+
+/* ── memory stack ── */
+.memory-stack{display:flex;flex-direction:column;gap:6px}
+.mem-tier{border-radius:var(--r);padding:10px 12px;border:1px solid;
+  transition:border-color .25s,box-shadow .25s;}
+.mem-tier:hover{box-shadow:0 0 12px rgba(255,255,255,.04)}
+.mem-label{font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px}
+.mem-name{font-family:'Syne',sans-serif;font-weight:700;font-size:11px;margin-bottom:4px}
+.mem-stat{font-size:9.5px;color:var(--muted);line-height:1.6}
+
+/* ── services ── */
+.svc-row{display:flex;gap:10px;flex-wrap:wrap}
+.svc{background:var(--bg2);border:1px solid rgba(155,89,182,.2);border-radius:var(--r);
+  padding:11px 13px;flex:1;min-width:180px;transition:border-color .25s}
+.svc:hover{border-color:rgba(155,89,182,.45)}
+.svc-name{font-family:'Syne',sans-serif;font-weight:700;font-size:11px;
+  color:var(--purple);margin-bottom:5px}
+.svc-detail{font-size:9.5px;color:var(--muted);line-height:1.65}
+
+/* ── external ── */
+.ext-row{display:flex;gap:10px;flex-wrap:wrap}
+.ext-node{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);
+  padding:12px 14px;flex:1;min-width:155px;text-align:center;
+  transition:border-color .25s,transform .2s;}
+.ext-node:hover{transform:translateY(-2px)}
+.ext-icon{font-size:20px;margin-bottom:5px}
+.ext-name{font-family:'Syne',sans-serif;font-weight:700;font-size:11px;margin-bottom:3px}
+.ext-addr{font-size:9px;color:var(--muted);margin-bottom:4px}
+
+/* ── security grid ── */
+.sec-grid{display:flex;gap:8px;flex-wrap:wrap}
+.sec-item{background:var(--bg2);border:1px solid rgba(255,69,96,.16);border-radius:var(--r);
+  padding:8px 11px;flex:1;min-width:155px;transition:border-color .2s}
+.sec-item:hover{border-color:rgba(255,69,96,.35)}
+.sec-code{font-size:9px;color:var(--red);font-family:'DM Mono',monospace;margin-bottom:3px;letter-spacing:.05em}
+.sec-desc{font-size:9.5px;color:var(--muted);line-height:1.55}
+
+/* ── compression section ── */
+.comp-grid{display:flex;gap:10px;flex-wrap:wrap}
+.comp-card{background:var(--bg2);border:1px solid rgba(20,217,140,.2);border-radius:var(--r);
+  padding:12px 14px;flex:1;min-width:200px;transition:border-color .25s,box-shadow .25s;}
+.comp-card:hover{border-color:rgba(20,217,140,.5);box-shadow:0 0 16px rgba(20,217,140,.07)}
+.comp-label{font-family:'Syne',sans-serif;font-weight:700;font-size:10px;
+  letter-spacing:.1em;color:var(--teal);margin-bottom:4px;text-transform:uppercase}
+.comp-ratio{font-family:'Syne',sans-serif;font-weight:800;font-size:22px;
+  color:var(--teal);margin:4px 0}
+.comp-detail{font-size:9.5px;color:var(--muted);line-height:1.6}
+
+.legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:28px;padding:12px 16px;
+  background:var(--bg2);border-radius:var(--r);border:1px solid var(--border)}
+.legend-title{font-family:'Syne',sans-serif;font-size:9px;font-weight:700;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--muted);width:100%}
+.legend-item{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted)}
+.leg-dash{width:28px;height:0;border-top:2px dashed;border-radius:1px}
+
+.section-gap{height:16px}
+
+/* ── tier table ── */
+.tier-table{display:flex;flex-direction:column;gap:4px;min-width:240px}
+.tier-row{display:flex;align-items:center;gap:10px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:8px 12px;transition:border-color .25s,box-shadow .25s}
+.tier-row:hover{box-shadow:0 0 14px rgba(255,255,255,.04)}
+.tier-badge{font-family:'Syne',sans-serif;font-weight:800;font-size:11px;min-width:22px;text-align:center}
+.tier-name{font-family:'Syne',sans-serif;font-weight:700;font-size:10px;margin-bottom:1px}
+.tier-desc{font-size:9px;color:var(--muted)}
+
+/* ── test suite ── */
+.test-grid{display:flex;gap:8px;flex-wrap:wrap}
+.test-card{background:var(--bg2);border:1px solid rgba(155,89,182,.22);border-radius:var(--r);padding:11px 13px;flex:1;min-width:160px;transition:border-color .25s,box-shadow .25s}
+.test-card:hover{border-color:rgba(155,89,182,.5);box-shadow:0 0 14px rgba(155,89,182,.07)}
+.test-count{font-family:'Syne',sans-serif;font-weight:800;font-size:22px;color:var(--purple);margin:3px 0}
+.test-file{font-size:9px;color:var(--muted);font-family:'DM Mono',monospace;margin-bottom:5px}
+.test-desc{font-size:9.5px;color:var(--muted);line-height:1.6}
+
+/* ── view toggle · simplified high-level mode ── */
+.view-toggle{position:fixed;top:18px;right:24px;z-index:20;
+  font-family:'Syne',sans-serif;font-size:10px;font-weight:700;letter-spacing:.12em;
+  text-transform:uppercase;padding:8px 14px;border-radius:5px;cursor:pointer;
+  background:rgba(201,162,39,.1);border:1px solid rgba(201,162,39,.4);color:var(--gold);
+  transition:background .2s,border-color .2s,box-shadow .2s}
+.view-toggle:hover{background:rgba(201,162,39,.2);box-shadow:0 0 16px rgba(201,162,39,.15)}
+/* In simplified mode: drop secondary lanes + all fine-grained detail,
+   leaving only the main blocks (titles) and the primary request flow. */
+body.simple .simple-hide{display:none!important}
+body.simple .node-detail,body.simple .step-detail,body.simple .svc-detail,
+body.simple .comp-detail,body.simple .test-desc,body.simple .tier-desc,
+body.simple .mem-stat,body.simple .node-tag,body.simple .field-hint,
+body.simple .tool-grid,body.simple .tool-pill{display:none!important}
+body.simple .node,body.simple .pipeline-step{padding:10px 12px}
+body.simple .lane{margin-bottom:6px}
+body.simple .section-gap{height:6px!important}
+</style>
+</head>
+<body>
+<button class="view-toggle" id="view-toggle" onclick="toggleView()">◱ Simplified view</button>
+<svg id="svg-overlay"></svg>
+
+<header>
+  <div class="hdr-top">
+    <h1>SUNI</h1>
+    <span class="hdr-sub">Architecture · Self-Improving SMB AI Platform</span>
+  </div>
+  <div class="hdr-sub" style="margin-top:4px">FastAPI · port 8765 · HTTPS TLS · Windows 10 Pro · the SUNI directory</div>
+  <div class="sys-badge">
+    <span class="badge gpu">RTX 4000 · 8 GB VRAM</span>
+    <span class="badge ram">192 GB RAM</span>
+    <span class="badge cpu">16-core CPU · qwen2.5:7b · 28–31 tok/s</span>
+    <span class="badge ram">81 644 KB chunks · 7 614 files</span>
+    <span class="badge phase">Phase 8 · dual-mode backend (Ollama⇄vLLM) + capability fleet (STT · vision · TTS) · security hardening (intent judge · output guard · tool policies) · OIDC · circuit breaker · token accounting · 2026-07-16</span>
+    <span class="badge phase">Phase 9 · voice-first persona (retractable dock + live caption) · opt-in webcam presence/head-tracking + vision snapshot · language-aware TTS + streaming prefetch pipeline · face colour selector · drag-drop upload on all UIs · Claude Code prompt-via-stdin (Windows cmd.exe limit) · 2026-07-24</span>
+    <span class="badge phase">Phase 10 · messaging channels — Telegram (long-poll) · Discord (Gateway WS) · Slack (Socket Mode), all connect-out/no-public-URL, allow-list fail-closed + role standard, live start/stop supervisor · per-channel memory isolation (task-local fix) · Codex provider (no-key ChatGPT sub) · multi-model "collaborate" mode (Mode 2: draft → cross-critique → synthesise) with live phase streaming · 2026-07-26</span>
+  </div>
+</header>
+
+<!-- ══ CLIENT LAYER ══ -->
+<div class="lane" id="lane-client">
+  <div class="lane-header" style="color:#4a90d9"><span>Client Interfaces</span>
+    <span style="font-size:9px;color:var(--muted);font-weight:400;letter-spacing:.04em">browser-first · all interactions via HTTPS</span>
+  </div>
+  <div class="lane-content">
+    <div class="node c-navy" id="n-webui" style="min-width:215px">
+      <div class="node-tag" style="background:rgba(74,144,217,.1);color:#4a90d9">browser · /</div>
+      <div class="node-title">Orb UI — ui.html</div>
+      <div class="node-detail">
+        <span>WebGL orb · 6 Gaussian blobs · Lissajous paths</span>
+        States: idle / thinking / speaking / <span style="color:var(--teal);display:inline">working</span> / <span style="color:var(--cyan);display:inline">browsing</span><br>
+        SSE: token · done · error · tool_start · tool_end · skill_used<br>
+        STT Web Speech API · streaming TTS edge-tts · mode selector<br>
+        Drag-drop upload · opt-in webcam presence (orb wakes) · snapshot
+      </div>
+    </div>
+    <div class="node c-navy" id="n-chat" style="min-width:215px">
+      <div class="node-tag" style="background:rgba(20,217,140,.1);color:var(--teal)">browser · /chat</div>
+      <div class="node-title">Chat UI — chat.html</div>
+      <div class="node-detail">
+        <span>Persistent conversations · sidebar · markdown</span>
+        Live activity feed — tool calls stream in real-time<br>
+        File upload (drag-drop) · download link detection<br>
+        Per-user settings · mode selector · STT/TTS
+      </div>
+    </div>
+    <div class="node c-navy" id="n-face" style="min-width:215px">
+      <div class="node-tag" style="background:rgba(20,217,140,.1);color:var(--teal)">browser · /face</div>
+      <div class="node-title">Persona UI — face.html <span class="new-badge">new</span></div>
+      <div class="node-detail">
+        <span>Raw-WebGL holographic 3D head · Cortana-style</span>
+        Voice-first: retractable dock + stream-driven live caption<br>
+        Solid mesh hologram · jaw driven by TTS amplitude · procedural eyes<br>
+        Opt-in webcam head/eye-tracking · vision snapshot · colour picker<br>
+        Drag-drop upload · shares orb SSE/TTS/STT/auth · ORB/CHAT/FACE nav
+      </div>
+    </div>
+    <div class="node c-navy" id="n-admin" style="min-width:215px">
+      <div class="node-tag" style="background:rgba(74,144,217,.1);color:#4a90d9">browser · /admin</div>
+      <div class="node-title">Admin Panel — admin.html</div>
+      <div class="node-detail">
+        <span>Dashboard · Users · Roles · Audit · Skills</span>
+        MCP catalog · Backup · Config · Logs<br>
+        GPU/VRAM charts · activity log · KB compress button<br>
+        Skills tab: browse / edit / delete learned skills<br>
+        <span style="color:var(--teal)">Ollama Endpoints panel · Model Tiers inventory</span><br>
+        <span style="color:var(--teal)">Per-user API key field (Fernet encrypted)</span><br>
+        <span style="color:var(--teal)">Files &amp; Output → global_output_dir</span>
+      </div>
+    </div>
+    <div class="node c-navy" style="min-width:185px;opacity:.7">
+      <div class="node-tag" style="background:rgba(74,144,217,.06);color:rgba(74,144,217,.55)">optional · suni_mcp.py</div>
+      <div class="node-title">External MCP Clients</div>
+      <div class="node-detail">
+        <span>Claude Desktop / Claude Code / any MCP client</span>
+        Loads suni_mcp.py: search_memory · add_memory<br>
+        chat_with_suni · run_shell (hardened) · articles<br>
+        <span style="color:var(--muted)">Not required — SUNI runs standalone</span>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="section-gap"></div>
+
+<!-- ══ MESSAGING CHANNELS ══ -->
+<div class="lane" id="lane-channels">
+  <div class="lane-header" style="color:#4a90d9"><span>Messaging Channels <span class="new-badge">Phase 10</span></span>
+    <span style="font-size:9px;color:var(--muted);font-weight:400;letter-spacing:.04em">reach SUNI from anywhere · connect-out · no public URL · allow-list fail-closed · role standard</span>
+  </div>
+  <div class="lane-content">
+    <div class="node c-navy" style="min-width:210px">
+      <div class="node-tag" style="background:rgba(74,144,217,.1);color:#4a90d9">suni/telegram</div>
+      <div class="node-title">Telegram — long-poll</div>
+      <div class="node-detail">
+        <span>getUpdates long-poll (calls OUT to Telegram)</span>
+        deleteWebhook first (avoids 409) · offset backlog-skip<br>
+        stop-race for instant live disable · config bot token<br>
+        <span style="color:var(--muted)">mutually exclusive with /telegram webhook</span>
+      </div>
+    </div>
+    <div class="node c-navy" style="min-width:210px">
+      <div class="node-tag" style="background:rgba(74,144,217,.1);color:#4a90d9">suni/discord</div>
+      <div class="node-title">Discord — Gateway WS</div>
+      <div class="node-detail">
+        <span>hand-rolled Gateway (websockets, no discord.py)</span>
+        intents 37376 (privileged Message Content) · op-1 heartbeat<br>
+        fatal-close 4004/4013/4014 terminal · RESUME skipped<br>
+        <span style="color:var(--muted)">loop-guard: drop bot/self messages</span>
+      </div>
+    </div>
+    <div class="node c-navy" style="min-width:210px">
+      <div class="node-tag" style="background:rgba(74,144,217,.1);color:#4a90d9">suni/slack</div>
+      <div class="node-title">Slack — Socket Mode</div>
+      <div class="node-detail">
+        <span>apps.connections.open → WSS (no public URL)</span>
+        two tokens: xapp (connections:write) + xoxb (chat:write)<br>
+        ACK every envelope ≤3s · fatal auth terminal<br>
+        <span style="color:var(--muted)">WS ping/pong keepalive — no manual heartbeat</span>
+      </div>
+    </div>
+    <div class="node c-gold" style="min-width:210px">
+      <div class="node-title">Channel supervisor <span class="new-badge">Phase 10</span></div>
+      <div class="node-detail">
+        <span>server.py · live start/stop, no restart</span>
+        per-channel task + stop Event · _reconcile_channel<br>
+        POST /api/config reconciles on token/enable change<br>
+        _handle_tg/_dc/_sk → allow-list gate → orchestrator (role standard)<br>
+        <span style="color:var(--muted)">per-channel memory: pseudo user-id → own MemoryManager</span>
+      </div>
+    </div>
+    <div class="node c-navy" style="min-width:185px;opacity:.8">
+      <div class="node-tag" style="background:rgba(74,144,217,.06);color:rgba(74,144,217,.55)">webhook · legacy</div>
+      <div class="node-title">WhatsApp · Email</div>
+      <div class="node-detail">
+        <span>WhatsApp via Twilio webhook (needs public URL)</span>
+        Email ingestion watcher (IMAP poll)<br>
+        <span style="color:var(--muted)">/telegram · /whatsapp webhooks also exist</span>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="section-gap"></div>
+
+<!-- ══ SERVER ══ -->
+<div class="lane" id="lane-server">
+  <div class="lane-header" style="color:var(--gold)"><span>Web Server</span>
+    <span style="font-size:9px;color:var(--muted);font-weight:400;letter-spacing:.04em">server.py · FastAPI · uvicorn · slowapi</span>
+  </div>
+  <div class="lane-content">
+    <div class="node c-gold" id="n-fastapi" style="flex:1;min-width:100%">
+      <div class="node-title">FastAPI · uvicorn · port 8765 · HTTPS self-signed TLS (10yr)</div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:8px">
+        <span class="tool-pill" style="color:var(--cyan);border-color:rgba(0,212,255,.2)">/api/chat — SSE (token·done·tool_start·tool_end·skill_used)</span>
+        <span class="tool-pill" style="color:var(--cyan);border-color:rgba(0,212,255,.2)">/api/tts (language-aware voice) · /api/tts/voices</span>
+        <span class="tool-pill">/api/status · /api/config</span>
+        <span class="tool-pill">/api/dashboard · /api/metrics/history</span>
+        <span class="tool-pill">/api/conversations CRUD</span>
+        <span class="tool-pill new">/api/skills GET·POST · /api/skills/{slug}</span>
+        <span class="tool-pill new">/api/memory/stats · /api/memory/promote · /api/memory/consolidate</span>
+        <span class="tool-pill new">/api/knowledge/compress</span>
+        <span class="tool-pill new">/api/files/upload · /api/files/serve?token= (JWT clickable links)</span>
+        <span class="tool-pill">/api/mcp/servers CRUD · /api/mcp/catalog</span>
+        <span class="tool-pill new">/api/models/inventory (admin) · /api/session/info</span>
+        <span class="tool-pill">/api/users · /api/roles · /api/audit</span>
+        <span class="tool-pill">/api/backup · /api/auth/*</span>
+        <span class="tool-pill new">/api/approval/history (audit trail)</span>
+        <span class="tool-pill new">/api/projects/{id}/members GET·POST·DELETE</span>
+      </div>
+      <div class="node-detail" style="margin-top:8px">
+        Rate limiting: 20/min chat · 40/min TTS · 2/hr compress · Body: 64 KB · 12 000 char · 100 MB upload
+      </div>
+    </div>
+  </div>
+</div>
+<div class="section-gap"></div>
+
+<!-- ══ ORCHESTRATOR PIPELINE ══ -->
+<div class="lane" id="lane-orch">
+  <div class="lane-header" style="color:var(--gold)"><span>Orchestrator Pipeline</span>
+    <span style="font-size:9px;color:var(--muted);font-weight:400;letter-spacing:.04em">orchestrator.py · sequential per request · event_cb → SSE queue</span>
+  </div>
+  <div class="pipeline" id="pipeline-row">
+    <div class="pipeline-step" id="ps-lang">
+      <div class="step-num">01</div>
+      <div class="step-name">Language</div>
+      <div class="step-detail">Inject SYSTEM msg<br>response_language<br><span style="color:var(--gold);font-size:9px">pt-PT / en-GB</span></div>
+    </div>
+    <div class="pipe-arrow">▶</div>
+    <div class="pipeline-step" style="border-color:rgba(20,217,140,.22)">
+      <div class="step-num" style="color:rgba(20,217,140,.28)">02</div>
+      <div class="step-name" style="color:var(--teal)">Skills L0 <span class="new-badge">new</span></div>
+      <div class="step-detail">Inject skill catalog<br>name+desc only<br><span style="color:var(--teal);font-size:9px">~3k tok / 50 skills</span></div>
+    </div>
+    <div class="pipe-arrow">▶</div>
+    <div class="pipeline-step" id="ps-mem">
+      <div class="step-num">03</div>
+      <div class="step-name">Memory</div>
+      <div class="step-detail">User T2a + Collective T2b<br>Scoped KB T3a/3b<br><span style="color:var(--cyan);font-size:9px">[FACT][COLLECTIVE][DOC]</span><br><span style="color:var(--teal);font-size:9px">SYSTEM msg replaced each turn (no accumulation)</span></div>
+    </div>
+    <div class="pipe-arrow">▶</div>
+    <div class="pipeline-step">
+      <div class="step-num">04</div>
+      <div class="step-name">Web Prefetch</div>
+      <div class="step-detail">Auto web_search<br>live-data queries<br><span style="color:var(--muted);font-size:9px">weather/news/price</span></div>
+    </div>
+    <div class="pipe-arrow">▶</div>
+    <div class="pipeline-step" id="ps-router">
+      <div class="step-num">05</div>
+      <div class="step-name">Task Router</div>
+      <div class="step-detail">Pattern classifier<br>pdf·email·browser<br><span style="color:var(--gold);font-size:9px">browser history persist</span><br><span style="color:var(--teal);font-size:9px">web_url → web_fetch hint (no playwright)</span><br><span style="color:var(--teal);font-size:9px">pdf hint uses resolve_output_dir(user)</span></div>
+    </div>
+    <div class="pipe-arrow">▶</div>
+    <div class="pipeline-step" id="ps-compress">
+      <div class="step-num">06</div>
+      <div class="step-name">Compressor</div>
+      <div class="step-detail">S0: dedup (A1)<br>S1: tool results→60w<br>S2: roll-up→150w<br><span style="color:var(--teal);font-size:9px">fires at ~9 502 tok</span></div>
+    </div>
+    <div class="pipe-arrow">▶</div>
+    <div class="pipeline-step" id="ps-direct" style="border-color:rgba(255,69,96,.2)">
+      <div class="step-num" style="color:rgba(255,69,96,.28)">07</div>
+      <div class="step-name" style="color:var(--red)">Direct Paths<br><span class="bypass-badge">bypasses LLM</span></div>
+      <div class="step-detail">pdf→create_pdf<br>email→send_email<br><span style="color:var(--purple);font-size:9px">cc→Claude Code T5 <span class="new-badge" style="font-size:7.5px">new</span></span><br><span style="color:var(--red);font-size:9px">blocked in read-only</span></div>
+    </div>
+    <div class="pipe-arrow">▶</div>
+    <div class="pipeline-step" id="ps-loop" style="border-color:rgba(0,227,150,.2)">
+      <div class="step-num" style="color:rgba(0,227,150,.28)">08</div>
+      <div class="step-name" style="color:var(--green)">Agent Loop</div>
+      <div class="step-detail">T1→T4 OllamaAgent<br>complexity_score → tier<br>needs_escalation → retry<br><span style="color:var(--green);font-size:9px">max 8 iter · task mode</span></div>
+    </div>
+    <div class="pipe-arrow">▶</div>
+    <div class="pipeline-step" style="border-color:rgba(20,217,140,.18)">
+      <div class="step-num" style="color:rgba(20,217,140,.22)">09</div>
+      <div class="step-name" style="color:var(--teal)">Post-Process <span class="new-badge">new</span></div>
+      <div class="step-detail">memory.add_exchange<br>auto_config detect<br><span style="color:var(--teal);font-size:9px">skill gen if ≥5 tools</span><br><span style="color:var(--teal);font-size:9px">_sanitize_response: strip DOC-EXCERPT tags</span><br><span style="color:var(--teal);font-size:9px">_inject_dl_token: JWT appended to file links</span></div>
+    </div>
+  </div>
+</div>
+<div class="section-gap" style="height:10px"></div>
+
+<!-- ══ TIERED MODEL SYSTEM ══ -->
+<div class="lane" id="lane-tiers">
+  <div class="lane-header" style="color:var(--green)">
+    <span>Tiered Model System</span>
+    <span style="font-size:9px;color:var(--muted);font-weight:400;letter-spacing:.04em">model_tier.py · model_inventory.py · system_profile.py</span>
+    <span class="new-badge">Phase 5</span>
+  </div>
+  <div class="lane-content" style="align-items:flex-start">
+
+    <!-- Tier stack -->
+    <div class="tier-table">
+      <div style="font-family:'Syne',sans-serif;font-size:9px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--green);margin-bottom:4px">Inference Tiers</div>
+      <div class="tier-row" style="border-color:rgba(100,180,255,.2)">
+        <div class="tier-badge" style="color:rgba(100,180,255,.8)">T1</div>
+        <div>
+          <div class="tier-name">nano · 1–4 B</div>
+          <div class="tier-desc">fast lookups · simple Q&amp;A · formatting</div>
+        </div>
+      </div>
+      <div class="tier-row" style="border-color:rgba(0,227,150,.3)">
+        <div class="tier-badge" style="color:var(--green)">T2</div>
+        <div>
+          <div class="tier-name" style="color:var(--green)">core · 5–14 B <span style="color:var(--muted);font-weight:400">(default · qwen2.5:7b)</span></div>
+          <div class="tier-desc">balanced · 28–31 tok/s · 4.7 GB VRAM</div>
+        </div>
+      </div>
+      <div class="tier-row" style="border-color:rgba(201,162,39,.25)">
+        <div class="tier-badge" style="color:var(--gold)">T3</div>
+        <div>
+          <div class="tier-name">large · 15–44 B</div>
+          <div class="tier-desc">complex reasoning · multi-step analysis</div>
+        </div>
+      </div>
+      <div class="tier-row" style="border-color:rgba(230,126,34,.25)">
+        <div class="tier-badge" style="color:var(--orange)">T4</div>
+        <div>
+          <div class="tier-name">max · 45 B+</div>
+          <div class="tier-desc">maximum local capability</div>
+        </div>
+      </div>
+      <div class="tier-row" style="border-color:rgba(155,89,182,.4);background:rgba(155,89,182,.04)" id="n-t5">
+        <div class="tier-badge" style="color:var(--purple)">T5</div>
+        <div>
+          <div class="tier-name" style="color:var(--purple)">Claude Code · ClaudeCodeAgent <span class="new-badge" style="margin-left:4px">new</span></div>
+          <div class="tier-desc">claude --print · json · per-conversation session · per-user API key</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Routing logic -->
+    <div class="simple-hide" style="display:flex;flex-direction:column;gap:8px;min-width:245px">
+      <div style="font-family:'Syne',sans-serif;font-size:9px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);margin-bottom:2px">Routing Functions</div>
+      <div class="node c-gold" style="min-width:235px">
+        <div class="node-title">direct_to_claude_code(text) → bool <span class="new-badge">new</span></div>
+        <div class="node-detail">
+          <span>~0 ms · regex only · no LLM call</span>
+          Code / system patterns → T5 bypass<br>
+          _SUNI_TOOLS_RE exclusion: email / KB / memory<br>
+          RBAC gate: claude_task not blocked · not read-only<br>
+          <span style="color:var(--muted)">False-negative safe: local fallback always available</span>
+        </div>
+      </div>
+      <div class="node c-green" style="min-width:235px">
+        <div class="node-title">complexity_score(text) → 1–4</div>
+        <div class="node-detail">
+          <span>Word count + keyword signals → starting tier</span>
+          Simple: T1 · Multi-step: T2 · Complex: T3 · Long: T4<br>
+          Capped at system_profile.MAX_LOCAL_TIER<br>
+          <span style="color:var(--muted)">Selects tier for OllamaAgent loop</span>
+        </div>
+      </div>
+      <div class="node" style="border-color:rgba(255,69,96,.2);min-width:235px">
+        <div class="node-title" style="color:var(--red)">needs_escalation(response) → bool</div>
+        <div class="node-detail">
+          <span>Post-response escalation signal</span>
+          "I cannot" / "beyond my capabilities" → next tier<br>
+          Short hedging (&lt;60 words) → retry<br>
+          <span style="color:var(--muted)">T4 = local ceiling — no further escalation</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Discovery -->
+    <div class="simple-hide" style="display:flex;flex-direction:column;gap:8px;min-width:220px">
+      <div style="font-family:'Syne',sans-serif;font-size:9px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--cyan);margin-bottom:2px">Discovery</div>
+      <div class="node c-cyan" id="n-inventory" style="min-width:210px">
+        <div class="node-title">model_inventory.py <span class="new-badge">new</span></div>
+        <div class="node-detail">
+          <span>Ollama network scanner — runs at startup</span>
+          Queries each endpoint in config.ollama_endpoints<br>
+          params_to_tier() → T1–T4 assignment<br>
+          Cached · GET /api/models/inventory (admin)<br>
+          <span style="color:var(--muted)">?refresh=1 forces rescan</span>
+        </div>
+      </div>
+      <div class="node" style="border-color:rgba(255,255,255,.12);min-width:210px">
+        <div class="node-title" style="color:#bbb">system_profile.py</div>
+        <div class="node-detail">
+          <span>VRAM detection at startup</span>
+          nvidia-smi → available VRAM<br>
+          Sets MAX_LOCAL_TIER + DEFAULT_TIER<br>
+          <span style="color:var(--muted)">RTX 4000 8 GB → T2 default, T2 max local</span>
+        </div>
+      </div>
+      <div class="node" style="border-color:rgba(155,89,182,.2);min-width:210px">
+        <div class="node-title" style="color:var(--purple)">ClaudeCodeAgent <span class="new-badge">new</span></div>
+        <div class="node-detail">
+          <span>suni/models/claude_code_agent.py</span>
+          Registered as T5 if `claude` in PATH<br>
+          CLAUDE_API_KEY_CTX per-user injection<br>
+          --resume session_id persisted per-conversation (conversations.db)<br>
+          cwd=~ + --system-prompt → isolated SUNI persona, no project leak<br>
+          Every task: KB index path (doc_meta.json) + your document folders  direct-read hint<br>
+          <span style="color:var(--muted)">Every turn folds Tier 2a/2b memory + lang context · _run_claude() · _parse_json_output()</span>
+        </div>
+      </div>
+      <div class="node" style="border-color:rgba(20,217,140,.25);min-width:210px">
+        <div class="node-title" style="color:var(--teal)">CodexAgent <span class="new-badge">Phase 10</span></div>
+        <div class="node-detail">
+          <span>suni/models/codex_agent.py</span>
+          2nd no-key frontier provider (ChatGPT subscription)<br>
+          <code>codex exec --skip-git-repo-check --ephemeral -s read-only -o &lt;file&gt; -</code><br>
+          Prompt via real-file stdin · final answer read from -o<br>
+          Binary auto-discovered (versioned path) · factory provider "codex"<br>
+          <span style="color:var(--muted)">Optional OPENAI_API_KEY for API mode</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Multi-model collaboration (Mode 2) -->
+    <div class="simple-hide" style="display:flex;flex-direction:column;gap:8px;min-width:245px">
+      <div style="font-family:'Syne',sans-serif;font-size:9px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--purple);margin-bottom:2px">Mode 2 · Collaboration</div>
+      <div class="node" style="border-color:rgba(155,89,182,.4);background:rgba(155,89,182,.05);min-width:235px">
+        <div class="node-title" style="color:var(--purple)">collaborate mode <span class="new-badge">Phase 10</span></div>
+        <div class="node-detail">
+          <span>suni/core/orchestrate.py · opt-in conv_mode</span>
+          <b>DRAFT</b> (all models ∥) → <b>CROSS-CRITIQUE</b> (peer-review ∥) → <b>SYNTHESISE</b> (1 merges, speaks as SUNI)<br>
+          Decorrelated frontier pool (Claude Code + Codex, admin-editable)<br>
+          Live phase events (draft·critique·synthesize) · fast/full dial<br>
+          Self-contained branch in _run_inner — Mode 1 pipeline untouched<br>
+          <span style="color:var(--muted)">power-user/admin only · cloud (data leaves box) · per-message toggle</span>
+        </div>
+      </div>
+      <div class="node c-gold" style="min-width:235px">
+        <div class="node-title">Provider registry <span class="new-badge">Phase 10</span></div>
+        <div class="node-detail">
+          <span>factory.make_provider_agent(provider, …)</span>
+          ollama · vllm · openai · anthropic · gemini · claude-code · codex<br>
+          Both auth modes: API keys AND no-key subscription CLIs<br>
+          <span style="color:var(--muted)">Admin drag-ordered model chain · collaborate pool</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+<div class="section-gap" style="height:10px"></div>
+
+<!-- ══ CORE: MODELS | TOOLS | MEMORY ══ -->
+<div class="lane" id="lane-core">
+  <div class="lane-header" style="color:var(--text)"><span>Core Components</span></div>
+  <div class="lane-content" style="align-items:flex-start">
+
+    <!-- Models -->
+    <div style="display:flex;flex-direction:column;gap:8px;min-width:235px">
+      <div style="font-family:'Syne',sans-serif;font-size:9px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--green);margin-bottom:2px">Models · Dual-mode + Fleet</div>
+      <div class="node c-green" id="n-qwen">
+        <div class="node-title">OllamaAgent · T1–T4</div>
+        <div class="node-detail">
+          <span>Tier-selected per request complexity · native Ollama</span>
+          Default: T2 core · qwen2.5:7b · keep_alive -1<br>
+          num_ctx 16 384 · FLASH_ATTENTION=1 · timing→dashboard<br>
+          <span style="color:var(--muted)">Higher tiers: T3/T4 if model installed + VRAM permits</span>
+        </div>
+      </div>
+      <div class="node" style="border-color:rgba(0,212,255,.35)">
+        <div class="node-title" style="color:var(--cyan)">OpenAICompatAgent · vLLM <span class="new-badge">new</span></div>
+        <div class="node-detail">
+          <span>Dual-mode backend · admin-panel switch (live, in-place)</span>
+          vllm_base_url set → chat on vLLM, Ollama bypassed<br>
+          models/factory.py make_agent() · active_backend()<br>
+          json.loads tool args · preserves server tool_call ids<br>
+          <span style="color:var(--muted)">SMB=Ollama simplicity · enterprise=vLLM concurrency</span>
+        </div>
+      </div>
+      <div class="node" style="border-color:rgba(255,69,96,.28)">
+        <div class="node-title" style="color:var(--red)">Circuit Breaker <span class="new-badge">new</span></div>
+        <div class="node-detail">
+          <span>models/health.py · per-host · fast-fail + auto-recover</span>
+          Classifies CONNECTION vs request-level failures<br>
+          In-band open (N conn fails) · 30s liveness probe closes<br>
+          <span style="color:var(--muted)">GET /api/backend/health · shared by chat/embed/stt/vision/tts</span>
+        </div>
+      </div>
+      <div class="node" style="border-color:rgba(20,217,140,.3)">
+        <div class="node-title" style="color:var(--teal)">Embeddings · configurable <span class="new-badge">new</span></div>
+        <div class="node-detail">
+          <span>nomic-embed-text 768-dim · episodic + collective</span>
+          embed_backend ollama|openai · host-swap safe<br>
+          <span style="color:var(--red)">dimension guard: model change → refuse writes (recall guard)</span><br>
+          all-MiniLM-L6-v2 384-dim CPU → FAISS doc_store (untouched)
+        </div>
+      </div>
+      <div class="node" style="border-color:rgba(155,89,182,.3)">
+        <div class="node-title" style="color:var(--purple)">Capability Fleet <span class="new-badge">new</span></div>
+        <div class="node-detail">
+          <span>1 SUNI → N specialized model endpoints (config map)</span>
+          STT: browser | self-hosted Whisper (stt.py)<br>
+          Vision: OpenAI-compatible VLM · image → answer (vision.py)<br>
+          TTS: edge-tts | self-hosted /v1/audio/speech (tts.py)<br>
+          <span style="color:var(--muted)">No router — config convention IS the map · ClaudeCodeAgent T5</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tool Registry -->
+    <div style="flex:1;min-width:560px">
+      <div style="font-family:'Syne',sans-serif;font-size:9px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);margin-bottom:10px">Tool Registry · 72+ tools</div>
+      <div class="tool-grid" id="n-tools">
+        <div class="tool-group" style="border-color:rgba(0,212,255,.2)">
+          <div class="tg-header" style="color:var(--cyan)">Communication</div>
+          <span class="tool-pill">send_email</span>
+          <span class="tool-pill">list_emails</span>
+          <span class="tool-pill">read_email</span>
+        </div>
+        <div class="tool-group" style="border-color:rgba(201,162,39,.2)">
+          <div class="tg-header" style="color:var(--gold)">Files &amp; Shell</div>
+          <span class="tool-pill" style="color:var(--red);border-color:rgba(255,69,96,.2)">run_shell ⛔</span>
+          <span class="tool-pill">read_file</span>
+          <span class="tool-pill">write_file</span>
+          <span class="tool-pill">download_file</span>
+          <span class="tool-pill" style="color:var(--gold)">create_pdf</span>
+        </div>
+        <div class="tool-group" style="border-color:rgba(0,227,150,.2)">
+          <div class="tg-header" style="color:var(--green)">Web &amp; Knowledge</div>
+          <span class="tool-pill">web_search</span>
+          <span class="tool-pill">web_fetch</span>
+          <span class="tool-pill new">search_knowledge_base</span>
+        </div>
+        <div class="tool-group" style="border-color:rgba(155,89,182,.25)">
+          <div class="tg-header" style="color:var(--purple)">Delegation</div>
+          <span class="tool-pill">claude_task</span>
+          <span class="tool-pill">claude_code</span>
+          <span class="tool-pill">claude_create_agents</span>
+          <span class="tool-pill">claude_advisor</span>
+        </div>
+        <div class="tool-group" style="border-color:rgba(20,217,140,.3)">
+          <div class="tg-header" style="color:var(--teal)">Skills · Procedural Memory <span class="new-badge" style="margin-left:4px">new</span></div>
+          <span class="tool-pill new">skills_list</span>
+          <span class="tool-pill new">skill_view</span>
+          <span class="tool-pill new">skill_save</span>
+          <span class="tool-pill new">skill_delete</span>
+          <div style="font-size:9px;color:var(--muted);margin-top:4px">L0 injected every turn · L1 on demand</div>
+        </div>
+        <div class="tool-group" style="border-color:rgba(74,144,217,.25);flex:1;min-width:200px">
+          <div class="tg-header" style="color:#4a90d9">MCP Bridge · 35+ tools</div>
+          <div style="font-size:9px;color:var(--muted);margin-bottom:5px">
+            memory/mcp_servers.json + claude_desktop_config.json merged<br>
+            per-route + per-role + per-user prefix filtering
+          </div>
+          <span class="tool-pill" style="color:var(--green)">filesystem_read/write/list</span>
+          <span class="tool-pill" style="color:#4a90d9">playwright_navigate</span>
+          <span class="tool-pill" style="color:#4a90d9">playwright_screenshot</span>
+          <span class="tool-pill" style="font-size:8px;color:rgba(74,144,217,.5)">+30 more</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Memory System -->
+    <div style="min-width:235px">
+      <div style="font-family:'Syne',sans-serif;font-size:9px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--cyan);margin-bottom:10px">Memory System · 4 Tiers</div>
+      <div class="memory-stack" id="n-memory">
+        <div class="mem-tier" style="background:rgba(201,162,39,.04);border-color:rgba(201,162,39,.2)">
+          <div class="mem-label" style="color:var(--gold)">Tier 1 · Hot</div>
+          <div class="mem-name">Context Class</div>
+          <div class="mem-stat">Session RAM · max 110 msgs<br>Compressor: S0 dedup + S1 tool + S2 roll-up</div>
+        </div>
+        <div class="mem-tier" style="background:rgba(0,212,255,.03);border-color:rgba(0,212,255,.2)">
+          <div class="mem-label" style="color:var(--cyan)">Tier 2a · User Episodic</div>
+          <div class="mem-name">suni_memory.json (per user)</div>
+          <div class="mem-stat">nomic-embed-text 768-dim · float16 b64 · numpy cosine<br>[FACT][PREFERENCE][CONVERSATION]<br><span style="color:var(--teal)">lifecycle: active|deprecated · superseded_by (soft-delete)</span><br><span style="color:var(--gold)">[STRUCTURED] named upsert memories — user/project/feedback/reference · memory_save/search/delete/list tools · consolidator never touches them</span><br>Private — never crosses user boundary</div>
+        </div>
+        <div class="mem-tier" style="background:rgba(155,89,182,.04);border-color:rgba(155,89,182,.25)">
+          <div class="mem-label" style="color:var(--purple)">Tier 2b · Collective Episodic</div>
+          <div class="mem-name">collective_memory.json</div>
+          <div class="mem-stat">nomic-embed-text 768-dim · company-level shared facts<br>[COLLECTIVE-FACT] tag in context<br>POST /api/memory/promote (embed_nomic)</div>
+        </div>
+        <div class="mem-tier" style="background:rgba(0,227,150,.03);border-color:rgba(0,227,150,.2)">
+          <div class="mem-label" style="color:var(--green)">Tier 3 · Document KB</div>
+          <div class="mem-name" id="n-faiss">FAISS + scope field</div>
+          <div class="mem-stat">81 644 chunks · scope="collective|user:{uid}"<br>
+            <span class="new-badge" style="font-size:8px">A4</span> FlatIP → IVF-PQ: 32× smaller<br>
+            <span class="new-badge" style="font-size:8px">A5</span> Sentence-boundary excerpts<br>
+            doc_meta.json sidecar · .bak recovery</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+<div class="section-gap" style="height:10px"></div>
+
+<!-- ══ COMPRESSION ══ -->
+<div class="lane simple-hide" id="lane-compress">
+  <div class="lane-header" style="color:var(--teal)">
+    <span>Compression Pipeline</span>
+    <span style="font-size:9px;color:var(--muted);font-weight:400;letter-spacing:.04em">compressor.py · document_chunker.py · document_store.py</span>
+    <span class="new-badge">A1 · A4 · A5</span>
+  </div>
+  <div class="comp-grid">
+    <div class="comp-card" id="n-a1">
+      <div class="comp-label">A1 · Semantic Dedup</div>
+      <div class="comp-ratio">20–40%</div>
+      <div class="comp-detail">
+        Stage 0 of compressor — runs before any LLM call.<br>
+        Word-bigram Jaccard ≥ 0.82 → shorter duplicate dropped.<br>
+        Targets: repeated TOOL results, near-identical memory injections.<br>
+        <strong style="color:var(--teal)">Cost: ~0 ms · no model call · pure numpy</strong>
+      </div>
+    </div>
+    <div class="comp-card" id="n-a4">
+      <div class="comp-label">A4 · FAISS IVF-PQ</div>
+      <div class="comp-ratio">32×</div>
+      <div class="comp-detail">
+        Migrate FlatIP → IndexIVFPQ (nlist=256, M=48, nbits=8).<br>
+        Vector: 384 × 4B = 1 536B → 48B per chunk.<br>
+        Recall@10 ~97% · nprobe=32 · search ~2ms vs 0.5ms.<br>
+        Admin: POST /api/knowledge/compress · one-time, ~60s.<br>
+        <strong style="color:var(--teal)">Requires ≥10 240 vectors to train codebook</strong>
+      </div>
+    </div>
+    <div class="comp-card" id="n-a5">
+      <div class="comp-label">A5 · Smart Excerpts</div>
+      <div class="comp-ratio">cleaner</div>
+      <div class="comp-detail">
+        _smart_excerpt() in document_chunker.py.<br>
+        Trims to last .!?\\n within 500 chars → clean sentence end.<br>
+        Falls back to word boundary, then hard cut (never mid-word).<br>
+        Fixes KB search result fragments and injected [DOC] entries.<br>
+        <strong style="color:var(--teal)">No size change · improves retrieval quality</strong>
+      </div>
+    </div>
+    <div class="comp-card" style="border-color:rgba(20,217,140,.35)">
+      <div class="comp-label" style="color:var(--teal)">Phase 6.3 · nomic-embed-text <span class="new-badge" style="margin-left:4px">new</span></div>
+      <div class="comp-ratio" style="color:var(--teal)">768-dim</div>
+      <div class="comp-detail">
+        store.py: float16 b64 · nomic-embed-text via Ollama.<br>
+        Two-embedder split: nomic episodic/collective · MiniLM FAISS.<br>
+        37 589 entries migrated · 108 MB · norm=1.0 unit vectors.<br>
+        reembed_memory.py: batch 100 · skips already-768 entries.<br>
+        <strong style="color:var(--teal)">Higher retrieval quality vs 384-dim MiniLM</strong>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="section-gap" style="height:10px"></div>
+
+<!-- ══ SKILLS SYSTEM ══ -->
+<div class="lane simple-hide" id="lane-skills">
+  <div class="lane-header" style="color:var(--teal)">
+    <span>Skills System — Procedural Memory</span>
+    <span style="font-size:9px;color:var(--muted);font-weight:400;letter-spacing:.04em">suni/skills.py · memory/skills/</span>
+    <span class="new-badge">Phase 4</span>
+  </div>
+  <div class="lane-content">
+    <div class="node c-teal" id="n-skills" style="min-width:210px">
+      <div class="node-title" style="color:var(--teal)">SkillStore — skills.py</div>
+      <div class="node-detail">
+        <span>SQLite: memory/skills.db · LIKE search</span>
+        SKILL.md: memory/skills/{cat}/{slug}/<br>
+        YAML: name · slug · category · tool_count · used_count<br>
+        CRUD: save() · get() · delete() · search()
+      </div>
+    </div>
+    <div class="node c-teal" style="min-width:210px">
+      <div class="node-title" style="color:var(--teal)">Progressive Disclosure</div>
+      <div class="node-detail">
+        <span>Level 0: name + description every turn</span>
+        Injected as [SKILL:slug] name: desc<br>
+        <span>Level 1: full body on skill_view(slug)</span>
+        Increments used_count · never bulk-load
+      </div>
+    </div>
+    <div class="node c-teal" style="min-width:210px">
+      <div class="node-title" style="color:var(--teal)">Auto-Generation</div>
+      <div class="node-detail">
+        <span>Trigger: task completes with ≥5 tool calls</span>
+        asyncio.create_task() — non-blocking<br>
+        claude_task writes SKILL.md from trace<br>
+        Admin Skills tab: browse · edit · delete
+      </div>
+    </div>
+    <div class="node c-teal" style="min-width:210px">
+      <div class="node-title" style="color:var(--teal)">Live Tool Feed</div>
+      <div class="node-detail">
+        <span>SSE: tool_start / tool_end / skill_used</span>
+        Activity panel above response bubble<br>
+        Running: ⟳ · Done: ✓ · Error: ✗ · Skill: ★<br>
+        Collapses to "N tools used" on completion
+      </div>
+    </div>
+  </div>
+</div>
+<div class="section-gap" style="height:10px"></div>
+
+<!-- ══ AUTOMATED TEST SUITE ══ -->
+<div class="lane simple-hide" id="lane-tests">
+  <div class="lane-header" style="color:var(--purple)">
+    <span>Automated Test Suite</span>
+    <span style="font-size:9px;color:var(--muted);font-weight:400;letter-spacing:.04em">tests/ · pytest · conftest.py · os.chdir(tmpdir) isolation</span>
+    <span class="new-badge">Phase 5</span>
+  </div>
+  <div class="test-grid">
+    <div class="test-card">
+      <div class="test-file">test_unit.py</div>
+      <div class="test-count">45</div>
+      <div class="test-desc">
+        direct_to_claude_code() classifier patterns<br>
+        complexity_score · needs_escalation<br>
+        RBAC tool allow/block logic<br>
+        <span style="color:var(--purple)">Parametrized · no I/O · pure functions</span>
+      </div>
+    </div>
+    <div class="test-card">
+      <div class="test-file">test_auth.py</div>
+      <div class="test-count">20</div>
+      <div class="test-desc">
+        Login success/fail · JWT verify<br>
+        /api/auth/me · /api/auth/logout<br>
+        Role fields · no password leak<br>
+        <span style="color:var(--purple)">Session-scoped user fixtures</span>
+      </div>
+    </div>
+    <div class="test-card">
+      <div class="test-file">test_rbac_security.py</div>
+      <div class="test-count">36</div>
+      <div class="test-desc">
+        SQL injection → 401/429<br>
+        Path traversal → 403/404<br>
+        Body 64 KB → 413 · XSS input<br>
+        <span style="color:var(--purple)">Session isolation · 429 = security gate</span>
+      </div>
+    </div>
+    <div class="test-card">
+      <div class="test-file">test_api.py</div>
+      <div class="test-count">33</div>
+      <div class="test-desc">
+        All major endpoint shapes + RBAC<br>
+        SSE: token · done · tier_route events<br>
+        /api/models/inventory · /api/status<br>
+        <span style="color:var(--purple)">TestClient · _safe_run mocked → "ok"</span>
+      </div>
+    </div>
+    <div class="test-card">
+      <div class="test-file">test_performance.py</div>
+      <div class="test-count">19</div>
+      <div class="test-desc">
+        Latency p50 / p95 / p99 thresholds<br>
+        20 parallel sessions · memory growth<br>
+        Throughput (req/s) · startup time<br>
+        <span style="color:var(--purple)">No Ollama/Claude required</span>
+      </div>
+    </div>
+    <div class="test-card">
+      <div class="test-file">test_capabilities.py</div>
+      <div class="test-count">25</div>
+      <div class="test-desc">
+        Memory store/search · approval gate · RBAC<br>
+        Projects CRUD · consolidation dedup<br>
+        mock_embed_nomic: deterministic 768-dim unit vec<br>
+        <span style="color:var(--purple)">Offline — no Ollama required</span>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:10px;font-size:9.5px;color:var(--muted)">
+    Isolation: <code style="color:var(--teal)">os.chdir(tmpdir)</code> redirects all relative SUNI paths (SQLite, FAISS, JSON) · rate-limit 10/min login, 20/min chat accepted in assertions
+  </div>
+</div>
+<div class="section-gap" style="height:10px"></div>
+
+<!-- ══ AUTH + RBAC ══ -->
+<div class="lane" id="lane-auth">
+  <div class="lane-header" style="color:var(--red)"><span>Auth, RBAC &amp; User System</span>
+    <span style="font-size:9px;color:var(--muted);font-weight:400;letter-spacing:.04em">auth.py · oidc.py · rbac.py · policy.py · user_settings.py · audit.py</span>
+  </div>
+  <div class="lane-content">
+    <div class="node" style="border-color:rgba(255,69,96,.25);min-width:195px">
+      <div class="node-title" style="color:var(--red)">JWT Auth</div>
+      <div class="node-detail"><span>memory/users.db · bcrypt 12 rounds</span>
+        JWT access 8h + refresh token 30d httpOnly<br>
+        Per-user API tokens · static service token<br>
+        Roles: read-only · standard · power-user · admin
+      </div>
+    </div>
+    <div class="node" style="border-color:rgba(0,212,255,.3);min-width:195px">
+      <div class="node-title" style="color:var(--cyan)">OIDC / SSO <span class="new-badge">new</span></div>
+      <div class="node-detail"><span>oidc.py · Auth-Code + PKCE · any .well-known provider</span>
+        JIT provisioning · claim→role · !oidc sentinel pw<br>
+        ID-token: JWKS sig · aud · iss · exp · nonce<br>
+        <span style="color:var(--muted)">Env-configured · setup-guard · off unless set</span>
+      </div>
+    </div>
+    <div class="node" style="border-color:rgba(255,69,96,.22);min-width:195px">
+      <div class="node-title" style="color:var(--red)">RBAC</div>
+      <div class="node-detail"><span>memory/role_config.json · admin editable</span>
+        allowed_tools · blocked_tools<br>
+        mcp_prefixes · allowed_modes · default_mode<br>
+        skill_save/delete gated (power-user+)
+      </div>
+    </div>
+    <div class="node" style="border-color:rgba(255,69,96,.18);min-width:195px">
+      <div class="node-title" style="color:rgba(255,100,100,.8)">Per-User Settings</div>
+      <div class="node-detail"><span>memory/users/{uid}/settings.json</span>
+        stt_language · response_language · tts_voice<br>
+        allowed_mcp_servers (list | null)<br>
+        <span style="color:var(--teal)">anthropic_api_key (Fernet encrypted · crypto_utils.py)</span><br>
+        <span style="color:var(--teal)">Auto-configured from conversation (A-cfg)</span><br>
+        <span style="color:var(--teal)">output_dir (must be under global_output_dir)</span>
+      </div>
+    </div>
+    <div class="node" style="border-color:rgba(255,69,96,.15);min-width:195px">
+      <div class="node-title" style="color:rgba(255,110,100,.7)">Audit Trail + Usage</div>
+      <div class="node-detail"><span>memory/audit.db · append-only</span>
+        Every chat: user · query · route · tools · ms<br>
+        <span style="color:var(--teal)">prompt_tokens + gen_tokens per request (usage.py accumulator)<br>GET /api/usage — per-user token totals (SMB cost view)</span><br>
+        <span style="color:var(--teal)">route="approval": allow · deny · timeout · cancelled</span>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="section-gap" style="height:10px"></div>
+
+<!-- ══ MESSAGING INTEGRATIONS ══ -->
+<div class="lane simple-hide" id="lane-messaging">
+  <div class="lane-header" style="color:var(--green)">
+    <span>Messaging Integrations</span>
+    <span style="font-size:9px;color:var(--muted);font-weight:400;letter-spacing:.04em">whatsapp/handler.py · telegram/handler.py · per-chat Context · background reply</span>
+  </div>
+  <div class="lane-content">
+    <div class="node c-green" style="min-width:240px">
+      <div class="node-tag" style="background:rgba(0,227,150,.08);color:var(--green)">POST /whatsapp</div>
+      <div class="node-title">WhatsApp · Twilio</div>
+      <div class="node-detail">
+        <span>Inbound webhook · form payload</span>
+        Twilio signature validation (HMAC)<br>
+        markdown → WhatsApp formatting<br>
+        Sentence-boundary split · 1 500 char chunks<br>
+        <span style="color:var(--muted)">TWILIO_ACCOUNT_SID · TWILIO_AUTH_TOKEN</span>
+      </div>
+    </div>
+    <div class="node c-cyan" style="min-width:240px">
+      <div class="node-tag" style="background:rgba(0,212,255,.08);color:var(--cyan)">POST /telegram <span class="new-badge" style="margin-left:4px">new</span></div>
+      <div class="node-title">Telegram · Bot API</div>
+      <div class="node-detail">
+        <span>Inbound webhook · JSON payload</span>
+        X-Telegram-Bot-Api-Secret-Token validation<br>
+        markdown → HTML (parse_mode=HTML)<br>
+        Plain-text fallback on parse error<br>
+        4 000 char chunks · httpx (no extra lib)<br>
+        <span style="color:var(--muted)">TELEGRAM_BOT_TOKEN · TELEGRAM_SECRET_TOKEN</span>
+      </div>
+    </div>
+    <div class="node" style="border-color:rgba(255,255,255,.08);min-width:220px;opacity:.8">
+      <div class="node-title" style="color:var(--muted)">Shared pattern</div>
+      <div class="node-detail">
+        Per-chat Context (conversation history)<br>
+        orchestrator.run() → background_tasks<br>
+        200 returned immediately (async reply)<br>
+        GET /*/status → configured + webhook URL
+      </div>
+    </div>
+  </div>
+</div>
+<div class="section-gap" style="height:10px"></div>
+
+<!-- ══ BACKGROUND SERVICES ══ -->
+<div class="lane" id="lane-bg">
+  <div class="lane-header" style="color:var(--purple)"><span>Background Services</span>
+    <span style="font-size:9px;color:var(--muted);font-weight:400;letter-spacing:.04em">always running · asyncio tasks</span>
+  </div>
+  <div class="svc-row" id="n-services">
+    <div class="svc">
+      <div class="svc-name">Session Watcher</div>
+      <div class="svc-detail">Polls Claude Code JSONL every 60s<br>Ingests → Tier 2a episodic memory</div>
+    </div>
+    <div class="svc">
+      <div class="svc-name">Inbox Watcher</div>
+      <div class="svc-detail">IMAP SSL every 30 min · seen_uids.json<br>NEVER passes content to model</div>
+    </div>
+    <div class="svc" id="n-scanner">
+      <div class="svc-name">Document Scanner</div>
+      <div class="svc-detail">watchdog ReadDirectoryChangesW + 24h rescan<br>
+        <span style="color:var(--teal)">scope="collective" | "user:{uid}" tagging</span><br>
+        GPU embed when qwen idle · batch=255<br>
+        <span style="color:var(--teal)">Excerpts: sentence-boundary trimmed (A5)</span>
+      </div>
+    </div>
+    <div class="svc">
+      <div class="svc-name">Metrics Collector</div>
+      <div class="svc-detail">nvidia-smi + Ollama every 30s<br>Ring buffer 120 samples = 60 min</div>
+    </div>
+    <div class="svc" style="border-color:rgba(0,212,255,.28)">
+      <div class="svc-name" style="color:var(--cyan)">Memory Consolidator <span class="new-badge" style="margin-left:4px">new</span></div>
+      <div class="svc-detail">Weekly · interval_days=7 · all active users<br>
+        extract → supersede → dedup → conv-dedup → age-out<br>
+        Soft-deprecate (lifecycle) — reversible, never deleted<br>
+        <span style="color:var(--teal)">consolidator.py · asyncio.Lock per user</span>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="section-gap" style="height:10px"></div>
+
+<!-- ══ EXTERNAL SYSTEMS ══ -->
+<div class="lane" id="lane-ext">
+  <div class="lane-header" style="color:var(--orange)"><span>External Systems</span></div>
+  <div class="ext-row" id="n-ext">
+    <div class="ext-node" style="border-color:rgba(0,227,150,.2)" id="n-ollama">
+      <div class="ext-icon">🤖</div>
+      <div class="ext-name" style="color:var(--green)">Ollama · multi-endpoint</div>
+      <div class="ext-addr">config: ollama_endpoints [ ]</div>
+      <div class="node-detail" style="margin-top:5px;text-align:left">localhost:11434 (primary · T2 qwen2.5:7b)<br>nomic-embed-text: /api/embed 768-dim episodic<br>model_inventory.py scans all endpoints<br>keep_alive -1 · GPU_LAYERS=48</div>
+    </div>
+    <div class="ext-node" style="border-color:rgba(0,212,255,.2)">
+      <div class="ext-icon">📧</div>
+      <div class="ext-name" style="color:var(--cyan)">SMTP / IMAP</div>
+      <div class="ext-addr">mail.example.com</div>
+      <div class="node-detail" style="margin-top:5px;text-align:left">SMTP :587 · IMAP :993 SSL<br>noreply@example.com</div>
+    </div>
+    <div class="ext-node" style="border-color:rgba(230,126,34,.2)" id="n-share">
+      <div class="ext-icon">🗄️</div>
+      <div class="ext-name" style="color:var(--orange)">your organization Network Share</div>
+      <div class="ext-addr">your document folders\Projects · SMB</div>
+      <div class="node-detail" style="margin-top:5px;text-align:left">scope="collective"<br>watchdog real-time events</div>
+    </div>
+    <div class="ext-node" style="border-color:rgba(74,144,217,.2)">
+      <div class="ext-icon">🔧</div>
+      <div class="ext-name" style="color:#4a90d9">MCP Servers</div>
+      <div class="ext-addr">stdio · catalog 20 servers</div>
+      <div class="node-detail" style="margin-top:5px;text-align:left">playwright · filesystem<br>+ admin-configurable</div>
+    </div>
+    <div class="ext-node" style="border-color:rgba(201,162,39,.2)">
+      <div class="ext-icon">🗃️</div>
+      <div class="ext-name" style="color:var(--gold)">SUNIverse DB</div>
+      <div class="ext-addr">SQL Server :1433</div>
+      <div class="node-detail" style="margin-top:5px;text-align:left">1 900+ articles · pyodbc</div>
+    </div>
+    <div class="ext-node" style="border-color:rgba(0,212,255,.2)">
+      <div class="ext-icon">✈️</div>
+      <div class="ext-name" style="color:var(--cyan)">Telegram</div>
+      <div class="ext-addr">api.telegram.org · Bot API</div>
+      <div class="node-detail" style="margin-top:5px;text-align:left">Webhook → /telegram<br>httpx · HTML parse mode</div>
+    </div>
+    <div class="ext-node" style="border-color:rgba(0,227,150,.15)">
+      <div class="ext-icon">💬</div>
+      <div class="ext-name" style="color:var(--green)">WhatsApp</div>
+      <div class="ext-addr">Twilio · api.twilio.com</div>
+      <div class="node-detail" style="margin-top:5px;text-align:left">Webhook → /whatsapp<br>HMAC signature validation</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ AGENTIC FEATURES (Phase 6) ══ -->
+<div class="section-gap" style="height:10px"></div>
+<div class="lane simple-hide" id="lane-agentic">
+  <div class="lane-header" style="color:var(--teal)">
+    <span>Agentic Features <span class="new-badge" style="margin-left:6px">Phase 6</span></span>
+  </div>
+  <div class="lane-content" style="align-items:flex-start">
+
+    <!-- ── Gating & Security ── -->
+    <div style="display:flex;flex-direction:column;gap:8px;min-width:240px">
+      <div style="font-family:'Syne',sans-serif;font-size:9px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);margin-bottom:2px">Gating &amp; Security</div>
+
+      <div class="node c-gold" style="min-width:230px">
+        <div class="node-tag" style="background:rgba(201,162,39,.07);color:var(--gold)">approval.py · SSE: approval_request</div>
+        <div class="node-title">In-chat Approval Gate</div>
+        <div class="node-detail">
+          <span>Pauses orchestrator before consequential tools</span>
+          [Allow] [Deny] · always-allow trust rules<br>
+          300s auto-deny · Future-based async gate<br>
+          <span style="color:var(--teal)">Prepare/Execute preview: diff / resolved command on the card</span><br>
+          Gates: send_email · run_shell · write_file · db_execute · …
+        </div>
+      </div>
+
+      <div class="node" style="border-color:rgba(0,212,255,.3);min-width:230px">
+        <div class="node-tag" style="background:rgba(0,212,255,.06);color:var(--cyan)">approval.py · config intent_judge <span class="new-badge">new</span></div>
+        <div class="node-title" style="color:var(--cyan)">Intent Review (2-tier)</div>
+        <div class="node-detail">
+          <span>Two-floor precedence: deny &gt; block &gt; ask/gate/consequential &gt; allow</span>
+          Heuristic pre-tier: &lt;1ms audit rules · bash-segment split<br>
+          LLM judge: off-intent / injected-steering (additive-only)<br>
+          <span style="color:var(--muted)">Catastrophic block fires even for trusted calls</span>
+        </div>
+      </div>
+
+      <div class="node" style="border-color:rgba(255,69,96,.25);min-width:230px">
+        <div class="node-tag" style="background:rgba(255,69,96,.06);color:var(--red)">output_guard.py · config output_guard <span class="new-badge">new</span></div>
+        <div class="node-title" style="color:var(--red)">Output Guard</div>
+        <div class="node-detail">
+          <span>Scans tool RESULTS before they reach model or UI</span>
+          Redacts secrets [REDACTED:type] · annotates injection<br>
+          Sanitizer not a gate — graceful degrade on error<br>
+          <span style="color:var(--muted)">Closes the input-only gap of the intent judge</span>
+        </div>
+      </div>
+
+      <div class="node" style="border-color:rgba(201,162,39,.22);min-width:230px">
+        <div class="node-tag" style="background:rgba(201,162,39,.06);color:var(--gold)">policy.py · /api/policies <span class="new-badge">new</span></div>
+        <div class="node-title">Tool Policies</div>
+        <div class="node-detail">
+          <span>Approval-time layer (distinct from RBAC capability)</span>
+          Glob + arg-regex · priority first-match · allow/deny/ask<br>
+          memory/tool_policies.json · admin-editable<br>
+          <span style="color:var(--muted)">allow ≠ bypass of the catastrophic block (Floor 1)</span>
+        </div>
+      </div>
+
+      <div class="node" style="border-color:rgba(255,69,96,.25);min-width:230px">
+        <div class="node-tag" style="background:rgba(255,69,96,.06);color:var(--red)">audit.db · route="approval" <span class="new-badge">new</span></div>
+        <div class="node-title" style="color:var(--red)">Approval Audit Trail</div>
+        <div class="node-detail">
+          <span>Every decision persisted: allow · deny · timeout · cancelled</span>
+          Tool + summary + always-allow flag · user · timestamp<br>
+          GET /api/approval/history · non-admins scoped to self<br>
+          AUDIT button in chat header → paginated modal
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Projects & Context ── -->
+    <div style="display:flex;flex-direction:column;gap:8px;min-width:240px">
+      <div style="font-family:'Syne',sans-serif;font-size:9px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--teal);margin-bottom:2px">Projects &amp; Context</div>
+
+      <div class="node c-teal" style="min-width:230px">
+        <div class="node-tag" style="background:rgba(20,217,140,.06);color:var(--teal)">projects.py · memory/projects.db</div>
+        <div class="node-title" style="color:var(--teal)">Persistent Projects</div>
+        <div class="node-detail">
+          <span>Named work context surviving across sessions</span>
+          goal · linked files · contacts · action log (100)<br>
+          status: active / paused / done<br>
+          tools: project_create / list / get / log / update<br>
+          API: /api/projects CRUD
+        </div>
+      </div>
+
+      <div class="node" style="border-color:rgba(20,217,140,.45);min-width:230px">
+        <div class="node-tag" style="background:rgba(20,217,140,.08);color:var(--teal)">project_members table <span class="new-badge">new</span></div>
+        <div class="node-title" style="color:var(--teal)">Multi-user Shared Projects</div>
+        <div class="node-detail">
+          <span>Roles: owner · editor · viewer per project</span>
+          can_access() centralized gate · backfill migration<br>
+          Admin override for read/edit (not delete/share)<br>
+          tools: project_share · project_members<br>
+          API: /api/projects/{id}/members GET·POST·DELETE
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Data Access ── -->
+    <div style="display:flex;flex-direction:column;gap:8px;min-width:240px">
+      <div style="font-family:'Syne',sans-serif;font-size:9px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);margin-bottom:2px">Data Access</div>
+
+      <div class="node c-gold" style="min-width:230px">
+        <div class="node-tag" style="background:rgba(201,162,39,.07);color:var(--gold)">database_tool.py · pyodbc · SQL Server</div>
+        <div class="node-title">NL → SQL Query</div>
+        <div class="node-detail">
+          <span>Model: db_schema → inspect → write SQL → execute</span>
+          db_query: SELECT only · no approval gate<br>
+          db_execute: mutating · approval-gated<br>
+          config: db_connection_string override
+        </div>
+      </div>
+
+      <div class="node c-cyan" style="min-width:230px">
+        <div class="node-tag" style="background:rgba(0,212,255,.06);color:var(--cyan)">calendar_client.py · caldav 3.2 · vobject</div>
+        <div class="node-title">CalDAV Calendar</div>
+        <div class="node-detail">
+          <span>Google · Outlook · iCloud · Nextcloud · any CalDAV</span>
+          list events · find free slots<br>
+          create (approval-gated) · delete (approval-gated)<br>
+          API: /api/calendar/status · events
+        </div>
+      </div>
+
+      <div class="node c-purple" style="min-width:230px">
+        <div class="node-tag" style="background:rgba(155,89,182,.06);color:var(--purple)">task_queue.py · memory/bg_tasks.db</div>
+        <div class="node-title">Background Task Queue</div>
+        <div class="node-detail">
+          <span>Session-independent async tasks with SSE progress</span>
+          cancel signal raises CancelledError in set_progress<br>
+          push notify on completion<br>
+          tools: tasks_list · task_status
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Intelligence & CRM ── -->
+    <div style="display:flex;flex-direction:column;gap:8px;min-width:240px">
+      <div style="font-family:'Syne',sans-serif;font-size:9px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--cyan);margin-bottom:2px">Intelligence &amp; CRM</div>
+
+      <div class="node c-cyan" style="min-width:230px">
+        <div class="node-tag" style="background:rgba(0,212,255,.06);color:var(--cyan)">contacts.py · memory/contacts.db</div>
+        <div class="node-title">Contact Memory · CRM-lite</div>
+        <div class="node-detail">
+          <span>name · company · email · phone · tags</span>
+          timestamped notes · follow-up tracking (7–30d)<br>
+          full-text search across all fields<br>
+          tools: contacts_search / add / update / note
+        </div>
+      </div>
+
+      <div class="node c-green" style="min-width:230px">
+        <div class="node-tag" style="background:rgba(0,227,150,.06);color:var(--green)">monitor.py · memory/monitor.db</div>
+        <div class="node-title">Web / News Monitor</div>
+        <div class="node-detail">
+          <span>RSS feeds + DuckDuckGo keyword topics</span>
+          URL dedup · asyncio background service<br>
+          Telegram push on keyword match<br>
+          tools: monitor_add_topic / feed / list / alerts
+        </div>
+      </div>
+
+      <div class="node" style="border-color:rgba(230,126,34,.28);min-width:230px">
+        <div class="node-tag" style="background:rgba(230,126,34,.06);color:var(--orange)">briefing.py · cron: briefing_time config</div>
+        <div class="node-title" style="color:var(--orange)">Daily Briefing</div>
+        <div class="node-detail">
+          <span>Morning summary fired at configured HH:MM</span>
+          email unread · contacts needing follow-up<br>
+          pending monitor alerts · KB ingestion count<br>
+          pushes to Telegram / WhatsApp
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Memory Intelligence ── -->
+    <div style="display:flex;flex-direction:column;gap:8px;min-width:240px">
+      <div style="font-family:'Syne',sans-serif;font-size:9px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--cyan);margin-bottom:2px">Memory Intelligence <span class="new-badge" style="margin-left:4px">new</span></div>
+
+      <div class="node c-cyan" style="min-width:230px">
+        <div class="node-tag" style="background:rgba(0,212,255,.06);color:var(--cyan)">consolidator.py · weekly · 5-stage pipeline</div>
+        <div class="node-title" style="color:var(--cyan)">Adaptive Consolidation <span class="new-badge">new</span></div>
+        <div class="node-detail">
+          <span>extract → supersede → dedup → conv-dedup → age-out</span>
+          qwen2.5:7b extracts [FACT]/[PREFERENCE] from conversations<br>
+          <span style="color:var(--teal)">LLM supersession: contradicting facts about the same attribute (works-at X→Y) deprecated — embedding sim NOT used (ranks contradictions backwards)</span><br>
+          Runs per user · asyncio.Lock · POST /api/memory/consolidate
+        </div>
+      </div>
+
+      <div class="node" style="border-color:rgba(20,217,140,.4);min-width:230px">
+        <div class="node-tag" style="background:rgba(20,217,140,.06);color:var(--teal)">store.deprecate_many() · lifecycle</div>
+        <div class="node-title" style="color:var(--teal)">Soft-Deprecation <span class="new-badge">new</span></div>
+        <div class="node-detail">
+          <span>Reversible removal — nothing is ever destroyed</span>
+          metadata.lifecycle="deprecated" + reason + superseded_by<br>
+          Excluded from recall — search(include_deprecated=False) default<br>
+          dedup fact/pref (≥0.92) · conv-dedup (≥0.95) · age-out (N days)<br>
+          <span style="color:var(--teal)">lifecycle_counts() active/deprecated · distinct from collective status</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══ COMPLIANCE & TRANSPARENCY (EU AI Act) ══ -->
+<div class="section-gap" style="height:10px"></div>
+<div class="lane" id="lane-compliance">
+  <div class="lane-header" style="color:var(--gold)">
+    <span>Compliance &amp; Transparency — EU AI Act</span>
+    <span style="font-size:9px;color:var(--muted);font-weight:400;letter-spacing:.04em">Art 50 transparency · applies 2 Aug 2026</span>
+    <span class="new-badge">Phase 7</span>
+  </div>
+  <div class="lane-content" style="align-items:flex-start">
+
+    <div class="node c-gold" style="min-width:250px">
+      <div class="node-tag" style="background:rgba(201,162,39,.07);color:var(--gold)">Art 50(1) · main.py · ui.html · chat.html</div>
+      <div class="node-title">AI-Interaction Disclosure</div>
+      <div class="node-detail">
+        <span>Users are informed they interact with an AI system</span>
+        SUNI_SYSTEM: never claim to be human — identify as "AI assistant"<br>
+        Persistent UI notice below composer (orb + chat)<br>
+        <span style="color:var(--teal)">i18n key common.ai_disclosure · en + pt-PT</span>
+      </div>
+    </div>
+
+    <div class="node c-gold" style="min-width:250px">
+      <div class="node-tag" style="background:rgba(201,162,39,.07);color:var(--gold)">Art 50(2) · pdf_tool.py · email_notify.py</div>
+      <div class="node-title">AI-Generated Content Marking</div>
+      <div class="node-detail">
+        <span>Synthetic output marked machine-readable + visible</span>
+        PDF: /Info Creator·Subject·Keywords + footer "AI-generated by SUNI"<br>
+        Email: Auto-Submitted (RFC 3834) + X-Generated-By headers<br>
+        <span style="color:var(--teal)">+ visible body disclosure (plain + HTML), both send paths</span>
+      </div>
+    </div>
+
+    <div class="node" style="border-color:rgba(0,227,150,.25);min-width:250px">
+      <div class="node-tag" style="background:rgba(0,227,150,.06);color:var(--green)">risk posture</div>
+      <div class="node-title" style="color:var(--green)">Risk Classification</div>
+      <div class="node-detail">
+        <span>Limited-risk assistant (general productivity)</span>
+        GPAI obligations sit with model maker — SUNI runs stock qwen2.5 (no fine-tune)<br>
+        Provider + deployer · flips to high-risk only for Annex III use (HR/credit)<br>
+        <span style="color:var(--muted)">Not legal advice — informs a compliance review</span>
+      </div>
+    </div>
+
+    <div class="node" style="border-color:rgba(255,69,96,.22);min-width:250px">
+      <div class="node-tag" style="background:rgba(255,69,96,.06);color:var(--red)">existing controls → AI Act articles</div>
+      <div class="node-title" style="color:var(--red)">Mapped Safeguards</div>
+      <div class="node-detail">
+        <span>Foundations already aligned to high-risk themes</span>
+        audit.db append-only → Art 12 record-keeping<br>
+        approval gate (Allow/Deny) → Art 14 human oversight<br>
+        RBAC · shell denylist · UNTRUSTED markers → Art 15 robustness<br>
+        <span style="color:var(--teal)">Note: GDPR erasure needs hard-delete, not deprecate</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══ LEGEND ══ -->
+<div class="legend">
+  <div class="legend-title">Legend</div>
+  <div class="legend-item"><div class="leg-dash" style="border-color:var(--gold)"></div>Main request flow</div>
+  <div class="legend-item"><div class="leg-dash" style="border-color:var(--cyan)"></div>Memory retrieval</div>
+  <div class="legend-item"><div class="leg-dash" style="border-color:var(--teal)"></div>Compression / skills path</div>
+  <div class="legend-item"><div class="leg-dash" style="border-color:var(--orange)"></div>External I/O</div>
+  <div class="legend-item"><div class="leg-dash" style="border-color:var(--purple)"></div>T5 Claude Code direct route</div>
+  <div class="legend-item"><span class="bypass-badge">bypasses LLM</span> Direct execution</div>
+  <div class="legend-item"><span class="tool-pill" style="color:var(--red)">⛔</span> Denylist-guarded</div>
+  <div class="legend-item"><span class="new-badge">new</span> Phase 5: T1–T5 tiers · tests · messaging</div>
+  <div class="legend-item"><span class="new-badge" style="background:rgba(20,217,140,.15);color:var(--teal)">new</span> Phase 6: approval gate · CRM · monitor · briefing · tasks · projects · NL→SQL · calendar</div>
+  <div class="legend-item"><span class="new-badge" style="background:rgba(255,69,96,.12);color:var(--red)">new</span> Phase 6.1: shared projects (owner/editor/viewer) · approval audit trail</div>
+  <div class="legend-item"><span class="new-badge" style="background:rgba(0,212,255,.12);color:var(--cyan)">new</span> Phase 6.2: memory consolidation · daily LLM extraction · cosine dedup</div>
+  <div class="legend-item"><span class="new-badge" style="background:rgba(20,217,140,.12);color:var(--teal)">new</span> Phase 6.3: nomic-embed-text 768-dim · two-embedder split · 37 589 entries migrated · OllamaAgent keep_alive -1 · num_batch 1024 · _to_ollama system-msg merge</div>
+  <div class="legend-item"><span class="new-badge" style="background:rgba(155,89,182,.12);color:var(--purple)">new</span> Phase 6.4: web_url route (web_fetch hint) · memory SYSTEM dedup · _sanitize_response (DOC-EXCERPT) · file-serve JWT token auth · _inject_dl_token · configurable output directory (global + per-user)</div>
+  <div class="legend-item"><span class="new-badge" style="background:rgba(0,212,255,.12);color:var(--cyan)">new</span> Phase 7: adaptive memory — LLM supersession · soft-deprecation (lifecycle) · weekly consolidation · conversation dedup · age-out</div>
+  <div class="legend-item"><span class="new-badge" style="background:rgba(201,162,39,.14);color:var(--gold)">new</span> Phase 7: EU AI Act Art 50 — AI-interaction disclosure · AI-generated content marking (PDF/email) · risk classification · safeguard mapping</div>
+</div>
+
+<script>
+'use strict';
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SVG connection helpers
+───────────────────────────────────────────────────────────────────────────── */
+function mid(el) {
+  if (!el) return null;
+  if (el.offsetParent === null && el !== document.body) return null; // hidden (display:none)
+  const r  = el.getBoundingClientRect();
+  if (r.width === 0 && r.height === 0) return null;
+  const sr = document.documentElement.getBoundingClientRect();
+  return {
+    x:     r.left - sr.left + r.width  / 2,
+    y:     r.top  - sr.top  + r.height / 2,
+    top:   r.top  - sr.top,
+    bot:   r.top  - sr.top  + r.height,
+    left:  r.left - sr.left,
+    right: r.left - sr.left + r.width,
+    w: r.width, h: r.height,
+  };
+}
+
+let _pathIndex = 0;
+
+function makePath(svg, d, color, w, dashLen, gapLen, animDur, animId) {
+  const id  = animId || ('flow-' + (_pathIndex++));
+  // Animated defs (flowing dash)
+  const dur = animDur || 2;
+  const tot = (dashLen || 6) + (gapLen || 4);
+  const styleEl = document.createElement('style');
+  styleEl.textContent = `
+    @keyframes ${id} {
+      from { stroke-dashoffset: ${tot}; }
+      to   { stroke-dashoffset: 0; }
+    }
+    .${id} {
+      stroke-dasharray: ${dashLen || 6} ${gapLen || 4};
+      animation: ${id} ${dur}s linear infinite;
+    }`;
+  document.head.appendChild(styleEl);
+
+  const el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  el.setAttribute('d', d);
+  el.setAttribute('fill', 'none');
+  el.setAttribute('stroke', color);
+  el.setAttribute('stroke-width', w || 1.5);
+  el.setAttribute('class', id);
+  svg.appendChild(el);
+  return el;
+}
+
+function staticPath(svg, d, color, w, dash) {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  el.setAttribute('d', d);
+  el.setAttribute('fill', 'none');
+  el.setAttribute('stroke', color);
+  el.setAttribute('stroke-width', w || 1.5);
+  if (dash) el.setAttribute('stroke-dasharray', dash);
+  svg.appendChild(el);
+  return el;
+}
+
+function arrow(svg, x, y, dir, color) {
+  const s = 5;
+  const pts = dir === 'down'
+    ? `${x-s},${y} ${x+s},${y} ${x},${y+s*1.5}`
+    : dir === 'right'
+    ? `${x},${y-s} ${x},${y+s} ${x+s*1.5},${y}`
+    : `${x},${y-s} ${x},${y+s} ${x-s*1.5},${y}`;
+  const el = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+  el.setAttribute('points', pts);
+  el.setAttribute('fill', color || '#c9a227');
+  el.setAttribute('opacity', '.75');
+  svg.appendChild(el);
+}
+
+function glow(svg, el_mid, color, r) {
+  const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  c.setAttribute('cx', el_mid.x);
+  c.setAttribute('cy', el_mid.y);
+  c.setAttribute('r',  r || 6);
+  c.setAttribute('fill', color);
+  c.setAttribute('opacity', '.18');
+  svg.appendChild(c);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Main draw function — rebuilds all SVG connections after layout stabilises
+───────────────────────────────────────────────────────────────────────────── */
+function drawConnections() {
+  const svg = document.getElementById('svg-overlay');
+  svg.innerHTML = '';
+  // Clean up old animation styles
+  document.querySelectorAll('style[data-flow]').forEach(s => s.remove());
+
+  const H = Math.max(document.body.scrollHeight, document.body.offsetHeight);
+  svg.style.height = H + 'px';
+
+  const $ = id => mid(document.getElementById(id));
+
+  /* ── 1. Client interfaces → FastAPI (blue, flowing) ── */
+  const api = $('n-fastapi');
+  if (api) {
+    ['n-webui', 'n-chat', 'n-admin'].forEach((id, i) => {
+      const c = $(id);
+      if (!c) return;
+      const mx = api.left + api.w * (0.25 + i * 0.25);
+      const d  = `M ${c.x} ${c.bot} C ${c.x} ${c.bot+35} ${mx} ${api.top-35} ${mx} ${api.top}`;
+      makePath(svg, d, 'rgba(74,144,217,0.45)', 1.5, 8, 5, 2.2 + i*0.3);
+      arrow(svg, mx, api.top, 'down', '#4a90d9');
+    });
+  }
+
+  /* ── 2. FastAPI → Orchestrator step 01 (gold, flowing) ── */
+  const ps1 = $('ps-lang');
+  if (api && ps1) {
+    const d = `M ${api.x} ${api.bot} C ${api.x} ${api.bot+30} ${ps1.x} ${ps1.top-30} ${ps1.x} ${ps1.top}`;
+    makePath(svg, d, 'rgba(201,162,39,0.65)', 2, 10, 6, 1.8);
+    arrow(svg, ps1.x, ps1.top, 'down', '#c9a227');
+  }
+
+  /* ── 3. Pipeline compress step → compression lane (teal flowing) ── */
+  const psCompress = $('ps-compress');
+  const laneCompress = $('lane-compress');
+  if (psCompress && laneCompress) {
+    const tx = laneCompress.left + 80;
+    const d  = `M ${psCompress.x} ${psCompress.bot} C ${psCompress.x} ${psCompress.bot+40} ${tx} ${laneCompress.top-20} ${tx} ${laneCompress.top}`;
+    makePath(svg, d, 'rgba(20,217,140,0.4)', 1.5, 6, 4, 1.5);
+    arrow(svg, tx, laneCompress.top, 'down', '#14d98c');
+  }
+
+  /* ── 4. Memory step ← Memory system (cyan, flowing) ── */
+  const ps3 = $('ps-mem');
+  const nm  = $('n-memory');
+  if (ps3 && nm) {
+    const d = `M ${ps3.right} ${ps3.y} C ${ps3.right+55} ${ps3.y} ${nm.left-55} ${nm.top+50} ${nm.left} ${nm.top+50}`;
+    makePath(svg, d, 'rgba(0,212,255,0.45)', 1.5, 7, 5, 2.0);
+    arrow(svg, nm.left, nm.top+50, 'right', '#00d4ff');
+  }
+
+  /* ── 5. Agent loop → qwen (green, fast flow) ── */
+  const ps8 = $('ps-loop');
+  const qwen = $('n-qwen');
+  if (ps8 && qwen) {
+    const d = `M ${ps8.x} ${ps8.bot} C ${ps8.x} ${ps8.bot+30} ${qwen.x} ${qwen.top-30} ${qwen.x} ${qwen.top}`;
+    makePath(svg, d, 'rgba(0,227,150,0.5)', 1.8, 9, 5, 1.4);
+    arrow(svg, qwen.x, qwen.top, 'down', '#00e396');
+  }
+
+  /* ── 6. Agent loop → tool registry (gold, medium) ── */
+  const ntools = $('n-tools');
+  if (ps8 && ntools) {
+    const tx = ntools.left + ntools.w * 0.4;
+    const d  = `M ${ps8.x+18} ${ps8.bot} C ${ps8.x+18} ${ps8.bot+25} ${tx} ${ntools.top-25} ${tx} ${ntools.top}`;
+    makePath(svg, d, 'rgba(201,162,39,0.3)', 1.5, 6, 6, 2.5);
+  }
+
+  /* ── 7. Direct-path highlight box ── */
+  const psd = $('ps-direct');
+  if (psd) {
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('x', psd.left - 3);
+    rect.setAttribute('y', psd.top  - 3);
+    rect.setAttribute('width',  psd.w + 6);
+    rect.setAttribute('height', psd.h + 6);
+    rect.setAttribute('rx', '8');
+    rect.setAttribute('fill', 'none');
+    rect.setAttribute('stroke', 'rgba(255,69,96,0.28)');
+    rect.setAttribute('stroke-width', '1.5');
+    rect.setAttribute('stroke-dasharray', '5 4');
+    svg.appendChild(rect);
+  }
+
+  /* ── 8. Document scanner → FAISS (orange, dashed) ── */
+  const scanner = $('n-scanner');
+  const faiss   = $('n-faiss');
+  if (scanner && faiss) {
+    // Scanner is below; FAISS is above. Draw a vertical+horizontal path going UP and LEFT.
+    const sx = scanner.right + 20;
+    const fy = faiss.y;
+    const d  = `M ${scanner.right} ${scanner.y} C ${sx+30} ${scanner.y} ${faiss.right+30} ${fy} ${faiss.right} ${fy}`;
+    makePath(svg, d, 'rgba(230,126,34,0.4)', 1.5, 5, 4, 3.0);
+    arrow(svg, faiss.right, fy, 'left', '#e67e22');
+  }
+
+  /* ── 9. Network share → Document scanner (orange, static dashed) ── */
+  const share = $('n-share');
+  if (share && scanner) {
+    // Both external (share) and scanner are in different lanes, but they relate vertically.
+    // Draw a simple downward-pointing curved connection.
+    const d = `M ${share.x} ${share.top} C ${share.x} ${share.top-30} ${scanner.x} ${scanner.bot+30} ${scanner.x} ${scanner.bot}`;
+    staticPath(svg, d, 'rgba(230,126,34,0.35)', 1.5, '6 4');
+    arrow(svg, scanner.x, scanner.bot, 'down', '#e67e22');
+  }
+
+  /* ── 10. Agent loop → qwen (also glow dot on qwen) ── */
+  if (qwen) glow(svg, qwen, '#00e396', 8);
+  if (api)  glow(svg, api,  '#c9a227', 6);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Node entrance stagger animation
+───────────────────────────────────────────────────────────────────────────── */
+function animateEntrance() {
+  const items = document.querySelectorAll(
+    '.node, .pipeline-step, .svc, .ext-node, .comp-card, .mem-tier, .tool-group'
+  );
+  items.forEach((el, i) => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(12px)';
+    setTimeout(() => {
+      el.style.transition = 'opacity .4s ease, transform .4s ease';
+      el.style.opacity = '1';
+      el.style.transform = '';
+    }, 60 + i * 18);
+  });
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Pipeline cascade highlight on load
+───────────────────────────────────────────────────────────────────────────── */
+function pipelineCascade() {
+  const steps = document.querySelectorAll('.pipeline-step');
+  steps.forEach((el, i) => {
+    setTimeout(() => {
+      el.style.transition = 'background .25s ease, border-color .25s ease';
+      el.style.background = 'rgba(201,162,39,.07)';
+      el.style.borderColor = 'rgba(201,162,39,.4)';
+      setTimeout(() => {
+        el.style.background = '';
+        el.style.borderColor = '';
+      }, 400);
+    }, 800 + i * 120);
+  });
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   View toggle — simplified (high-level) ⇄ detailed
+───────────────────────────────────────────────────────────────────────────── */
+function _syncToggleLabel(on) {
+  const btn = document.getElementById('view-toggle');
+  if (btn) btn.textContent = on ? '▦ Detailed view' : '◱ Simplified view';
+}
+function toggleView() {
+  const on = document.body.classList.toggle('simple');
+  _syncToggleLabel(on);
+  try { localStorage.setItem('suni_arch_simple', on ? '1' : '0'); } catch (e) {}
+  // Layout changed — rebuild connectors (twice, for late reflow)
+  setTimeout(drawConnections, 60);
+  setTimeout(drawConnections, 260);
+}
+// Restore persisted preference before first paint of connectors
+(function restoreView() {
+  let on = false;
+  try { on = localStorage.getItem('suni_arch_simple') === '1'; } catch (e) {}
+  if (on) document.body.classList.add('simple');
+  _syncToggleLabel(on);
+})();
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Boot
+───────────────────────────────────────────────────────────────────────────── */
+animateEntrance();
+pipelineCascade();
+
+let _rt;
+window.addEventListener('resize', () => {
+  clearTimeout(_rt);
+  _rt = setTimeout(drawConnections, 160);
+});
+// Wait for fonts + layout to settle, then draw
+setTimeout(drawConnections, 500);
+setTimeout(drawConnections, 1200); // second pass for late-render elements
+</script>
+</body>
+</html>

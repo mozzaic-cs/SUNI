@@ -1,0 +1,3114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SUNI — Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:ital,wght@0,300;0,400;1,300&display=swap">
+<script src="/i18n.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg:       #080808;
+  --bg2:      #0e0e0e;
+  --bg3:      #141414;
+  --gold:     #c9a227;
+  --gold-b:   #e8c547;
+  --cyan:     #00d4ff;
+  --cyan-d:   #008baa;
+  --red:      #ff4560;
+  --green:    #00e396;
+  --text:     #d8d4c8;
+  --label:    rgba(255,255,255,.72);
+  --muted:    #555566;
+  --border:   rgba(0,212,255,.07);
+  --border-g: rgba(201,162,39,.12);
+  --card-bg:  rgba(255,255,255,.04);
+  --radius:   6px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM Mono',monospace;font-size:13px;line-height:1.6;overflow-x:hidden}
+
+/* ── BACKGROUND ── */
+body::before{
+  content:'';position:fixed;inset:0;
+  background:
+    radial-gradient(ellipse 60% 40% at 20% 10%,rgba(201,162,39,.04) 0%,transparent 70%),
+    radial-gradient(ellipse 50% 60% at 80% 90%,rgba(0,212,255,.05) 0%,transparent 70%);
+  pointer-events:none;z-index:0;
+}
+
+/* ── TOP HEADER BAR ── */
+header{
+  position:fixed;top:0;left:0;right:0;z-index:110;height:52px;
+  background:rgba(7,7,26,.92);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--border);
+  padding:0 20px;
+  display:flex;align-items:center;gap:16px;
+}
+/* ── collapse toggle (hamburger) ── */
+.nav-toggle{
+  flex:0 0 auto;width:30px;height:30px;border-radius:5px;cursor:pointer;
+  background:none;border:1px solid var(--border);color:var(--muted);
+  font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center;
+  transition:color .2s,border-color .2s;
+}
+.nav-toggle:hover{color:var(--gold);border-color:var(--gold)}
+.logo{
+  font-family:'Syne',sans-serif;font-weight:800;
+  font-size:16px;letter-spacing:.35em;color:var(--gold);
+  text-transform:uppercase;white-space:nowrap;flex:0 0 auto;
+}
+.logo span{color:var(--muted);font-weight:400;font-size:10px;letter-spacing:.2em;margin-left:10px;vertical-align:middle}
+.header-status{display:flex;flex-direction:row;align-items:center;gap:10px;margin-left:auto}
+.hs-line{display:flex;align-items:center;gap:8px}
+
+/* ── LEFT SIDEBAR (nav) ── */
+.sidebar{
+  position:fixed;top:52px;left:0;bottom:0;z-index:100;width:200px;
+  background:rgba(7,7,26,.72);
+  border-right:1px solid var(--border);
+  padding:14px 0;overflow-y:auto;overflow-x:hidden;
+  transition:transform .18s ease;
+}
+.sidebar.collapsed{transform:translateX(-100%)}
+nav{display:flex;flex-direction:column;gap:2px}
+.tab{
+  padding:9px 20px;font-family:'DM Mono',monospace;font-size:11px;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--muted);
+  background:transparent;border:none;cursor:pointer;
+  border-left:2px solid transparent;transition:color .2s,border-color .2s,background .2s;
+  text-align:left;width:100%;white-space:nowrap;
+}
+.tab:hover{color:var(--text);background:rgba(255,255,255,.03)}
+.tab.active{color:var(--gold);border-left-color:var(--gold);background:rgba(201,162,39,.06)}
+.dot{
+  width:7px;height:7px;border-radius:50%;background:var(--green);
+  box-shadow:0 0 8px var(--green);
+  animation:pulse-dot 2.4s ease-in-out infinite;
+}
+.dot.offline{background:var(--red);box-shadow:0 0 8px var(--red);animation:none}
+@keyframes pulse-dot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(.8)}}
+.status-txt{font-size:10px;letter-spacing:.1em;color:var(--label);text-transform:uppercase}
+.uptime-txt{font-size:10px;color:var(--label);font-style:italic}
+
+/* ── LAYOUT ── */
+main{position:relative;z-index:1;padding:24px 32px;max-width:100%;margin-top:52px;margin-left:200px;transition:margin-left .18s ease}
+main.nav-collapsed{margin-left:0}
+.panel{display:none}
+.panel.active{display:block}
+
+/* ── CARDS ── */
+.card{
+  background:var(--card-bg);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:20px 22px;
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+}
+.card-title{
+  font-family:'Syne',sans-serif;font-size:9px;font-weight:600;
+  letter-spacing:.25em;text-transform:uppercase;color:var(--label);
+  margin-bottom:14px;display:flex;align-items:center;gap:8px;
+}
+.card-title::after{content:'';flex:1;height:1px;background:var(--border)}
+
+/* ── DASHBOARD GRID ── */
+.dash-top{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px}
+.dash-mid{display:grid;grid-template-columns:1fr 420px;gap:16px;margin-bottom:16px}
+.dash-bot{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(min-width:1600px){
+  .dash-mid{grid-template-columns:1fr 520px}
+}
+@media(min-width:2000px){
+  .dash-top{grid-template-columns:repeat(4,1fr)}
+  .dash-mid{grid-template-columns:1fr 620px}
+}
+
+/* ── METRIC BLOCKS ── */
+.metric{display:flex;flex-direction:column;gap:4px}
+.metric-val{
+  font-family:'Syne',sans-serif;font-size:26px;font-weight:700;
+  color:var(--gold);line-height:1;letter-spacing:-.01em;
+}
+.metric-val.cyan{color:var(--cyan)}
+.metric-val.green{color:var(--green)}
+.metric-val.red{color:var(--red)}
+.metric-sub{font-size:10px;color:var(--label);letter-spacing:.05em}
+
+/* ── GPU BAR ── */
+.gpu-bar-wrap{margin-top:10px}
+.gpu-label{display:flex;justify-content:space-between;margin-bottom:4px;font-size:10px;color:var(--label)}
+.bar-track{height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden}
+.bar-fill{height:100%;border-radius:2px;transition:width .6s ease;background:var(--cyan)}
+.bar-fill.warn{background:var(--gold)}
+.bar-fill.crit{background:var(--red)}
+.gpu-name{font-size:10px;color:var(--label);margin-top:6px;letter-spacing:.05em}
+
+/* ── ACTIVITY LOG ── */
+.activity-list{display:flex;flex-direction:column;gap:8px;max-height:340px;overflow-y:auto}
+.activity-list::-webkit-scrollbar{width:2px}
+.activity-list::-webkit-scrollbar-thumb{background:rgba(201,162,39,.3);border-radius:2px}
+.act-row{
+  display:grid;grid-template-columns:54px 1fr auto;
+  gap:10px;align-items:start;
+  padding:8px 10px;border-radius:4px;
+  background:rgba(255,255,255,.02);border:1px solid var(--border);
+  transition:background .15s;
+}
+.act-row:hover{background:rgba(0,212,255,.03)}
+.act-time{font-size:10px;color:var(--label);white-space:nowrap;padding-top:1px}
+.act-query{font-size:12px;color:var(--text);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.act-meta{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+.act-dur{font-size:10px;color:var(--gold);white-space:nowrap}
+.act-route{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--label)}
+.act-tools{display:flex;gap:3px;flex-wrap:wrap;justify-content:flex-end;margin-top:3px}
+.tool-chip{
+  font-size:8.5px;letter-spacing:.06em;padding:1px 5px;border-radius:2px;
+  background:rgba(0,212,255,.08);border:1px solid rgba(0,212,255,.15);color:var(--cyan);
+}
+.tool-chip.recent{background:rgba(201,162,39,.1);border-color:rgba(201,162,39,.25);color:var(--gold)}
+.act-empty{color:var(--muted);font-size:12px;font-style:italic;padding:16px 0;text-align:center}
+
+/* ── TOOL LIST ── */
+.tool-grid{display:flex;flex-direction:column;gap:4px;max-height:340px;overflow-y:auto}
+.tool-grid::-webkit-scrollbar{width:2px}
+.tool-grid::-webkit-scrollbar-thumb{background:rgba(201,162,39,.3);border-radius:2px}
+.tool-item{
+  display:flex;align-items:center;gap:8px;
+  padding:5px 8px;border-radius:3px;
+  font-size:11px;color:var(--text);
+  border-left:2px solid transparent;
+  transition:background .15s,border-color .15s;
+}
+.tool-item:hover{background:rgba(255,255,255,.02)}
+.tool-item.mcp{border-left-color:var(--cyan-d);color:rgba(0,212,255,.75)}
+.tool-item.active-tool{border-left-color:var(--gold);color:var(--gold-b);background:rgba(201,162,39,.05)}
+.tool-dot{width:5px;height:5px;border-radius:50%;background:var(--muted);flex-shrink:0}
+.tool-item.mcp .tool-dot{background:var(--cyan-d)}
+.tool-item.active-tool .tool-dot{background:var(--gold);box-shadow:0 0 6px var(--gold)}
+
+/* ── MCP / INBOX ── */
+.mcp-row{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:8px 10px;border-radius:4px;
+  border:1px solid var(--border);background:rgba(255,255,255,.02);
+  margin-bottom:6px;
+}
+.mcp-name{font-size:12px;color:var(--text)}
+.badge{
+  font-size:9px;letter-spacing:.1em;padding:2px 7px;border-radius:2px;
+  text-transform:uppercase;
+}
+.badge.ok{background:rgba(0,227,150,.1);color:var(--green);border:1px solid rgba(0,227,150,.2)}
+.badge.err{background:rgba(255,69,96,.1);color:var(--red);border:1px solid rgba(255,69,96,.2)}
+.badge.info{background:rgba(0,212,255,.1);color:var(--cyan);border:1px solid rgba(0,212,255,.2)}
+
+/* ── MODEL CARD ── */
+.model-name{font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:var(--cyan);margin-bottom:6px}
+.kv-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;margin-top:10px}
+.kv{display:flex;flex-direction:column;gap:2px}
+.kv-k{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--label)}
+.kv-v{font-size:12px;color:var(--text)}
+
+/* ── CONFIG ── */
+.cfg-sections{display:grid;grid-template-columns:1fr 1fr;gap:28px}
+/* Breakpoints are viewport-based but the 200px sidebar eats into content
+   width, so they're shifted +200px to preserve the original content thresholds. */
+@media(min-width:1600px){.cfg-sections{grid-template-columns:1fr 1fr;gap:40px}}
+@media(max-width:1100px){.cfg-sections{grid-template-columns:1fr}}
+.cfg-section{display:flex;flex-direction:column;gap:14px}
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:var(--label)}
+.field input,.field select,.field textarea{
+  background:rgba(255,255,255,.04);
+  border:1px solid var(--border);
+  color:var(--text);
+  padding:8px 11px;border-radius:4px;
+  font-family:'DM Mono',monospace;font-size:12px;
+  outline:none;transition:border-color .2s;width:100%;
+}
+/* Checkboxes/radios must NOT inherit the full-width text-input styling above,
+   or as flex items in their label they stretch to fill the row and shove the
+   text far to the right. Keep them small, left-aligned, and non-shrinking. */
+.field input[type=checkbox],.field input[type=radio]{
+  width:15px;height:15px;flex:0 0 auto;padding:0;margin:0;
+  background:none;border:0;border-radius:0;accent-color:var(--gold);cursor:pointer;
+}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:rgba(0,212,255,.35)}
+.field textarea{resize:vertical;min-height:80px}
+/* Dropdown option list — dark theme (was falling back to white/unreadable
+   for selects outside .field, e.g. the Benchmarks selector). */
+select,select option,select optgroup{background:var(--bg2);color:var(--text)}
+.range-wrap{display:flex;align-items:center;gap:12px}
+.field input[type=range]{padding:0;cursor:pointer;accent-color:var(--gold)}
+.range-val{font-size:12px;color:var(--gold);white-space:nowrap;min-width:50px;text-align:right}
+.field-hint{font-size:10px;color:rgba(255,255,255,.45);font-style:italic}
+.cfg-footer{margin-top:24px;display:flex;align-items:center;gap:14px;padding-top:18px;border-top:1px solid var(--border)}
+.btn{
+  font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.12em;
+  text-transform:uppercase;padding:9px 22px;border-radius:4px;cursor:pointer;
+  border:none;transition:all .2s;
+}
+.btn-primary{background:var(--gold);color:#07071a;font-weight:600}
+.btn-primary:hover{background:var(--gold-b)}
+.btn-secondary{background:transparent;border:1px solid var(--border);color:var(--muted)}
+.btn-secondary:hover{border-color:var(--cyan);color:var(--cyan)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* ── BENCHMARKS ── */
+.bm-toolbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.bm-summary{display:flex;gap:20px;flex-wrap:wrap;align-items:center}
+.bm-stat{display:flex;flex-direction:column;gap:2px}
+.bm-stat b{font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:var(--gold);line-height:1}
+.bm-stat span{font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--label)}
+.bm-sel{font-family:'DM Mono',monospace;font-size:11px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:6px 10px}
+.bm-progress{margin-top:14px}
+.bm-prog-track{height:5px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden}
+.bm-prog-fill{height:100%;background:var(--cyan);width:0;transition:width .4s ease}
+.bm-prog-label{font-size:10px;color:var(--label);margin-top:5px;letter-spacing:.05em}
+.bm-cat{margin-bottom:22px}
+.bm-cat-title{font-family:'Syne',sans-serif;font-size:10px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;color:var(--label);margin-bottom:11px;display:flex;align-items:center;gap:8px}
+.bm-cat-title::after{content:'';flex:1;height:1px;background:var(--border)}
+.bm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(228px,1fr));gap:12px}
+.bm-tile{background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);padding:13px 15px;display:flex;flex-direction:column;gap:7px;transition:border-color .2s}
+.bm-tile:hover{border-color:rgba(0,212,255,.25)}
+.bm-tile-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.bm-name{font-size:11px;color:var(--text);line-height:1.3;cursor:help}
+.bm-val{font-family:'Syne',sans-serif;font-size:24px;font-weight:700;line-height:1;color:var(--text)}
+.bm-val .u{font-size:11px;color:var(--label);font-weight:400;margin-left:3px}
+.bm-val.live{color:var(--green)}
+.bm-val.measured{color:var(--cyan)}
+.bm-val.estimated{color:var(--gold)}
+.bm-val.awaiting,.bm-val.na{font-size:14px;color:var(--muted)}
+.bm-detail{font-size:9.5px;color:var(--muted);line-height:1.45;font-style:italic}
+.bm-badge{font-size:8px;letter-spacing:.1em;text-transform:uppercase;padding:2px 6px;border-radius:3px;white-space:nowrap;flex-shrink:0;height:fit-content}
+.bm-badge.live{background:rgba(0,227,150,.12);color:var(--green);border:1px solid rgba(0,227,150,.25)}
+.bm-badge.measured{background:rgba(0,212,255,.1);color:var(--cyan);border:1px solid rgba(0,212,255,.22)}
+.bm-badge.estimated{background:rgba(201,162,39,.12);color:var(--gold);border:1px solid rgba(201,162,39,.25)}
+.bm-badge.awaiting{background:rgba(255,255,255,.04);color:var(--muted);border:1px solid var(--border)}
+.bm-badge.na{background:rgba(255,69,96,.08);color:#ff8095;border:1px solid rgba(255,69,96,.2)}
+.bm-ts{font-size:8.5px;color:var(--muted);letter-spacing:.05em}
+.save-msg{font-size:11px;color:var(--green);opacity:0;transition:opacity .4s}
+.save-msg.show{opacity:1}
+.restart-note{font-size:10px;color:var(--gold);font-style:italic;margin-left:auto}
+
+/* ── USERS & AUDIT TABLES ── */
+.data-table{width:100%;border-collapse:collapse;font-size:11px}
+.data-table th{font-family:'Syne',sans-serif;font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:var(--label);padding:8px 12px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap}
+.data-table td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:middle}
+.data-table tr:last-child td{border-bottom:none}
+.data-table tr:hover td{background:rgba(255,255,255,.02)}
+.role-badge{display:inline-block;font-size:8.5px;letter-spacing:.08em;padding:2px 7px;border-radius:2px;text-transform:uppercase}
+.role-admin   {background:rgba(201,162,39,.12);color:var(--gold);border:1px solid rgba(201,162,39,.25)}
+.role-power   {background:rgba(0,227,150,.08);color:var(--green);border:1px solid rgba(0,227,150,.2)}
+.role-standard{background:rgba(0,212,255,.08);color:var(--cyan);border:1px solid rgba(0,212,255,.2)}
+.role-readonly {background:rgba(255,255,255,.05);color:var(--muted);border:1px solid var(--border)}
+.tbl-actions{display:flex;gap:6px}
+.tbl-btn{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.06em;padding:3px 9px;border-radius:3px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--muted);transition:all .15s}
+.tbl-btn:hover{border-color:var(--cyan);color:var(--cyan)}
+.tbl-btn.danger:hover{border-color:var(--red);color:var(--red)}
+.tbl-btn.primary{background:var(--gold);color:#080808;border-color:var(--gold);font-weight:600}
+.tbl-btn.primary:hover{background:var(--gold-b)}
+.status-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px}
+.status-dot.on{background:var(--green);box-shadow:0 0 6px var(--green)}
+.status-dot.off{background:var(--red)}
+
+/* ── MODAL ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s}
+.modal-overlay.open{opacity:1;pointer-events:all}
+.modal{background:#0e0e0e;border:1px solid var(--border);border-radius:8px;padding:28px 32px;width:420px;max-width:94vw;position:relative}
+.modal h3{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--gold);margin-bottom:20px}
+.modal-footer{display:flex;gap:10px;justify-content:flex-end;margin-top:24px;padding-top:16px;border-top:1px solid var(--border)}
+.modal-close{position:absolute;top:12px;right:14px;background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;line-height:1}
+.modal-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+.modal-x{background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;line-height:1;flex-shrink:0;padding:0 2px}
+.modal-x:hover{color:var(--text)}
+
+/* ── PAGINATION ── */
+.pagination{display:flex;align-items:center;gap:10px;margin-top:14px;font-size:11px;color:var(--muted)}
+.page-btn{font-family:'DM Mono',monospace;font-size:10px;padding:4px 10px;border-radius:3px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--muted);transition:all .15s}
+.page-btn:hover:not(:disabled){border-color:var(--cyan);color:var(--cyan)}
+.page-btn:disabled{opacity:.3;cursor:default}
+
+/* ── LOG LINES ── */
+.ll-error  {color:#ff6b6b}
+.ll-warning{color:#ffd166}
+.ll-info   {color:var(--text)}
+.ll-tool   {color:var(--cyan)}
+.ll-done   {color:var(--green)}
+.ll-request{color:rgba(255,255,255,.92);font-weight:500}
+.ll-startup{color:var(--gold)}
+
+/* ── INLINE GRID CLASSES (overridable by media queries) ── */
+.kb-stats-grid{
+  display:grid;
+  grid-template-columns:repeat(4,1fr) 2fr;
+  gap:16px;align-items:start;
+}
+.charts-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr 1fr;
+  gap:20px;align-items:end;
+}
+
+/* ══ RESPONSIVE ═══════════════════════════════════════════════════════════ */
+
+/* ── Tablet: ≤ 1100px ── */
+@media(max-width:1100px){
+  .dash-top{grid-template-columns:repeat(2,1fr)}
+  .dash-mid{grid-template-columns:1fr}
+  .dash-bot{grid-template-columns:1fr}
+  .kb-stats-grid{grid-template-columns:repeat(2,1fr)}
+  .charts-grid{grid-template-columns:1fr 1fr}
+}
+
+/* ── Mobile: ≤ 768px ── */
+@media(max-width:768px){
+  /* Header */
+  header{padding:0 12px;height:auto;min-height:48px;flex-wrap:wrap;gap:0;row-gap:0}
+  .logo{font-size:13px;letter-spacing:.2em;margin-right:10px;padding:10px 0}
+  .logo span{display:none}
+  .tab{padding:4px 10px;font-size:10px;letter-spacing:.04em;height:44px}
+  .header-status{padding:8px 0}
+  .uptime-txt{display:none}
+  /* Layout */
+  main{padding:12px}
+  .card{padding:14px 15px}
+  /* Dashboard grids → single column */
+  .dash-top{grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:10px}
+  .dash-mid{gap:10px;margin-bottom:10px}
+  .dash-bot{gap:10px}
+  /* Knowledge base */
+  .kb-stats-grid{grid-template-columns:1fr 1fr;gap:10px}
+  /* Charts → stack */
+  .charts-grid{grid-template-columns:1fr;gap:16px}
+  /* Typography */
+  .metric-val{font-size:22px}
+  .model-name{font-size:15px}
+  /* Scrollable lists */
+  .activity-list{max-height:220px}
+  .tool-grid{max-height:180px}
+  /* Config footer */
+  .cfg-footer{flex-wrap:wrap;gap:10px}
+  .restart-note{margin-left:0;flex-basis:100%}
+  /* Log */
+  #log-output{font-size:10px;max-height:60vh}
+}
+
+/* ── Small mobile: ≤ 480px ── */
+@media(max-width:480px){
+  header{padding:0 10px}
+  .logo{font-size:12px;letter-spacing:.15em}
+  .tab{padding:4px 8px;font-size:9px;letter-spacing:.02em}
+  main{padding:10px 8px}
+  .card{padding:12px}
+  .dash-top{grid-template-columns:1fr}
+  .kb-stats-grid{grid-template-columns:1fr 1fr}
+  /* Activity row: hide meta column on tiny screens */
+  .act-row{grid-template-columns:42px 1fr}
+  .act-meta{display:none}
+  /* Sliders: full width */
+  .range-wrap{flex-wrap:wrap}
+  .range-val{min-width:auto}
+}
+
+/* ── SECTION DIVIDER ── */
+.section-head{
+  font-family:'Syne',sans-serif;font-size:11px;font-weight:700;
+  letter-spacing:.2em;text-transform:uppercase;color:var(--gold);
+  padding:0 0 10px;border-bottom:1px solid var(--border-g);margin-bottom:16px;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <button class="nav-toggle" onclick="toggleSidebar()" aria-label="Toggle menu" title="Collapse menu">☰</button>
+  <div class="logo">SUNI <span>Control</span></div>
+  <div class="header-status">
+    <div class="hs-line">
+      <div class="dot" id="hdr-dot"></div>
+      <span class="status-txt" id="hdr-state">Online</span>
+      <span class="uptime-txt" id="hdr-uptime"></span>
+    </div>
+    <span id="hdr-user" style="font-size:10px;color:var(--gold);font-style:italic"></span>
+    <button onclick="logout()" data-i18n="admin.sign_out" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:9px;letter-spacing:.1em;padding:3px 8px;border-radius:3px;cursor:pointer;font-family:'DM Mono',monospace">Sign out</button>
+  </div>
+</header>
+
+<aside class="sidebar" id="sidebar">
+  <nav>
+    <button class="tab active" onclick="switchTab('dashboard',this)" data-i18n="admin.nav_dashboard">Dashboard</button>
+    <button class="tab" onclick="switchTab('users',this)"     data-i18n="admin.nav_users">Users</button>
+    <button class="tab" onclick="switchTab('audit',this)"     data-i18n="admin.nav_audit">Audit</button>
+    <button class="tab" onclick="switchTab('usage',this)">Usage</button>
+    <button class="tab" onclick="switchTab('roles',this)"     data-i18n="admin.nav_roles">Roles</button>
+    <button class="tab" onclick="switchTab('mcp',this)"       data-i18n="admin.nav_mcp">MCP</button>
+    <button class="tab" onclick="switchTab('skills',this)"    data-i18n="admin.nav_skills">Skills</button>
+    <button class="tab" onclick="switchTab('backup',this)"    data-i18n="admin.nav_backup">Backup</button>
+    <button class="tab" onclick="switchTab('config',this)"    data-i18n="admin.nav_config">Configuration</button>
+    <button class="tab" onclick="switchTab('benchmarks',this)">Benchmarks</button>
+    <button class="tab" onclick="switchTab('logs',this)"      data-i18n="admin.nav_logs">Logs</button>
+    <a href="/architecture" target="_blank" class="tab" data-i18n="admin.nav_arch" style="text-decoration:none;display:block">Architecture ↗</a>
+  </nav>
+</aside>
+
+<main>
+
+<!-- ════════════════════ DASHBOARD ════════════════════ -->
+<div class="panel active" id="panel-dashboard">
+
+  <div class="dash-top">
+    <!-- Status -->
+    <div class="card">
+      <div class="card-title" data-i18n="admin.dash_status">Status</div>
+      <div class="metric">
+        <div class="metric-val green" id="d-status" data-i18n="common.online">Online</div>
+        <div class="metric-sub" data-i18n="admin.dash_port">Port 8765 · HTTPS · TLS</div>
+      </div>
+      <div class="kv-grid" style="margin-top:12px">
+        <div class="kv"><div class="kv-k" data-i18n="admin.dash_uptime">Uptime</div><div class="kv-v" id="d-uptime">—</div></div>
+        <div class="kv"><div class="kv-k" data-i18n="admin.dash_requests">Requests</div><div class="kv-v" id="d-reqs">—</div></div>
+        <div class="kv"><div class="kv-k" data-i18n="admin.dash_avg_time">Avg time</div><div class="kv-v" id="d-avg">—</div></div>
+        <div class="kv"><div class="kv-k" data-i18n="admin.dash_last_route">Last route</div><div class="kv-v" id="d-route">—</div></div>
+      </div>
+    </div>
+
+    <!-- Model -->
+    <div class="card">
+      <div class="card-title" data-i18n="admin.dash_model">Model</div>
+      <div class="model-name" id="d-model-name">—</div>
+      <div class="kv-grid">
+        <div class="kv"><div class="kv-k" data-i18n="admin.dash_context">Context</div><div class="kv-v" id="d-ctx">—</div></div>
+        <div class="kv"><div class="kv-k" data-i18n="admin.dash_vram">VRAM</div><div class="kv-v" id="d-vram">—</div></div>
+        <div class="kv"><div class="kv-k" data-i18n="admin.dash_toks">Last tok/s</div><div class="kv-v" id="d-toks">—</div></div>
+        <div class="kv"><div class="kv-k" data-i18n="admin.dash_expires">Expires</div><div class="kv-v" id="d-exp">—</div></div>
+      </div>
+    </div>
+
+    <!-- GPU -->
+    <div class="card">
+      <div class="card-title" data-i18n="admin.dash_gpu">GPU</div>
+      <div id="gpu-container">
+        <div style="color:var(--muted);font-size:11px;font-style:italic">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Memory -->
+    <div class="card">
+      <div class="card-title" data-i18n="admin.dash_memory">Memory</div>
+      <div class="metric">
+        <div class="metric-val cyan" id="d-mem-count">—</div>
+        <div class="metric-sub" data-i18n="admin.dash_vec_mem">vector memories</div>
+      </div>
+      <div class="kv-grid" style="margin-top:12px">
+        <div class="kv"><div class="kv-k" data-i18n="admin.dash_embed">Embed model</div><div class="kv-v">MiniLM-L6</div></div>
+        <div class="kv"><div class="kv-k" data-i18n="admin.dash_dims">Dimensions</div><div class="kv-v">384</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="dash-mid">
+    <!-- Activity -->
+    <div class="card">
+      <div class="card-title" data-i18n="admin.dash_recent">Recent Activity</div>
+      <div class="activity-list" id="activity-list">
+        <div class="act-empty" data-i18n="admin.dash_no_activity">No activity yet.</div>
+      </div>
+    </div>
+
+    <!-- Tools -->
+    <div class="card">
+      <div class="card-title"><span data-i18n="admin.dash_tools">Tools</span> <span id="tool-count" style="color:var(--cyan);margin-left:4px"></span></div>
+      <div class="tool-grid" id="tool-list"></div>
+    </div>
+  </div>
+
+  <div class="dash-bot">
+    <!-- MCP Servers -->
+    <div class="card">
+      <div class="card-title" data-i18n="admin.dash_mcp">MCP Servers</div>
+      <div id="mcp-list">
+        <div style="color:var(--muted);font-style:italic;font-size:11px" data-i18n="common.loading">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Inbox -->
+    <div class="card">
+      <div class="card-title" data-i18n="admin.dash_inbox">Inbox Monitor</div>
+      <div class="kv-grid">
+        <div class="kv"><div class="kv-k">Account</div><div class="kv-v">noreply@example.com</div></div>
+        <div class="kv"><div class="kv-k" data-i18n="admin.dash_poll">Poll interval</div><div class="kv-v" id="d-poll">—</div></div>
+        <div class="kv"><div class="kv-k" data-i18n="common.status">Status</div><div class="kv-v"><span class="badge ok" data-i18n="admin.dash_active">Active</span></div></div>
+        <div class="kv"><div class="kv-k" data-i18n="admin.dash_auto_reply">Auto-reply</div><div class="kv-v"><span class="badge err" data-i18n="admin.dash_disabled">Disabled</span></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- System Profile -->
+  <div class="card" style="margin-top:16px">
+    <div class="card-title"><span data-i18n="admin.dash_sys_profile">System Profile</span> <span style="color:var(--muted);font-weight:400;font-size:9px;margin-left:4px" data-i18n="admin.dash_sys_sub">auto-derived from hardware</span></div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px" id="sys-profile">
+      <div class="kv"><div class="kv-k">RAM</div><div class="kv-v" id="sp-ram">—</div></div>
+      <div class="kv"><div class="kv-k">VRAM</div><div class="kv-v" id="sp-vram">—</div></div>
+      <div class="kv"><div class="kv-k">CPU cores</div><div class="kv-v" id="sp-cpu">—</div></div>
+      <div class="kv"><div class="kv-k">Max doc size</div><div class="kv-v" id="sp-doc">—</div></div>
+      <div class="kv"><div class="kv-k">Embed batch</div><div class="kv-v" id="sp-batch">—</div></div>
+      <div class="kv"><div class="kv-k">Ingest parallel</div><div class="kv-v" id="sp-conc">—</div></div>
+      <div class="kv"><div class="kv-k">num_ctx</div><div class="kv-v" id="sp-ctx">—</div></div>
+      <div class="kv"><div class="kv-k">History limit</div><div class="kv-v" id="sp-hist">—</div></div>
+      <div class="kv"><div class="kv-k">Compress at</div><div class="kv-v" id="sp-comp">—</div></div>
+    </div>
+  </div>
+
+  <!-- Knowledge Base -->
+  <div class="card" style="margin-top:16px">
+    <div class="card-title" data-i18n="admin.dash_kb">Knowledge Base</div>
+    <div class="kb-stats-grid">
+      <div class="kv"><div class="kv-k" data-i18n="admin.dash_docs">Documents</div><div class="kv-v" id="kb-files" style="font-size:18px;font-family:'Syne',sans-serif;font-weight:700;color:var(--cyan)">—</div></div>
+      <div class="kv"><div class="kv-k" data-i18n="admin.dash_chunks">Chunks</div><div class="kv-v" id="kb-chunks" style="font-size:18px;font-family:'Syne',sans-serif;font-weight:700;color:var(--cyan)">—</div></div>
+      <div class="kv"><div class="kv-k" data-i18n="admin.dash_last_scan">Last scan</div><div class="kv-v" id="kb-last-scan">—</div></div>
+      <div class="kv"><div class="kv-k" data-i18n="common.status">Status</div><div class="kv-v" id="kb-status"><span class="badge info" data-i18n="admin.dash_idle">Idle</span></div></div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <div id="kb-by-type" style="font-size:10px;color:var(--label);line-height:1.8"></div>
+        <button class="btn btn-secondary" onclick="scanNow()" data-i18n="admin.dash_scan_now" style="padding:5px 14px;font-size:10px;margin-left:auto">Scan now</button>
+      </div>
+    </div>
+    <div id="kb-paths" style="margin-top:10px;font-size:10px;color:var(--muted);font-family:'DM Mono',monospace"></div>
+  </div>
+
+  <!-- GPU Metrics graphs -->
+  <div class="card" style="margin-top:16px">
+    <div class="card-title">
+      <span data-i18n="admin.dash_gpu_chart">GPU Metrics over Time</span>
+      <span id="graph-range" style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;margin-left:4px"></span>
+    </div>
+    <div class="charts-grid">
+      <div>
+        <div style="font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--label);margin-bottom:8px">VRAM Usage (MB)</div>
+        <canvas id="chart-vram" height="120"></canvas>
+      </div>
+      <div>
+        <div style="font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--label);margin-bottom:8px">GPU Utilisation (%)</div>
+        <canvas id="chart-util" height="120"></canvas>
+      </div>
+      <div>
+        <div style="font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--label);margin-bottom:8px">Temperature (°C)</div>
+        <canvas id="chart-temp" height="120"></canvas>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /dashboard -->
+
+<!-- ════════════════════ CONFIGURATION ════════════════════ -->
+<div class="panel" id="panel-config">
+  <form id="cfg-form" autocomplete="off">
+    <div class="cfg-sections">
+
+      <!-- Left column -->
+      <div class="cfg-section">
+
+        <div class="section-head" data-i18n="admin.cfg_identity">Identity</div>
+        <div class="field">
+          <label data-i18n="admin.cfg_display_name">Display name</label>
+          <input type="text" name="display_name" placeholder="SUNI">
+        </div>
+        <div class="field">
+          <label data-i18n="admin.cfg_tagline">Tagline</label>
+          <input type="text" name="tagline" placeholder="The world, as seen by SUNI.">
+        </div>
+
+        <div class="section-head" style="margin-top:8px" data-i18n="admin.cfg_model">Model</div>
+        <div class="field">
+          <label data-i18n="admin.cfg_ollama_model">Ollama model</label>
+          <select name="model" id="cfg-model"></select>
+        </div>
+        <div class="field">
+          <label data-i18n="admin.cfg_num_ctx">Context window (num_ctx)</label>
+          <div class="range-wrap">
+            <input type="range" name="num_ctx" min="2048" max="16384" step="1024"
+                   oninput="this.nextElementSibling.textContent=this.value+' tok'">
+            <span class="range-val">8192 tok</span>
+          </div>
+          <div class="field-hint" data-i18n="admin.cfg_num_ctx_hint">Higher = more context, more VRAM. 8192 is safe for 8 GB VRAM.</div>
+        </div>
+
+        <div class="section-head" style="margin-top:8px" data-i18n="admin.cfg_tiers">Model Tiers</div>
+        <div class="field">
+          <div id="tier-inventory-wrap" style="font-size:11px;color:var(--muted)">
+            <div id="tier-inventory-rows" data-i18n="common.loading">Loading…</div>
+          </div>
+          <div style="margin-top:8px;display:flex;gap:8px">
+            <button type="button" class="tbl-btn" onclick="refreshInventory()" data-i18n="admin.cfg_refresh_inv">Refresh inventory</button>
+          </div>
+          <div class="field-hint" data-i18n="admin.cfg_tiers_hint">Tier 1 = nano (1–4B), T2 = core (5–14B), T3 = large (15–44B), T4 = max (45B+), T5 = Claude Code (cloud).</div>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-top:14px;
+            padding:10px 12px;border:1px solid rgba(201,162,39,.25);border-radius:5px;
+            background:rgba(201,162,39,.05)">
+            <input type="checkbox" id="force_claude_code" name="force_claude_code"
+              style="accent-color:var(--gold);width:15px;height:15px;flex-shrink:0">
+            <div>
+              <div style="font-size:12px;font-weight:600;color:var(--gold)" data-i18n="admin.cfg_force_cc">Force Claude Code (bypass all local models)</div>
+              <div style="font-size:10px;color:var(--muted);margin-top:2px" data-i18n="admin.cfg_force_cc_hint">Every request goes directly to T5 — no local model is used. Useful for testing and demanding tasks.</div>
+            </div>
+          </label>
+          <div style="margin-top:12px">
+            <label>Claude Code timeout (seconds)</label>
+            <input type="number" name="claude_code_timeout" min="30" max="3600" step="30">
+            <div class="field-hint">How long a Claude Code (T5) request may run before it is aborted. Raise it for long file-analysis or multi-step tasks (default 300 = 5 min).</div>
+          </div>
+        </div>
+
+        <div class="section-head" style="margin-top:8px">Model Preferences <span style="font-weight:400;color:var(--muted);font-size:10px">· pluggable</span></div>
+        <div class="field">
+          <div class="field-hint" style="margin-bottom:8px">
+            Pre-loaded with your current <b>tier ladder</b> (T1–T5) — reorder by dragging, edit a model, or add
+            more (local or external: Ollama, vLLM, OpenAI, Anthropic&nbsp;/&nbsp;Claude, Gemini, Claude&nbsp;Code).
+            Top = first choice. Keys are stored masked (leave blank to keep the saved one). <b>Stored only for
+            now</b> — this list is <b>not yet wired into request routing</b> (SUNI still uses the automatic tier
+            ladder); wiring it in is the next step.
+          </div>
+          <label style="display:flex;align-items:center;gap:9px;cursor:pointer;margin:2px 0 12px;
+            padding:9px 11px;border:1px solid rgba(0,212,255,.25);border-radius:5px;background:rgba(0,212,255,.04)">
+            <input type="checkbox" id="model_chain_routing" name="model_chain_routing"
+              style="accent-color:var(--cyan);width:15px;height:15px;flex-shrink:0">
+            <div>
+              <div style="font-size:12px;font-weight:600;color:var(--cyan)">Use this list for routing</div>
+              <div style="font-size:10px;color:var(--muted);margin-top:2px">When on, the <b>top enabled entry</b> becomes SUNI's primary model (escalation to Claude Code unchanged). Off = automatic tier ladder. Requires <b>Force Claude Code = OFF</b> to take effect.</div>
+            </div>
+          </label>
+          <div id="model-chain-list"></div>
+          <div style="margin-top:8px;display:flex;gap:8px">
+            <button type="button" class="tbl-btn" onclick="_addModelChainEntry()">+ Add model</button>
+          </div>
+        </div>
+
+        <div class="section-head" style="margin-top:8px">Collaboration — Mode 2 (multi-model)</div>
+        <div class="field">
+          <div class="field-hint" style="margin-bottom:8px">Opt-in per message via the <b>✦ collaborate</b> mode toggle in the chat/face UI. Capable models <b>draft → cross-critique → synthesize</b> the best answer. Mode 1 (the tier pipeline) is untouched. <b>Privacy:</b> these are cloud frontier models — Mode-2 data leaves this machine. Default pool = <b>Claude Code + Codex</b> (both no-key/subscription).</div>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:2px 0">
+            <input type="checkbox" id="collaborate_enabled" name="collaborate_enabled" style="accent-color:var(--gold)">
+            <span>Enable collaboration mode</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:6px 0">
+            <input type="checkbox" id="collaborate_skip_critique" name="collaborate_skip_critique" style="accent-color:var(--gold)">
+            <span>Fast mode — skip the cross-critique round (~40% fewer calls, less thorough)</span>
+          </label>
+          <div style="font-size:11px;color:var(--muted);margin:10px 0 4px">Collaboration pool (empty = default Claude Code + Codex). First entry synthesizes.</div>
+          <div id="collab-pool-list"></div>
+          <div style="margin-top:8px;display:flex;gap:8px">
+            <button type="button" class="tbl-btn" onclick="_addCollabPool()">+ Add model</button>
+          </div>
+        </div>
+
+        <div class="section-head" style="margin-top:8px">Backend — vLLM (optional)</div>
+        <div class="field">
+          <label>vLLM base URL</label>
+          <input type="text" name="vllm_base_url" id="cfg-vllm-url" placeholder="http://gpu-1:8000/v1">
+          <div class="field-hint">Set to switch chat/generation to <b>vLLM</b> (OpenAI-compatible). Empty = use Ollama (default, unchanged). When set, Ollama is <b>bypassed for chat</b>; memory embeddings still use nomic-embed-text. Applies immediately — no restart. Launch vLLM with <code>--enable-auto-tool-choice --tool-call-parser &lt;model-family&gt;</code> or tool calling won't work.</div>
+        </div>
+        <div class="field">
+          <label>vLLM model</label>
+          <input type="text" name="vllm_model" placeholder="Qwen2.5-7B-Instruct">
+        </div>
+        <div class="field">
+          <label>vLLM API key (optional)</label>
+          <input type="password" name="vllm_api_key" placeholder="only if server started with --api-key">
+        </div>
+
+        <div class="section-head" style="margin-top:8px">Channels — Telegram</div>
+        <div class="field">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="telegram_enabled" name="telegram_enabled">
+            <span>Enable Telegram gateway (long-poll)</span>
+          </label>
+          <div class="field-hint">Reach SUNI from Telegram with <b>no public URL</b> — the server long-polls Telegram, so it works from this machine behind NAT. Create a bot with <b>@BotFather</b>, paste its token below, add your chat id to the allow-list, then <b>Save — it starts immediately (no restart)</b>. Mutually exclusive with the Telegram webhook.</div>
+        </div>
+        <div class="field">
+          <label>Bot token</label>
+          <input type="password" name="telegram_bot_token" id="telegram_bot_token" autocomplete="off" placeholder="from @BotFather">
+        </div>
+        <div class="field">
+          <label>Allowed chat ids</label>
+          <textarea name="telegram_allowed_chats_raw" id="telegram_allowed_chats_raw" rows="2" placeholder="one chat id per line"></textarea>
+          <div class="field-hint"><b>Security gate (fails closed):</b> only these chat ids may talk to SUNI. Leave empty and message the bot once — it replies with your chat id, which you paste here. Messages run at role <b>standard</b> (no shell / code-exec).</div>
+        </div>
+
+        <div class="section-head" style="margin-top:8px">Channels — Discord</div>
+        <div class="field">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="discord_enabled" name="discord_enabled">
+            <span>Enable Discord gateway</span>
+          </label>
+          <div class="field-hint">Reach SUNI from Discord with <b>no public URL</b> — the server connects out to Discord's Gateway. Create an app + bot at <b>discord.com/developers</b>, and <b>you MUST toggle the "Message Content Intent" ON</b> (Bot → Privileged Gateway Intents) or the bot can't read messages. Paste the bot token, add your channel id to the allow-list, then <b>Save — it starts immediately (no restart)</b>.</div>
+        </div>
+        <div class="field">
+          <label>Bot token</label>
+          <input type="password" name="discord_bot_token" id="discord_bot_token" autocomplete="off" placeholder="Developer Portal → Bot → Token">
+        </div>
+        <div class="field">
+          <label>Allowed channel ids</label>
+          <textarea name="discord_allowed_channels_raw" id="discord_allowed_channels_raw" rows="2" placeholder="one channel id per line"></textarea>
+          <div class="field-hint"><b>Security gate (fails closed):</b> SUNI only answers in these channels. Enable Discord <b>Developer Mode</b> (User Settings → Advanced), then right-click a channel → <b>Copy Channel ID</b>. In a DM the bot also replies with the channel id. Messages run at role <b>standard</b> (no shell / code-exec).</div>
+        </div>
+
+        <div class="section-head" style="margin-top:8px">Channels — Slack</div>
+        <div class="field">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="slack_enabled" name="slack_enabled">
+            <span>Enable Slack (Socket Mode)</span>
+          </label>
+          <div class="field-hint">Reach SUNI from Slack with <b>no public URL</b> — Socket Mode connects out to Slack. At <b>api.slack.com/apps</b>: create an app, enable <b>Socket Mode</b>, add an <b>App-Level token</b> with <code>connections:write</code> (xapp-…), give the bot <code>chat:write</code> + message-history scopes, subscribe to <code>message.channels</code>/<code>message.im</code> events, install to the workspace. Paste both tokens, add a channel id to the allow-list, then <b>Save — it starts immediately (no restart)</b>.</div>
+        </div>
+        <div class="field">
+          <label>App-level token (xapp-…)</label>
+          <input type="password" name="slack_app_token" id="slack_app_token" autocomplete="off" placeholder="connections:write">
+        </div>
+        <div class="field">
+          <label>Bot token (xoxb-…)</label>
+          <input type="password" name="slack_bot_token" id="slack_bot_token" autocomplete="off" placeholder="chat:write">
+        </div>
+        <div class="field">
+          <label>Allowed channel ids</label>
+          <textarea name="slack_allowed_channels_raw" id="slack_allowed_channels_raw" rows="2" placeholder="one channel id per line"></textarea>
+          <div class="field-hint"><b>Security gate (fails closed):</b> SUNI only answers in these channels. Get a channel id from its URL (…/archives/<b>C0XXXX</b>) or the channel details. In a DM the bot also replies with the channel id. Messages run at role <b>standard</b> (no shell / code-exec).</div>
+        </div>
+
+        <div class="section-head" style="margin-top:8px">Embeddings (memory)</div>
+        <div class="field">
+          <label>Embedding backend</label>
+          <select name="embed_backend">
+            <option value="ollama">Ollama (/api/embed)</option>
+            <option value="openai">OpenAI-compatible (/v1/embeddings)</option>
+          </select>
+          <div class="field-hint">Episodic-memory embeddings run <b>independently</b> of the chat backend. <b>Host-swap is safe; changing the model is not</b> — a different embedding model requires re-embedding existing memory (<code>reembed_memory.py</code>), or memory writes are refused on a dimension mismatch.</div>
+        </div>
+        <div class="field">
+          <label>Embedding base URL</label>
+          <input type="text" name="embed_base_url" placeholder="http://localhost:11434 (or an OpenAI-compatible base incl. /v1)">
+        </div>
+        <div class="field">
+          <label>Embedding model</label>
+          <input type="text" name="embed_model" placeholder="nomic-embed-text">
+        </div>
+        <div class="field">
+          <label>Embedding API key (optional)</label>
+          <input type="password" name="embed_api_key" placeholder="only for endpoints that require a key">
+        </div>
+
+        <div class="section-head" style="margin-top:8px" data-i18n="admin.cfg_voice_lang">Voice &amp; Language</div>
+        <div class="field">
+          <label data-i18n="admin.cfg_tts">TTS voice</label>
+          <select name="tts_voice" id="cfg-voice"></select>
+        </div>
+        <div class="field">
+          <label>Text-to-speech backend</label>
+          <select name="tts_backend">
+            <option value="edge">edge-tts (Microsoft cloud)</option>
+            <option value="server">Self-hosted (audio stays in your infra)</option>
+          </select>
+          <div class="field-hint">Self-hosted TTS keeps the spoken reply text inside your infrastructure (privacy/enterprise) and works offline. Uses an OpenAI-compatible <code>/v1/audio/speech</code> server; the voice above is passed through (set it to a voice the server knows). On failure it returns no audio — it does <b>not</b> fall back to the cloud. <b>Needs a running TTS server to validate.</b></div>
+        </div>
+        <div class="field">
+          <label>TTS base URL</label>
+          <input type="text" name="tts_base_url" placeholder="http://gpu-5:8080/v1 (OpenAI-compatible speech endpoint)">
+        </div>
+        <div class="field">
+          <label>TTS model</label>
+          <input type="text" name="tts_model" placeholder="tts-1">
+        </div>
+        <div class="field">
+          <label>TTS API key (optional)</label>
+          <input type="password" name="tts_api_key" placeholder="only if the server requires it">
+        </div>
+        <div class="field">
+          <label data-i18n="admin.cfg_stt_lang">Speech recognition language (microphone)</label>
+          <select name="stt_language">
+            <option value="en-GB">English — British (en-GB)</option>
+            <option value="en-US">English — American (en-US)</option>
+            <option value="en-AU">English — Australian (en-AU)</option>
+            <option value="pt-PT">Portuguese — European (pt-PT)</option>
+            <option value="pt-BR">Portuguese — Brazilian (pt-BR)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Speech-to-text backend</label>
+          <select name="stt_backend">
+            <option value="browser">Browser (Web Speech API — audio → Google)</option>
+            <option value="whisper">Server-side Whisper (audio stays in your infra)</option>
+          </select>
+          <div class="field-hint">Server-side Whisper keeps microphone audio inside your infrastructure (privacy/enterprise) and works offline. Push-to-talk (click to start/stop); transcript fills the box for review before sending. <b>Needs a running whisper server; audio format compatibility should be validated against it.</b></div>
+        </div>
+        <div class="field">
+          <label>Whisper base URL</label>
+          <input type="text" name="stt_base_url" placeholder="http://gpu-3:9000/v1 (OpenAI-compatible audio endpoint)">
+        </div>
+        <div class="field">
+          <label>Whisper model</label>
+          <input type="text" name="stt_model" placeholder="whisper-1">
+        </div>
+        <div class="field">
+          <label>Whisper API key (optional)</label>
+          <input type="password" name="stt_api_key" placeholder="only if the server requires it">
+        </div>
+
+        <div class="section-head" style="margin-top:8px">Vision (image understanding)</div>
+        <div class="field">
+          <label>Vision (VLM) base URL</label>
+          <input type="text" name="vision_base_url" placeholder="http://gpu-2:8000/v1 (OpenAI-compatible VLM)">
+          <div class="field-hint">When set, an attached image is sent to this vision model and answered directly. Empty = off (images noted as attachments only). <b>OpenAI-compatible VLM endpoints only</b> (vLLM serving a vision model, etc.) — Ollama-native vision is not supported by this path. Single-turn: the image is used for that turn; follow-ups work off the description. <b>Needs a running VLM to validate.</b></div>
+        </div>
+        <div class="field">
+          <label>Vision model</label>
+          <input type="text" name="vision_model" placeholder="Qwen2.5-VL-7B-Instruct">
+        </div>
+        <div class="field">
+          <label>Vision API key (optional)</label>
+          <input type="password" name="vision_api_key" placeholder="only if the server requires it">
+        </div>
+        <div class="field">
+          <label data-i18n="admin.cfg_resp_lang">Response language (SUNI replies in)</label>
+          <select name="response_language">
+            <option value="" data-i18n="admin.cfg_follow_stt">Follow speech recognition language</option>
+            <option value="en-GB">English — British</option>
+            <option value="pt-PT">Portuguese — European</option>
+            <option value="pt-BR">Portuguese — Brazilian</option>
+            <option value="es-ES">Spanish</option>
+            <option value="fr-FR">French</option>
+            <option value="de-DE">German</option>
+          </select>
+          <div class="field-hint" data-i18n="admin.cfg_resp_lang_hint">Overrides the default British English. Takes effect immediately — no restart needed.</div>
+        </div>
+
+      </div>
+
+      <!-- Right column -->
+      <div class="cfg-section">
+
+        <div class="section-head" data-i18n="admin.cfg_behaviour">Behaviour</div>
+        <div class="field">
+          <label data-i18n="admin.cfg_stt_silence">STT silence threshold (ms)</label>
+          <div class="range-wrap">
+            <input type="range" name="silence_ms" min="1000" max="6000" step="500"
+                   oninput="this.nextElementSibling.textContent=(this.value/1000).toFixed(1)+'s'">
+            <span class="range-val">2.5s</span>
+          </div>
+          <div class="field-hint" data-i18n="admin.cfg_stt_silence_hint">How long SUNI waits after you stop speaking before submitting.</div>
+        </div>
+        <div class="field">
+          <label data-i18n="admin.cfg_email_poll">Email poll interval (minutes)</label>
+          <div class="range-wrap">
+            <input type="range" name="email_poll_interval_min" min="5" max="120" step="5"
+                   oninput="this.nextElementSibling.textContent=this.value+'m'">
+            <span class="range-val">30m</span>
+          </div>
+        </div>
+        <div class="field">
+          <label data-i18n="admin.cfg_max_tools">Max tool iterations</label>
+          <div class="range-wrap">
+            <input type="range" name="max_tool_iterations" min="2" max="16" step="1"
+                   oninput="this.nextElementSibling.textContent=this.value">
+            <span class="range-val">8</span>
+          </div>
+        </div>
+
+        <div class="section-head" style="margin-top:8px" data-i18n="admin.cfg_memory">Memory</div>
+        <div class="field">
+          <label data-i18n="admin.cfg_mem_topk">Memory top-k (injected per turn)</label>
+          <div class="range-wrap">
+            <input type="range" name="memory_top_k" min="1" max="15" step="1"
+                   oninput="this.nextElementSibling.textContent=this.value">
+            <span class="range-val">5</span>
+          </div>
+        </div>
+
+        <div class="section-head" style="margin-top:8px" data-i18n="admin.cfg_kb">Knowledge Base</div>
+        <div class="field">
+          <label data-i18n="admin.cfg_doc_paths">Document paths to index</label>
+          <textarea name="doc_paths_raw" rows="4"
+            placeholder="One path per line e.g.&#10;\\\\server\\share\\docs&#10;C:\Company\Projects"></textarea>
+          <div class="field-hint" data-i18n="admin.cfg_doc_paths_hint">Network shares (UNC) and local folders. Scanned recursively for PDF, DOCX, XLSX, CSV, TXT, email.</div>
+        </div>
+        <div class="field">
+          <label data-i18n="admin.cfg_scan_interval">Scan interval (minutes)</label>
+          <div class="range-wrap">
+            <input type="range" name="doc_scan_interval_min" min="1" max="120" step="1"
+                   oninput="this.nextElementSibling.textContent=this.value+'m'">
+            <span class="range-val">10m</span>
+          </div>
+        </div>
+        <div class="field">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="doc_kb_enabled" name="doc_kb_enabled" style="accent-color:var(--gold);width:auto">
+            <span data-i18n="admin.cfg_doc_kb_enabled">Search the knowledge base on every query</span>
+          </label>
+          <div class="field-hint" data-i18n="admin.cfg_doc_kb_enabled_hint">Injects matching document excerpts into each answer. Turning it off skips the document embedding and index search, which is the single biggest latency saving on a large index — memory recall and everything else keep working. Turn it off if answers feel slow and you rarely ask about your documents.</div>
+        </div>
+        <div class="field">
+          <label data-i18n="admin.cfg_doc_top_k">Document excerpts per query</label>
+          <input type="number" name="doc_top_k" min="0" max="20" step="1" style="max-width:120px">
+          <div class="field-hint" data-i18n="admin.cfg_doc_top_k_hint">How many document chunks to inject. Higher means more context but a larger, slower prompt.</div>
+        </div>
+
+        <div class="section-head" style="margin-top:8px" data-i18n="admin.cfg_email">Email</div>
+        <div class="field">
+          <div class="field-hint" data-i18n="admin.cfg_email_hint">Outbound mail (notifications and the send-email tool) and the inbox watcher. This is the system account: users may set their own in their personal settings, and anything left empty here falls back to the environment.</div>
+        </div>
+        <div class="field">
+          <label data-i18n="admin.cfg_smtp_host">SMTP host</label>
+          <input type="text" name="smtp_host" id="smtp_host" placeholder="smtp.example.com">
+        </div>
+        <div class="field">
+          <label data-i18n="admin.cfg_smtp_port">SMTP port</label>
+          <input type="number" name="smtp_port" id="smtp_port" min="1" max="65535" step="1" style="max-width:120px" placeholder="587">
+        </div>
+        <div class="field">
+          <label data-i18n="admin.cfg_smtp_user">SMTP username</label>
+          <input type="text" name="smtp_user" id="smtp_user" autocomplete="off" placeholder="you@example.com">
+        </div>
+        <div class="field">
+          <label data-i18n="admin.cfg_smtp_pass">SMTP password</label>
+          <input type="password" name="smtp_pass" id="smtp_pass" autocomplete="new-password" placeholder="app password">
+          <div class="field-hint"><span id="smtp_pass_state" data-i18n="admin.cfg_smtp_pass_hint">Leave blank to keep the stored password.</span></div>
+        </div>
+        <div class="field">
+          <label data-i18n="admin.cfg_notify_to">Notification recipient</label>
+          <input type="text" name="notify_to" id="notify_to" placeholder="defaults to the SMTP username">
+        </div>
+        <div class="field">
+          <label data-i18n="admin.cfg_imap_host">IMAP host (inbox watcher)</label>
+          <input type="text" name="imap_host" id="imap_host" placeholder="mail.example.com">
+        </div>
+        <div class="field">
+          <label data-i18n="admin.cfg_imap_port">IMAP port</label>
+          <input type="number" name="imap_port" id="imap_port" min="1" max="65535" step="1" style="max-width:120px" placeholder="993">
+        </div>
+
+        <div class="section-head" style="margin-top:8px" data-i18n="admin.cfg_files">Files &amp; Output</div>
+        <div class="field">
+          <label data-i18n="admin.cfg_output_dir">Global output directory</label>
+          <input type="text" name="global_output_dir" placeholder="e.g. the SUNI directory\files or \\server\share\output">
+          <div class="field-hint" data-i18n="admin.cfg_output_dir_hint">Base directory for all generated files (PDFs, reports, etc.). Users may set their own subdirectory within this path. Leave empty to use the Desktop as a fallback.</div>
+        </div>
+
+        <div class="section-head" style="margin-top:8px" data-i18n="admin.cfg_ollama_ep">Ollama Endpoints</div>
+        <div class="field">
+          <label data-i18n="admin.cfg_ollama_hosts">Ollama hosts (one URL per line)</label>
+          <textarea name="ollama_endpoints_raw" rows="3"
+            placeholder="http://localhost:11434&#10;http://192.168.1.50:11434"></textarea>
+          <div class="field-hint" data-i18n="admin.cfg_ollama_hosts_hint">SUNI will scan all listed endpoints for available models and assign them to tiers automatically.</div>
+        </div>
+
+        <div class="section-head" style="margin-top:8px" data-i18n="admin.cfg_advanced">Advanced</div>
+        <div class="field">
+          <label data-i18n="admin.cfg_sys_addendum">System prompt addendum</label>
+          <textarea name="system_prompt_addendum"
+            placeholder="Additional instructions appended to SUNI's system prompt. Applied on next restart."></textarea>
+          <div class="field-hint" data-i18n="admin.cfg_sys_addendum_hint">Appended to the base prompt. Takes effect on next restart.</div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="cfg-footer">
+      <button type="submit" class="btn btn-primary" data-i18n="admin.cfg_save">Save configuration</button>
+      <button type="button" class="btn btn-secondary" onclick="loadConfig()" data-i18n="admin.cfg_revert">Revert</button>
+      <span class="save-msg" id="save-msg" data-i18n="admin.cfg_saved">Saved.</span>
+      <span class="restart-note" id="restart-note" style="display:none" data-i18n="admin.cfg_restart_note">
+        Some changes take effect on next restart.
+      </span>
+    </div>
+  </form>
+</div><!-- /config -->
+
+<!-- ════════════════════ USERS ════════════════════ -->
+<div class="panel" id="panel-users">
+  <div class="card" style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div class="card-title" style="margin:0;border:none" data-i18n="admin.users_title">User accounts</div>
+      <span id="user-count" style="font-size:10px;color:var(--muted)"></span>
+      <button class="tbl-btn primary" onclick="openCreateUser()" data-i18n="admin.users_new" style="margin-left:auto">+ New user</button>
+    </div>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <table class="data-table" id="users-table">
+      <thead><tr>
+        <th data-i18n="common.username">Username</th><th data-i18n="common.role">Role</th><th data-i18n="common.status">Status</th>
+        <th data-i18n="admin.users_col_login">Last login</th><th data-i18n="admin.users_col_created">Created</th><th data-i18n="common.actions">Actions</th>
+      </tr></thead>
+      <tbody id="users-tbody"><tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px" data-i18n="common.loading">Loading…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ════════════════════ AUDIT ════════════════════ -->
+<div class="panel" id="panel-audit">
+  <div class="card" style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div class="card-title" style="margin:0;border:none" data-i18n="admin.audit_title">Audit trail</div>
+      <span id="audit-total" style="font-size:10px;color:var(--muted)"></span>
+      <select id="audit-filter-user" onchange="loadAudit()" style="background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);padding:4px 9px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px">
+        <option value="" data-i18n="admin.audit_all_users">All users</option>
+      </select>
+      <input type="date" id="audit-from" onchange="loadAudit()" style="background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);padding:4px 9px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;color-scheme:dark">
+      <input type="date" id="audit-to"   onchange="loadAudit()" style="background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);padding:4px 9px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;color-scheme:dark">
+      <a id="audit-export" href="/api/audit/export" style="margin-left:auto">
+        <button class="tbl-btn" data-i18n="admin.audit_export">Export CSV</button>
+      </a>
+    </div>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <table class="data-table">
+      <thead><tr>
+        <th data-i18n="admin.audit_col_time">Time</th><th data-i18n="admin.audit_col_user">User</th><th data-i18n="admin.audit_col_query">Query preview</th>
+        <th data-i18n="admin.audit_col_route">Route</th><th data-i18n="admin.audit_col_mode">Mode</th><th data-i18n="admin.audit_col_tools">Tools</th><th data-i18n="admin.audit_col_dur">Duration</th>
+      </tr></thead>
+      <tbody id="audit-tbody"><tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px" data-i18n="common.loading">Loading…</td></tr></tbody>
+    </table>
+  </div>
+  <div class="pagination">
+    <button class="page-btn" id="audit-prev" onclick="auditPage(-1)" disabled data-i18n="common.prev">← Prev</button>
+    <span id="audit-page-info">Page 1</span>
+    <button class="page-btn" id="audit-next" onclick="auditPage(1)" data-i18n="common.next">Next →</button>
+  </div>
+</div>
+
+<!-- ── Modals ── -->
+<div class="modal-overlay" id="modal-user">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-user')">×</button>
+    <h3 id="modal-user-title" data-i18n="admin.users_modal_new">New user</h3>
+    <input type="hidden" id="modal-uid">
+    <div class="field"><label data-i18n="common.username">Username</label><input type="text" id="modal-username" autocomplete="off"></div>
+    <div class="field" id="modal-pw-wrap"><label id="modal-pw-label" data-i18n="common.password">Password</label><input type="password" id="modal-password" data-i18n-placeholder="admin.users_pw_hint" placeholder="Min 8 characters"></div>
+    <div class="field">
+      <label data-i18n="common.role">Role</label>
+      <select id="modal-role">
+        <option value="read-only" data-i18n="admin.users_role_readonly">Read-only</option>
+        <option value="standard" selected data-i18n="admin.users_role_standard">Standard</option>
+        <option value="power-user" data-i18n="admin.users_role_power">Power user</option>
+        <option value="admin" data-i18n="admin.users_role_admin">Admin</option>
+      </select>
+    </div>
+    <div class="field" id="modal-apikey-wrap">
+      <label data-i18n="admin.users_api_key">Anthropic API key <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+      <div style="display:flex;gap:6px">
+        <input type="password" id="modal-apikey" autocomplete="off"
+               data-i18n-placeholder="admin.users_api_key_ph"
+               placeholder="sk-ant-… — leave blank to use global account"
+               style="flex:1">
+        <button type="button" class="tbl-btn" id="modal-apikey-toggle"
+                onclick="toggleApiKeyVis()"
+                style="padding:4px 8px;min-width:40px">👁</button>
+      </div>
+      <div class="field-hint" data-i18n="admin.users_api_key_hint">Leave blank to use the global Claude Code account (claude auth login). Set to use this user's own Anthropic quota.</div>
+    </div>
+    <div id="modal-err" style="color:var(--red);font-size:11px;margin-top:8px;display:none"></div>
+    <div class="modal-footer">
+      <button class="tbl-btn" onclick="closeModal('modal-user')" data-i18n="common.cancel">Cancel</button>
+      <button class="tbl-btn primary" onclick="saveUser()" data-i18n="common.save">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ USAGE ════════════════════ -->
+<div class="panel" id="panel-usage">
+  <div class="card" style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+      <h2 style="margin:0">Usage &amp; cost</h2>
+      <select id="usage-days" onchange="loadUsage()" style="margin-left:auto">
+        <option value="7">last 7 days</option>
+        <option value="30" selected>last 30 days</option>
+        <option value="90">last 90 days</option>
+      </select>
+    </div>
+    <div id="usage-totals" style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:6px"></div>
+    <div class="field-hint">Token counts come from the local model backend. <b>Subscription CLI models (Claude Code · Codex) don't report tokens</b>, so for the <b>collaborate</b> mode the <b>request count</b> is the cost proxy — each run ≈ several frontier calls.</div>
+  </div>
+  <div class="card" style="margin-bottom:16px">
+    <h3 style="margin:0 0 10px">By mode</h3>
+    <table style="width:100%;border-collapse:collapse"><thead><tr>
+      <th style="text-align:left">Mode</th><th style="text-align:right">Requests</th>
+      <th style="text-align:right">Prompt tok</th><th style="text-align:right">Gen tok</th><th style="text-align:right">Total tok</th>
+    </tr></thead><tbody id="usage-by-mode"></tbody></table>
+  </div>
+  <div class="card">
+    <h3 style="margin:0 0 10px">By user</h3>
+    <table style="width:100%;border-collapse:collapse"><thead><tr>
+      <th style="text-align:left">User</th><th style="text-align:right">Requests</th>
+      <th style="text-align:right">Prompt tok</th><th style="text-align:right">Gen tok</th><th style="text-align:right">Total tok</th>
+    </tr></thead><tbody id="usage-by-user"></tbody></table>
+  </div>
+</div>
+
+<!-- ════════════════════ ROLES ════════════════════ -->
+<div class="panel" id="panel-roles">
+  <div class="card" style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div class="card-title" style="margin:0;border:none" data-i18n="admin.roles_title">Role permissions</div>
+      <span style="font-size:10px;color:var(--muted)" data-i18n="admin.roles_hint">Changes apply immediately on next request</span>
+      <button class="tbl-btn primary" onclick="saveRoles()" data-i18n="admin.roles_save" style="margin-left:auto">Save changes</button>
+    </div>
+  </div>
+  <div id="roles-container"></div>
+  <div id="roles-save-msg" style="font-size:11px;color:var(--green);margin-top:10px;display:none" data-i18n="common.saved">Saved.</div>
+</div>
+
+<!-- ════════════════════ MCP ════════════════════ -->
+<div class="panel" id="panel-mcp">
+  <div class="card" style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div class="card-title" style="margin:0;border:none" data-i18n="admin.mcp_title">MCP Servers</div>
+      <span id="mcp-count" style="font-size:10px;color:var(--muted)"></span>
+      <button class="tbl-btn" onclick="mcpRestart()" data-i18n="admin.mcp_restart" style="margin-left:auto">↺ Restart bridge</button>
+      <button class="tbl-btn" onclick="openCatalog()" data-i18n="admin.mcp_catalog">⊞ Browse catalog</button>
+      <button class="tbl-btn primary" onclick="openAddMcp()" data-i18n="admin.mcp_add">+ Add server</button>
+    </div>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <table class="data-table" id="mcp-table">
+      <thead><tr>
+        <th data-i18n="admin.mcp_col_name">Name</th><th data-i18n="admin.mcp_col_status">Status</th><th data-i18n="admin.mcp_col_source">Source</th><th data-i18n="admin.mcp_col_command">Command</th><th data-i18n="admin.mcp_col_tools">Tools</th><th data-i18n="admin.mcp_col_actions">Actions</th>
+      </tr></thead>
+      <tbody id="mcp-tbody"><tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px" data-i18n="common.loading">Loading…</td></tr></tbody>
+    </table>
+  </div>
+  <div id="mcp-restart-msg" style="margin-top:10px;font-size:11px;color:var(--cyan);display:none" data-i18n="admin.mcp_restarting">Bridge restarting — tools will update in a few seconds.</div>
+</div>
+
+<!-- ════════════════════ MCP CATALOG MODAL ════════════════════ -->
+<div class="modal-overlay" id="modal-catalog" style="align-items:flex-start;padding-top:48px">
+  <div class="modal" style="width:min(860px,96vw);max-height:82vh;overflow:hidden;display:flex;flex-direction:column">
+    <div class="modal-title">
+      <span data-i18n="admin.mcp_catalog_title">MCP Server Catalog</span>
+      <button class="modal-x" onclick="closeModal('modal-catalog')">✕</button>
+    </div>
+    <div style="font-size:10px;color:var(--muted);margin-bottom:12px" data-i18n-html="admin.mcp_catalog_info">
+      Click <strong>Add to SUNI</strong> to configure a server. You will be able to edit its settings (paths, API keys) before saving.
+      Servers from <span style="color:var(--cyan)">Claude Desktop</span> are read-only.
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <select id="cat-filter" style="background:rgba(255,255,255,.05);border:1px solid var(--border);
+        color:var(--text);padding:5px 8px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;">
+        <option value="" data-i18n="admin.mcp_catalog_all">All categories</option>
+      </select>
+      <label style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--dim);cursor:pointer">
+        <input type="checkbox" id="cat-free-only" style="accent-color:var(--cyan)">
+        <span data-i18n="admin.mcp_catalog_free">Free only (no API key)</span>
+      </label>
+    </div>
+    <div id="catalog-grid" style="overflow-y:auto;flex:1;display:grid;
+      grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;padding-right:4px">
+      <div style="color:var(--muted);padding:24px;text-align:center;grid-column:1/-1" data-i18n="admin.mcp_catalog_loading">Loading catalog…</div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ SKILLS ════════════════════ -->
+<div class="panel" id="panel-skills">
+  <div class="card" style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div class="card-title" style="margin:0;border:none" data-i18n="admin.skills_title">Learned Skills</div>
+      <span id="skills-count" style="font-size:10px;color:var(--muted)"></span>
+      <button class="tbl-btn primary" onclick="openNewSkill()" data-i18n="admin.skills_new" style="margin-left:auto">+ New skill</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+      <input id="skill-search" type="text" data-i18n-placeholder="admin.skills_search" placeholder="Search skills…"
+        style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);
+               padding:5px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;flex:1;min-width:160px;"
+        oninput="filterSkills(this.value)">
+      <select id="skill-cat-filter" onchange="filterSkills()"
+        style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);
+               padding:5px 8px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;">
+        <option value="" data-i18n="admin.skills_all_cats">All categories</option>
+      </select>
+    </div>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <table class="data-table" id="skills-table">
+      <thead><tr>
+        <th data-i18n="admin.skills_col_name">Name</th><th data-i18n="admin.skills_col_cat">Category</th><th data-i18n="admin.skills_col_desc">Description</th><th data-i18n="admin.skills_col_ver">Version</th><th data-i18n="admin.skills_col_used">Used</th><th data-i18n="admin.skills_col_actions">Actions</th>
+      </tr></thead>
+      <tbody id="skills-tbody">
+        <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px" data-i18n="common.loading">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Skills edit modal -->
+<div class="modal-overlay" id="modal-skill">
+  <div class="modal" style="width:min(680px,96vw);max-height:85vh;overflow:hidden;display:flex;flex-direction:column">
+    <div class="modal-title">
+      <span id="modal-skill-title" data-i18n="admin.skills_modal_new">New skill</span>
+      <button class="modal-x" onclick="closeModal('modal-skill')">✕</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div class="field">
+        <label data-i18n="admin.skills_name">Name</label>
+        <input type="text" id="sk-name" placeholder="Generate your organization Weekly Report"
+          style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);
+                 padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
+      </div>
+      <div class="field">
+        <label data-i18n="admin.skills_category">Category</label>
+        <input type="text" id="sk-category" placeholder="reporting"
+          style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);
+                 padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
+      </div>
+    </div>
+    <div class="field" style="margin-bottom:10px">
+      <label data-i18n="admin.skills_desc_lbl">Description (one sentence — shown in skill list)</label>
+      <input type="text" id="sk-desc" placeholder="Fetches your organization project status and generates a PDF report."
+        style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);
+               padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
+    </div>
+    <div class="field" style="flex:1;display:flex;flex-direction:column">
+      <label data-i18n="admin.skills_body">Skill body (Markdown — steps, example tool calls, tips)</label>
+      <textarea id="sk-body" spellcheck="false"
+        style="flex:1;min-height:220px;background:rgba(0,0,0,.3);border:1px solid var(--border);
+               color:var(--text);padding:10px;border-radius:3px;font-family:'DM Mono',monospace;
+               font-size:11px;line-height:1.55;resize:vertical;width:100%"></textarea>
+    </div>
+    <div id="sk-err" style="color:var(--red);font-size:11px;margin-top:6px;display:none"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+      <button class="tbl-btn" onclick="closeModal('modal-skill')" data-i18n="common.cancel">Cancel</button>
+      <button class="tbl-btn primary" onclick="saveSkill()" data-i18n="admin.skills_save">Save skill</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ BACKUP ════════════════════ -->
+<div class="panel" id="panel-backup">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+
+    <!-- Create backup -->
+    <div class="card">
+      <div class="card-title" data-i18n="admin.backup_create">Create backup</div>
+      <div style="margin-bottom:12px">
+        <label style="display:flex;align-items:flex-start;gap:8px;font-size:11px;color:var(--label);cursor:pointer;text-align:left;line-height:1.5">
+          <input type="checkbox" style="accent-color:var(--gold);flex-shrink:0;width:auto;margin-top:2px" id="bk-faiss">
+          <span data-i18n="admin.backup_faiss">Include FAISS index (large — can be rebuilt from source docs)</span>
+        </label>
+      </div>
+      <div style="margin-bottom:12px">
+        <label style="display:flex;align-items:flex-start;gap:8px;font-size:11px;color:var(--label);cursor:pointer;text-align:left;line-height:1.5">
+          <input type="checkbox" style="accent-color:var(--gold);flex-shrink:0;width:auto;margin-top:2px" id="bk-logs">
+          <span data-i18n="admin.backup_logs">Include daily log files</span>
+        </label>
+      </div>
+      <div style="margin-bottom:16px">
+        <label style="display:flex;align-items:flex-start;gap:8px;font-size:11px;color:var(--label);cursor:pointer;text-align:left;line-height:1.5">
+          <input type="checkbox" style="accent-color:var(--gold);flex-shrink:0;width:auto;margin-top:2px" id="bk-uploads">
+          <span data-i18n="admin.backup_uploads">Include uploaded documents (memory/uploads — can be large)</span>
+        </label>
+      </div>
+      <button class="btn btn-primary" onclick="createBackup()" id="bk-btn" data-i18n="admin.backup_now" style="width:100%">Backup now</button>
+      <div id="bk-msg" style="margin-top:10px;font-size:11px;display:none"></div>
+    </div>
+
+    <!-- Restore -->
+    <div class="card">
+      <div class="card-title" data-i18n="admin.backup_restore_ttl">Restore from backup</div>
+      <div class="field" style="margin-bottom:16px">
+        <label data-i18n="admin.backup_select">Select backup ZIP file</label>
+        <input type="file" id="restore-file" accept=".zip"
+          style="background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);
+                 padding:8px 11px;border-radius:4px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
+      </div>
+      <div style="font-size:10px;color:var(--red);margin-bottom:14px" data-i18n="admin.backup_warning">
+        Warning: restore overwrites current data. SUNI must be restarted after restore.
+      </div>
+      <button class="btn btn-secondary" onclick="restoreBackup()" data-i18n="admin.backup_restore_btn" style="width:100%">Restore</button>
+      <div id="restore-msg" style="margin-top:10px;font-size:11px;display:none"></div>
+    </div>
+  </div>
+
+  <!-- Backup list -->
+  <div class="card" style="padding:0;overflow:hidden">
+    <div style="padding:14px 18px 10px;font-family:'Syne',sans-serif;font-size:9px;
+                font-weight:700;letter-spacing:.25em;text-transform:uppercase;
+                color:var(--label);border-bottom:1px solid var(--border)">
+      <span data-i18n="admin.backup_history">Backup history</span> <span id="bk-count" style="color:var(--muted);font-weight:400"></span>
+    </div>
+    <table class="data-table" id="backup-table">
+      <thead><tr><th data-i18n="admin.backup_col_file">Filename</th><th data-i18n="admin.backup_col_size">Size</th><th data-i18n="admin.backup_col_created">Created</th><th data-i18n="admin.backup_col_actions">Actions</th></tr></thead>
+      <tbody id="backup-tbody"><tr><td colspan="4" style="text-align:center;color:var(--muted);padding:24px" data-i18n="admin.backup_empty">No backups yet.</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── MCP modal ── -->
+<div class="modal-overlay" id="modal-mcp">
+  <div class="modal" style="width:500px">
+    <button class="modal-close" onclick="closeModal('modal-mcp')">×</button>
+    <h3 id="modal-mcp-title" data-i18n="admin.mcp_modal_add">Add MCP server</h3>
+    <input type="hidden" id="mcp-edit-name">
+    <div class="field"><label data-i18n="admin.mcp_server_name">Server name</label><input type="text" id="mcp-name" placeholder="e.g. playwright"></div>
+    <div class="field"><label data-i18n="admin.mcp_command">Command</label><input type="text" id="mcp-command" placeholder="e.g. npx"></div>
+    <div class="field">
+      <label data-i18n="admin.mcp_args">Arguments (one per line)</label>
+      <textarea id="mcp-args" rows="3" placeholder="@playwright/mcp@latest&#10;--headless"></textarea>
+    </div>
+    <div class="field">
+      <label data-i18n="admin.mcp_env">Environment variables (KEY=value, one per line)</label>
+      <textarea id="mcp-env" rows="2" placeholder="API_KEY=your_key_here"></textarea>
+      <div class="field-hint" data-i18n="admin.mcp_env_hint">Values are stored in the config file. Do not use for highly sensitive credentials.</div>
+    </div>
+    <div id="mcp-err" style="color:var(--red);font-size:11px;margin-top:8px;display:none"></div>
+    <div class="modal-footer">
+      <button class="tbl-btn" onclick="closeModal('modal-mcp')" data-i18n="common.cancel">Cancel</button>
+      <button class="tbl-btn" id="mcp-test-btn" onclick="testMcpFromModal()" data-i18n="admin.mcp_test">Test connection</button>
+      <button class="tbl-btn primary" onclick="saveMcp()" data-i18n="common.save">Save</button>
+    </div>
+    <div id="mcp-test-result" style="margin-top:10px;font-size:11px;display:none"></div>
+  </div>
+</div>
+
+<!-- ════════════════════ LOGS ════════════════════ -->
+<div class="panel" id="panel-logs">
+  <div class="card" style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div class="card-title" style="margin:0;border:none" data-i18n="admin.logs_title">Log viewer</div>
+      <select id="log-level" onchange="fetchLogs()" style="background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);padding:5px 10px;border-radius:4px;font-family:'DM Mono',monospace;font-size:11px">
+        <option value="ALL" data-i18n="admin.logs_all">All levels</option>
+        <option value="ERROR" data-i18n="admin.logs_errors">Errors only</option>
+        <option value="WARNING" data-i18n="admin.logs_warnings">Warnings+</option>
+        <option value="INFO" data-i18n="admin.logs_info">Info+</option>
+      </select>
+      <input type="date" id="log-date" onchange="fetchLogs()"
+        style="background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);
+               padding:5px 10px;border-radius:4px;font-family:'DM Mono',monospace;font-size:11px;
+               color-scheme:dark">
+      <span id="log-file" style="font-size:10px;color:var(--muted);font-style:italic"></span>
+      <button class="btn btn-secondary" onclick="fetchLogs()" data-i18n="common.refresh" style="margin-left:auto;padding:5px 14px;font-size:10px">Refresh</button>
+      <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--label);cursor:pointer">
+        <input type="checkbox" id="log-autoscroll" checked style="accent-color:var(--gold)"> <span data-i18n="admin.logs_autoscroll">Auto-scroll</span>
+      </label>
+    </div>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div id="log-output" style="
+      font-family:'DM Mono',monospace;font-size:11px;line-height:1.7;
+      padding:16px 18px;max-height:78vh;overflow-y:auto;
+      white-space:pre-wrap;word-break:break-all;
+    "></div>
+  </div>
+  <div style="margin-top:8px;font-size:10px;color:var(--muted);font-style:italic" id="log-summary"></div>
+</div>
+
+<!-- ════════════════════ BENCHMARKS ════════════════════ -->
+<div class="panel" id="panel-benchmarks">
+  <div class="card" style="margin-bottom:18px">
+    <div class="card-title">LLM Metrics — 33-point benchmark</div>
+    <div class="bm-toolbar">
+      <div class="bm-summary" id="bm-summary"></div>
+      <div style="flex:1"></div>
+      <select id="bm-suite-sel" class="bm-sel" title="Which suites to run">
+        <option value="">All suites</option>
+      </select>
+      <label style="font-size:10px;color:var(--label);display:flex;align-items:center;gap:5px;cursor:pointer">
+        <input type="checkbox" id="bm-quick" checked> quick (2 items/suite)
+      </label>
+      <button class="btn btn-primary" id="bm-run-btn" onclick="runBenchmark()">Run benchmark</button>
+    </div>
+    <div class="bm-progress" id="bm-progress" style="display:none">
+      <div class="bm-prog-track"><div class="bm-prog-fill" id="bm-prog-fill"></div></div>
+      <div class="bm-prog-label" id="bm-prog-label"></div>
+    </div>
+    <div style="font-size:10px;color:var(--muted);font-style:italic;margin-top:10px" id="bm-lastrun"></div>
+    <div style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.5">
+      <b style="color:var(--green)">Live</b> metrics accrue from real usage ·
+      <b style="color:var(--gold)">Estimated</b> from model &amp; hardware ·
+      <b style="color:var(--cyan)">Measured</b> from an on-demand run over small
+      <i>indicative</i> datasets (not official benchmark figures) ·
+      <b style="color:#ff8095">N/A</b> where no trustworthy local measurement exists.
+      Running the suites makes SUNI slower while they execute.
+    </div>
+  </div>
+  <div id="bm-body"><div class="act-empty">Loading metrics…</div></div>
+</div>
+</main>
+
+<script>
+// ═══════════════════════════════════════════
+//  AUTH — JWT from localStorage
+// ═══════════════════════════════════════════
+const _ST = localStorage.getItem('suni_jwt') || "__SUNI_TOKEN__";
+function _apiFetch(url, opts={}){
+  opts.headers = {...(opts.headers||{}),"Authorization":"Bearer "+_ST};
+  return fetch(url, opts);
+}
+async function _checkAuth(){
+  // Check first-run
+  const fr = await fetch('/api/auth/first-run').then(r=>r.json()).catch(()=>({first_run:false}));
+  if(fr.first_run){ location.href='/login?setup=1'; return; }
+  // Verify JWT
+  const me = await _apiFetch('/api/auth/me').then(r=>r.ok?r.json():null).catch(()=>null);
+  if(!me){ location.href='/login?next=/admin'; return; }
+  el('hdr-user').textContent = me.username + ' · ' + me.role;
+  // Set UI language from user / global settings
+  try {
+    const [uSettings, uCfg] = await Promise.all([
+      _apiFetch('/api/users/me/settings').then(r=>r.json()).catch(()=>({})),
+      _apiFetch('/api/config').then(r=>r.json()).catch(()=>({})),
+    ]);
+    const uiLang = uSettings.response_language || uCfg.response_language || 'en';
+    if (typeof setLang !== 'undefined') setLang(uiLang);
+  } catch {}
+  if(me.role !== 'admin'){
+    // Hide admin-only tabs
+    document.querySelectorAll('.tab').forEach(tab=>{if(tab.dataset.i18n==='admin.nav_users'||tab.dataset.i18n==='admin.nav_audit')tab.style.display='none'});
+  }
+}
+function logout(){
+  localStorage.removeItem('suni_jwt');
+  localStorage.removeItem('suni_refresh');
+  location.href='/login';
+}
+
+// ═══════════════════════════════════════════
+//  TAB SWITCHER
+// ═══════════════════════════════════════════
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('panel-' + name).classList.add('active');
+  if (name === 'config') loadConfig();
+  if (name === 'users') loadUsers();
+  if (name === 'audit') { loadUsers(); loadAudit(); }
+  if (name === 'usage') loadUsage();
+  if (name === 'roles')  loadRoles();
+  if (name === 'mcp')    loadMcp();
+  if (name === 'skills') loadSkills();
+  if (name === 'backup') loadBackups();
+  if (name === 'benchmarks') loadBenchmarks();
+  if (name !== 'benchmarks') { clearInterval(_bmProgTimer); _bmProgTimer = null; }
+  if (name === 'logs') {
+    if (!el('log-date').value)
+      el('log-date').value = new Date().toISOString().slice(0, 10);
+    fetchLogs();
+    clearInterval(_logInterval);
+    _logInterval = setInterval(fetchLogs, 10000);
+  } else {
+    clearInterval(_logInterval);
+  }
+}
+
+// ═══════════════════════════════════════════
+//  USAGE & COST
+// ═══════════════════════════════════════════
+async function loadUsage() {
+  const days = document.getElementById('usage-days')?.value || 30;
+  let d;
+  try { d = await (await _apiFetch('/api/usage?days=' + days)).json(); }
+  catch { return; }
+  const nf = n => (n || 0).toLocaleString();
+  const t = d.totals || {};
+  const card = (label, val, accent) =>
+    `<div style="flex:1;min-width:120px;padding:12px;border:1px solid rgba(255,255,255,.1);border-radius:6px">
+       <div style="font-size:22px;font-weight:700;color:${accent||'var(--text)'}">${nf(val)}</div>
+       <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">${label}</div></div>`;
+  document.getElementById('usage-totals').innerHTML =
+    card('requests', t.requests) + card('prompt tokens', t.prompt_tokens) +
+    card('gen tokens', t.gen_tokens) + card('total tokens', t.total_tokens, 'var(--cyan)');
+  const MODE_COLOR = { collaborate:'var(--gold)', task:'var(--cyan)', 'read-only':'rgba(255,180,0,.8)' };
+  document.getElementById('usage-by-mode').innerHTML = (d.by_mode || []).map(m =>
+    `<tr style="border-top:1px solid rgba(255,255,255,.06)">
+       <td style="color:${MODE_COLOR[m.mode]||'var(--text)'}">${m.mode==='collaborate'?'✦ ':''}${esc(m.mode)}</td>
+       <td style="text-align:right">${nf(m.requests)}</td>
+       <td style="text-align:right">${nf(m.prompt_tokens)}</td>
+       <td style="text-align:right">${nf(m.gen_tokens)}</td>
+       <td style="text-align:right">${nf(m.total_tokens)}</td></tr>`).join('')
+    || '<tr><td colspan="5" style="color:var(--muted);padding:8px 0">No usage in this window.</td></tr>';
+  document.getElementById('usage-by-user').innerHTML = (d.by_user || []).map(u =>
+    `<tr style="border-top:1px solid rgba(255,255,255,.06)">
+       <td>${esc(u.username || u.user_id || '—')}</td>
+       <td style="text-align:right">${nf(u.requests)}</td>
+       <td style="text-align:right">${nf(u.prompt_tokens)}</td>
+       <td style="text-align:right">${nf(u.gen_tokens)}</td>
+       <td style="text-align:right">${nf(u.total_tokens)}</td></tr>`).join('')
+    || '<tr><td colspan="5" style="color:var(--muted);padding:8px 0">No usage in this window.</td></tr>';
+}
+
+// ═══════════════════════════════════════════
+//  BENCHMARKS — 33-metric dashboard
+// ═══════════════════════════════════════════
+let _bmProgTimer = null;
+let _bmSuitesLoaded = false;
+
+async function loadBenchmarks() {
+  if (!_bmSuitesLoaded) {
+    try {
+      const s = await _apiFetch('/api/benchmarks/suites').then(r=>r.json());
+      const sel = el('bm-suite-sel');
+      (s.suites || []).forEach(su => {
+        const o = document.createElement('option');
+        o.value = su.key; o.textContent = su.key.replace(/_/g,' ');
+        sel.appendChild(o);
+      });
+      _bmSuitesLoaded = true;
+    } catch {}
+  }
+  await refreshBenchmarks();
+  // If a run is in progress, resume progress polling.
+  try {
+    const p = await _apiFetch('/api/benchmarks/progress').then(r=>r.json());
+    if (p.running) startBmProgress();
+  } catch {}
+}
+
+async function refreshBenchmarks() {
+  try {
+    const d = await _apiFetch('/api/benchmarks/metrics').then(r=>r.json());
+    renderBenchmarks(d);
+  } catch(e) {
+    el('bm-body').innerHTML = '<div class="act-empty">Failed to load metrics.</div>';
+  }
+}
+
+function _bmFmtVal(m) {
+  if (m.value === null || m.value === undefined) {
+    return m.status === 'na'
+      ? '<span class="bm-val na">N/A</span>'
+      : '<span class="bm-val awaiting">—</span>';
+  }
+  let u = m.unit || '';
+  let v = m.value;
+  const uSpan = u ? ` <span class="u">${u}</span>` : '';
+  return `<span class="bm-val ${m.status}">${v}${uSpan}</span>`;
+}
+
+function renderBenchmarks(d) {
+  // summary
+  const s = d.summary || {};
+  const bs = s.by_status || {};
+  const summ = [
+    ['Total', s.total || 33],
+    ['Live', bs.live || 0],
+    ['Estimated', bs.estimated || 0],
+    ['Measured', bs.measured || 0],
+    ['Awaiting', bs.awaiting || 0],
+    ['N/A', bs.na || 0],
+  ].map(([k,v]) => `<div class="bm-stat"><b>${v}</b><span>${k}</span></div>`).join('');
+  el('bm-summary').innerHTML = summ +
+    `<div class="bm-stat"><b>${s.sample_count||0}</b><span>Live samples</span></div>`;
+
+  // last run
+  if (d.last_run) {
+    el('bm-lastrun').textContent =
+      `Last run: ${fmtTime(d.last_run.finished)} · ${d.last_run.suite_keys.length} suites · ${d.last_run.elapsed_s}s · model ${d.model}`;
+  } else {
+    el('bm-lastrun').textContent = `No benchmark run yet · model ${d.model}`;
+  }
+
+  // categories
+  let html = '';
+  (d.categories || []).forEach(cat => {
+    html += `<div class="bm-cat"><div class="bm-cat-title">${cat.category}</div><div class="bm-grid">`;
+    cat.metrics.forEach(m => {
+      const tip = ((m.desc||'') + (m.method ? '\n\nHow: ' + m.method : '')).replace(/"/g,'&quot;');
+      const ts = m.ts ? `<div class="bm-ts">${fmtTime(m.ts)}</div>` : '';
+      html += `
+        <div class="bm-tile">
+          <div class="bm-tile-head">
+            <div class="bm-name" title="${tip}">${m.name}</div>
+            <div class="bm-badge ${m.status}">${m.status}</div>
+          </div>
+          ${_bmFmtVal(m)}
+          ${m.detail ? `<div class="bm-detail">${m.detail}</div>` : ''}
+          ${ts}
+        </div>`;
+    });
+    html += `</div></div>`;
+  });
+  el('bm-body').innerHTML = html || '<div class="act-empty">No metrics.</div>';
+}
+
+async function runBenchmark() {
+  const btn = el('bm-run-btn');
+  const sel = el('bm-suite-sel').value;
+  const quick = el('bm-quick').checked;
+  const body = { limit: quick ? 2 : null };
+  if (sel) body.suites = [sel];
+  btn.disabled = true;
+  try {
+    const r = await _apiFetch('/api/benchmarks/run', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    if (r.status === 409) {
+      alert('A benchmark run is already in progress.');
+      btn.disabled = false;
+      return;
+    }
+    if (!r.ok) throw new Error(r.status);
+    startBmProgress();
+  } catch(e) {
+    alert('Failed to start benchmark.');
+    btn.disabled = false;
+  }
+}
+
+function startBmProgress() {
+  el('bm-progress').style.display = 'block';
+  el('bm-run-btn').disabled = true;
+  clearInterval(_bmProgTimer);
+  _bmProgTimer = setInterval(pollBmProgress, 1500);
+  pollBmProgress();
+}
+
+async function pollBmProgress() {
+  let p;
+  try { p = await _apiFetch('/api/benchmarks/progress').then(r=>r.json()); }
+  catch { return; }
+  if (p.running) {
+    const suitePct = p.suite_total ? (p.suite_index - 1) / p.suite_total : 0;
+    const itemPct = p.item_total ? (p.item / p.item_total) / p.suite_total : 0;
+    const pct = Math.min(100, Math.round((suitePct + itemPct) * 100));
+    el('bm-prog-fill').style.width = pct + '%';
+    el('bm-prog-label').textContent =
+      `Running ${p.suite || '…'} (${p.suite_index}/${p.suite_total}) · item ${p.item}/${p.item_total}`;
+  } else {
+    // finished
+    clearInterval(_bmProgTimer); _bmProgTimer = null;
+    el('bm-prog-fill').style.width = '100%';
+    el('bm-prog-label').textContent = p.error ? ('Error: ' + p.error) : 'Run complete.';
+    el('bm-run-btn').disabled = false;
+    setTimeout(() => { el('bm-progress').style.display = 'none'; }, 2500);
+    refreshBenchmarks();
+  }
+}
+
+// ═══════════════════════════════════════════
+//  UTILITIES
+// ═══════════════════════════════════════════
+function fmtUptime(s) {
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  if (h) return `${h}h ${m}m`;
+  if (m) return `${m}m ${sec}s`;
+  return `${sec}s`;
+}
+function fmtTime(iso) {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  } catch { return '—'; }
+}
+function fmtExpiry(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso), now = new Date();
+    const diff = Math.round((d - now) / 60000);
+    if (diff < 0) return 'expired';
+    if (diff < 60) return `${diff}m`;
+    return `${Math.round(diff/60)}h`;
+  } catch { return '—'; }
+}
+function el(id) { return document.getElementById(id); }
+function set(id, v) { const e = el(id); if (e) e.textContent = v; }
+
+// ═══════════════════════════════════════════
+//  DASHBOARD POLLING
+// ═══════════════════════════════════════════
+let _recentTools = [];
+
+async function fetchDashboard() {
+  try {
+    const r = await _apiFetch('/api/dashboard');
+    if (!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    renderDashboard(d);
+    el('hdr-dot').className = 'dot';
+    set('hdr-state', t('common.online'));
+  } catch(e) {
+    el('hdr-dot').className = 'dot offline';
+    set('hdr-state', t('common.offline'));
+  }
+}
+
+function renderDashboard(d) {
+  // Header uptime
+  el('hdr-uptime').textContent = '· ' + fmtUptime(d.uptime_s);
+
+  // Status card
+  set('d-uptime', fmtUptime(d.uptime_s));
+  const acts = d.activity || [];
+  set('d-reqs', acts.length + (acts.length === 20 ? '+' : ''));
+  if (acts.length) {
+    const avg = acts.reduce((a,b) => a + b.total_s, 0) / acts.length;
+    set('d-avg', avg.toFixed(1) + 's');
+    set('d-route', acts[acts.length-1].route || '—');
+  }
+
+  // Model card
+  const ps = d.ollama_ps || [];
+  if (ps.length) {
+    const m = ps[0];
+    set('d-model-name', m.name || '—');
+    set('d-ctx', (m.context_length || '—') + ' tok');
+    set('d-vram', m.size_vram_mb ? m.size_vram_mb + ' MB' : '—');
+    set('d-exp', fmtExpiry(m.expires_at));
+  } else {
+    set('d-model-name', d.config?.model || '—');
+    set('d-ctx', (d.config?.num_ctx || '—') + ' tok');
+    set('d-vram', t('admin.dash_not_loaded'));
+    set('d-exp', '—');
+  }
+  // Extract tok/s from latest activity note
+  if (acts.length) {
+    const note = acts[acts.length-1].trace_note || '';
+    const m = note.match(/([\d.]+)\s*tok\/s/);
+    set('d-toks', m ? m[1] + ' t/s' : '—');
+  }
+
+  // GPU
+  renderGPU(d.gpu || []);
+
+  // Memory — show active count; note deprecated (soft-deleted) entries separately
+  const memActive = d.memory?.active ?? d.memory?.total ?? 0;
+  const memDep    = d.memory?.deprecated ?? 0;
+  set('d-mem-count', memActive.toLocaleString() + (memDep ? ` (+${memDep.toLocaleString()} deprecated)` : ''));
+
+  // Activity log
+  _recentTools = d.tools?.recent || [];
+  renderActivity(acts);
+
+  // Tools
+  renderTools(d.tools || {});
+
+  // MCP
+  renderMCP(d.mcp_servers || []);
+
+  // System profile
+  const sp = d.system || {};
+  set('sp-ram',   sp.ram_gb   ? sp.ram_gb + ' GB'  : '—');
+  set('sp-vram',  sp.vram_mb  ? sp.vram_mb + ' MB' : '—');
+  set('sp-cpu',   sp.cpu_cores ?? '—');
+  set('sp-doc',   sp.max_doc_mb   ? sp.max_doc_mb + ' MB'  : '—');
+  set('sp-batch', sp.embed_batch  ?? '—');
+  set('sp-conc',  sp.ingest_concurrency ?? '—');
+  set('sp-ctx',   sp.num_ctx   ? sp.num_ctx + ' tok'  : '—');
+  set('sp-hist',  sp.num_history ? sp.num_history + ' msg' : '—');
+  set('sp-comp',  sp.compress_at ? '~' + sp.compress_at + ' tok' : '—');
+
+  // Knowledge Base (separate endpoint)
+  fetchKnowledge();
+
+  // Poll interval
+  const pi = d.config?.email_poll_interval;
+  set('d-poll', pi ? (pi >= 60 ? Math.round(pi/60) + 'm' : pi + 's') : '—');
+}
+
+function renderGPU(gpus) {
+  const wrap = el('gpu-container');
+  if (!gpus.length) { wrap.innerHTML = `<div style="color:var(--muted);font-size:11px;font-style:italic">${t('admin.dash_no_gpu')}</div>`; return; }
+  wrap.innerHTML = gpus.map(g => {
+    const memPct = Math.round(g.mem_used / g.mem_total * 100);
+    const utilPct = g.util_pct;
+    const memClass = memPct > 90 ? 'crit' : memPct > 70 ? 'warn' : '';
+    const utilClass = utilPct > 90 ? 'crit' : utilPct > 50 ? 'warn' : '';
+    return `
+    <div class="gpu-bar-wrap">
+      <div class="gpu-label"><span>${t('admin.dash_vram')}</span><span>${g.mem_used} / ${g.mem_total} MB</span></div>
+      <div class="bar-track"><div class="bar-fill ${memClass}" style="width:${memPct}%"></div></div>
+    </div>
+    <div class="gpu-bar-wrap" style="margin-top:6px">
+      <div class="gpu-label"><span>${t('admin.dash_utilisation')}</span><span>${utilPct}% · ${g.temp_c}°C</span></div>
+      <div class="bar-track"><div class="bar-fill ${utilClass}" style="width:${utilPct}%"></div></div>
+    </div>
+    <div class="gpu-name">${g.name}</div>`;
+  }).join('');
+}
+
+function renderActivity(acts) {
+  const list = el('activity-list');
+  if (!acts.length) { list.innerHTML = `<div class="act-empty">${t('admin.dash_no_activity')}</div>`; return; }
+  list.innerHTML = [...acts].reverse().map(a => {
+    const tools = a.tools?.join(', ').split(', ').filter(Boolean) || [];
+    return `
+    <div class="act-row">
+      <div class="act-time">${fmtTime(a.ts)}</div>
+      <div>
+        <div class="act-query">${esc(a.query)}</div>
+        <div class="act-tools">${tools.map(t => `<span class="tool-chip">${esc(t)}</span>`).join('')}</div>
+      </div>
+      <div class="act-meta">
+        <div class="act-dur">${a.total_s}s</div>
+        <div class="act-route">${a.route || 'local'}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderTools(tools) {
+  const all = tools.all || [];
+  const recent = tools.recent || [];
+  const mcpPrefixes = tools.mcp_prefixes || [];
+  el('tool-count').textContent = '(' + all.length + ')';
+  const list = el('tool-list');
+  list.innerHTML = all.map(name => {
+    const isMcp = mcpPrefixes.some(p => name.startsWith(p + '_'));
+    const isRecent = recent.includes(name);
+    const cls = isRecent ? 'active-tool' : isMcp ? 'mcp' : '';
+    return `<div class="tool-item ${cls}"><div class="tool-dot"></div>${esc(name)}</div>`;
+  }).join('');
+}
+
+function renderMCP(servers) {
+  const wrap = el('mcp-list');
+  if (!servers.length) {
+    wrap.innerHTML = `<div style="color:var(--muted);font-size:11px;font-style:italic">${t('admin.dash_no_mcp')}</div>`;
+    return;
+  }
+  wrap.innerHTML = servers.map(s => `
+    <div class="mcp-row">
+      <span class="mcp-name">${esc(s.name)}</span>
+      <span class="badge ${s.connected ? 'ok' : 'err'}">${s.connected ? t('admin.mcp_connected') : t('admin.mcp_failed')}</span>
+    </div>`).join('');
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ═══════════════════════════════════════════
+//  CONFIGURATION
+// ═══════════════════════════════════════════
+async function loadConfig() {
+  // Load Ollama models
+  try {
+    const r = await _apiFetch('/api/ollama/models');
+    const {models} = await r.json();
+    const sel = el('cfg-model');
+    sel.innerHTML = models.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
+  } catch(e) {}
+
+  // Load TTS voices
+  try {
+    const r = await _apiFetch('/api/tts/voices');
+    const {voices} = await r.json();
+    const sel = el('cfg-voice');
+    sel.innerHTML = voices.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+  } catch(e) {}
+
+  // Load current config
+  try {
+    const r = await _apiFetch('/api/config');
+    const cfg = await r.json();
+    applyConfigToForm(cfg);
+  } catch(e) {}
+
+  // Load model inventory (non-blocking)
+  loadInventory(false);
+}
+
+function applyConfigToForm(cfg) {
+  const form = document.getElementById('cfg-form');
+  const fields = ['display_name','tagline','model','tts_voice',
+                  'stt_language','response_language','system_prompt_addendum',
+                  'global_output_dir','claude_code_timeout',
+                  'vllm_base_url','vllm_model','vllm_api_key',
+                  'embed_backend','embed_base_url','embed_model','embed_api_key',
+                  'stt_backend','stt_base_url','stt_model','stt_api_key',
+                  'vision_base_url','vision_model','vision_api_key',
+                  'tts_backend','tts_base_url','tts_model','tts_api_key'];
+  // doc_paths: stored as array, edited as newline-separated textarea
+  if (cfg.doc_paths !== undefined) {
+    const ta = form.elements['doc_paths_raw'];
+    if (ta) ta.value = (cfg.doc_paths || []).join('\n');
+  }
+  // ollama_endpoints: stored as array, edited as newline-separated textarea
+  if (cfg.ollama_endpoints !== undefined) {
+    const ta = form.elements['ollama_endpoints_raw'];
+    if (ta) ta.value = (cfg.ollama_endpoints || []).join('\n');
+  }
+  // model_chain: draggable preference list. Empty = seed the familiar tier ladder
+  // so it starts pre-configured (the user can then reorder, edit, or add more).
+  const _mc = cfg.model_chain || [];
+  _modelChain = _mc.length
+    ? _mc.map(e => ({
+        id: e.id || _mcNewId(), label: e.label || '', provider: e.provider || 'ollama',
+        model: e.model || '', base_url: e.base_url || '', api_key: '',
+        has_key: !!e.has_key, enabled: e.enabled !== false,
+      }))
+    : _defaultTierChain(cfg);
+  _renderModelChain();
+  fields.forEach(k => {
+    const el = form.elements[k];
+    if (el && cfg[k] !== undefined) el.value = cfg[k];
+  });
+
+  // Checkbox fields
+  const fcc = document.getElementById('force_claude_code');
+  if (fcc) { fcc.checked = !!cfg.force_claude_code; fcc.defaultChecked = !!cfg.force_claude_code; }
+  const mcr = document.getElementById('model_chain_routing');
+  if (mcr) { mcr.checked = !!cfg.model_chain_routing; }
+  // Collaboration (Mode 2): toggles + pool
+  const cen = document.getElementById('collaborate_enabled');
+  if (cen) { cen.checked = cfg.collaborate_enabled !== false; }
+  const csk = document.getElementById('collaborate_skip_critique');
+  if (csk) { csk.checked = !!cfg.collaborate_skip_critique; }
+  _collabPool = (cfg.collaborate_pool || []).map(e => ({
+    id: e.id || _cpNewId(), provider: e.provider || 'claude-code', model: e.model || '',
+    base_url: e.base_url || '', api_key: '', has_key: !!e.has_key, enabled: e.enabled !== false }));
+  _renderCollabPool();
+  // Knowledge-base retrieval toggle (biggest latency lever on a large index)
+  const dke = document.getElementById('doc_kb_enabled');
+  if (dke) { dke.checked = cfg.doc_kb_enabled !== false; }
+  // SMTP password is masked by the API (has_smtp_pass flag) — show configured state.
+  const smp = document.getElementById('smtp_pass');
+  if (smp) { smp.value = ''; smp.placeholder = cfg.has_smtp_pass ? '•••• configured (leave blank to keep)' : 'app password'; }
+  const tge = document.getElementById('telegram_enabled');
+  if (tge) { tge.checked = !!cfg.telegram_enabled; }
+  // Bot token is masked by the API (has_telegram_token flag) — show configured state.
+  const tgt = document.getElementById('telegram_bot_token');
+  if (tgt) { tgt.value = ''; tgt.placeholder = cfg.has_telegram_token ? '•••• configured (leave blank to keep)' : 'from @BotFather'; }
+  const tgc = document.getElementById('telegram_allowed_chats_raw');
+  if (tgc) { tgc.value = (cfg.telegram_allowed_chats || []).join('\n'); }
+  const dce = document.getElementById('discord_enabled');
+  if (dce) { dce.checked = !!cfg.discord_enabled; }
+  const dct = document.getElementById('discord_bot_token');
+  if (dct) { dct.value = ''; dct.placeholder = cfg.has_discord_token ? '•••• configured (leave blank to keep)' : 'Developer Portal → Bot → Token'; }
+  const dcc = document.getElementById('discord_allowed_channels_raw');
+  if (dcc) { dcc.value = (cfg.discord_allowed_channels || []).join('\n'); }
+  const ske = document.getElementById('slack_enabled');
+  if (ske) { ske.checked = !!cfg.slack_enabled; }
+  const ska = document.getElementById('slack_app_token');
+  if (ska) { ska.value = ''; ska.placeholder = cfg.has_slack_app_token ? '•••• configured (leave blank to keep)' : 'connections:write'; }
+  const skb = document.getElementById('slack_bot_token');
+  if (skb) { skb.value = ''; skb.placeholder = cfg.has_slack_bot_token ? '•••• configured (leave blank to keep)' : 'chat:write'; }
+  const skc = document.getElementById('slack_allowed_channels_raw');
+  if (skc) { skc.value = (cfg.slack_allowed_channels || []).join('\n'); }
+
+  // Range fields
+  const ranges = {
+    num_ctx:                  [cfg.num_ctx, v => v + ' tok'],
+    doc_scan_interval_min:    [Math.round((cfg.doc_scan_interval||600)/60), v => v + 'm'],
+    silence_ms:            [cfg.silence_ms, v => (v/1000).toFixed(1) + 's'],
+    email_poll_interval_min: [Math.round((cfg.email_poll_interval||1800)/60), v => v + 'm'],
+    max_tool_iterations:   [cfg.max_tool_iterations, v => String(v)],
+    memory_top_k:          [cfg.memory_top_k, v => String(v)],
+  };
+  Object.entries(ranges).forEach(([name, [val, fmt]]) => {
+    const inp = form.elements[name];
+    if (!inp) return;
+    inp.value = val;
+    const display = inp.nextElementSibling;
+    if (display) display.textContent = fmt(val);
+  });
+}
+
+// ── Pluggable model chain (drag-ordered preference list) ──────────────
+let _modelChain = [];
+let _mcDragId = null, _mcSeq = 0;
+const _MC_PROVIDERS = ['ollama','vllm','openai','anthropic','gemini','claude-code'];
+function _mcNewId(){ return 'm' + Date.now().toString(36) + (_mcSeq++); }
+
+// The familiar pre-configured tier ladder, used to seed the list on first use.
+// Editable and extendable like any other entry; core mirrors the Ollama model.
+function _defaultTierChain(cfg){
+  const core = (cfg && cfg.model) || 'qwen2.5:7b';
+  return [
+    {id:'tier-nano',  label:'Nano (T1)',        provider:'ollama',      model:'qwen2.5:1.5b', base_url:'', api_key:'', has_key:false, enabled:true},
+    {id:'tier-core',  label:'Core (T2)',        provider:'ollama',      model:core,           base_url:'', api_key:'', has_key:false, enabled:true},
+    {id:'tier-large', label:'Large (T3)',       provider:'ollama',      model:'',             base_url:'', api_key:'', has_key:false, enabled:false},
+    {id:'tier-max',   label:'Max (T4)',         provider:'ollama',      model:'',             base_url:'', api_key:'', has_key:false, enabled:false},
+    {id:'tier-cc',    label:'Claude Code (T5)', provider:'claude-code', model:'',             base_url:'', api_key:'', has_key:false, enabled:true},
+  ];
+}
+
+function _renderModelChain(){
+  const wrap = document.getElementById('model-chain-list');
+  if (!wrap) return;
+  if (!_modelChain.length){
+    wrap.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:8px 0">No models yet — click “+ Add model”.</div>';
+    return;
+  }
+  wrap.innerHTML = _modelChain.map((e,i) => `
+    <div class="mc-row" draggable="true" data-id="${esc(e.id)}"
+      style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px;margin-bottom:6px;
+             border:1px solid rgba(255,255,255,.12);border-radius:5px;background:rgba(255,255,255,.02)">
+      <span title="Drag to reorder" style="cursor:grab;color:var(--muted);font-size:15px;padding:0 3px">≡</span>
+      <span style="font-size:10px;color:var(--muted);width:14px;text-align:right">${i+1}</span>
+      <input class="mc-label" placeholder="Label" value="${esc(e.label||'')}" style="flex:1;min-width:84px">
+      <select class="mc-provider" style="min-width:104px">
+        ${_MC_PROVIDERS.map(p=>`<option value="${p}"${p===e.provider?' selected':''}>${p}</option>`).join('')}
+      </select>
+      <input class="mc-model" placeholder="model id" value="${esc(e.model||'')}" style="flex:1;min-width:108px">
+      <input class="mc-base" placeholder="base URL (opt.)" value="${esc(e.base_url||'')}" style="flex:1;min-width:118px">
+      <input class="mc-key" type="password" autocomplete="off" placeholder="${e.has_key?'•••• configured':'API key (opt.)'}" style="min-width:118px">
+      <label style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted);cursor:pointer">
+        <input class="mc-enabled" type="checkbox"${e.enabled!==false?' checked':''} style="accent-color:var(--gold)"> on
+      </label>
+      <button type="button" class="tbl-btn" title="Remove" onclick="_removeModelChain('${esc(e.id)}')">×</button>
+    </div>`).join('');
+  wrap.querySelectorAll('.mc-row').forEach(row => {
+    row.addEventListener('dragstart', ev => { _mcDragId = row.dataset.id; ev.dataTransfer.effectAllowed='move'; });
+    row.addEventListener('dragover',  ev => { ev.preventDefault(); ev.dataTransfer.dropEffect='move'; });
+    row.addEventListener('drop', ev => {
+      ev.preventDefault();
+      const targetId = row.dataset.id;
+      if (!_mcDragId || _mcDragId === targetId) return;
+      _mcSync();                         // capture in-progress edits before reorder
+      const from = _modelChain.findIndex(x=>x.id===_mcDragId);
+      const to   = _modelChain.findIndex(x=>x.id===targetId);
+      if (from<0 || to<0) return;
+      const [moved] = _modelChain.splice(from,1);
+      _modelChain.splice(to,0,moved);
+      _mcDragId = null;
+      _renderModelChain();
+    });
+  });
+}
+// Read the DOM rows back into _modelChain (preserving edits + current order).
+function _mcSync(){
+  const byId = Object.fromEntries(_modelChain.map(e=>[e.id,e]));
+  _modelChain = [...document.querySelectorAll('#model-chain-list .mc-row')].map(row => {
+    const prev = byId[row.dataset.id] || {};
+    const key  = row.querySelector('.mc-key').value;
+    return {
+      id:       row.dataset.id,
+      label:    row.querySelector('.mc-label').value.trim(),
+      provider: row.querySelector('.mc-provider').value,
+      model:    row.querySelector('.mc-model').value.trim(),
+      base_url: row.querySelector('.mc-base').value.trim(),
+      api_key:  key,                     // blank = keep stored (server preserves by id)
+      has_key:  prev.has_key || !!key,
+      enabled:  row.querySelector('.mc-enabled').checked,
+    };
+  });
+}
+function _addModelChainEntry(){
+  _mcSync();
+  _modelChain.push({ id:_mcNewId(), label:'', provider:'ollama', model:'', base_url:'', api_key:'', has_key:false, enabled:true });
+  _renderModelChain();
+}
+function _removeModelChain(id){
+  _mcSync();
+  _modelChain = _modelChain.filter(e=>e.id!==id);
+  _renderModelChain();
+}
+function _collectModelChain(){
+  _mcSync();
+  return _modelChain.map(({has_key, ...e}) => e);   // drop the UI-only flag
+}
+
+// ── Collaboration pool (Mode 2) — compact editor, no drag (order = synth first) ──
+let _collabPool = [], _cpSeq = 0;
+const _CP_PROVIDERS = ['claude-code','codex','openai','anthropic','gemini','vllm'];
+function _cpNewId(){ return 'cp' + Date.now().toString(36) + (_cpSeq++); }
+function _renderCollabPool(){
+  const wrap = document.getElementById('collab-pool-list');
+  if (!wrap) return;
+  if (!_collabPool.length){
+    wrap.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:6px 0">Using default: <b>claude-code + codex</b>.</div>';
+    return;
+  }
+  wrap.innerHTML = _collabPool.map((e,i) => `
+    <div class="cp-row" data-id="${esc(e.id)}" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px;margin-bottom:6px;border:1px solid rgba(255,255,255,.12);border-radius:5px;background:rgba(255,255,255,.02)">
+      <span style="font-size:10px;color:var(--muted);width:14px;text-align:right">${i+1}</span>
+      <select class="cp-provider" style="min-width:104px">
+        ${_CP_PROVIDERS.map(p=>`<option value="${p}"${p===e.provider?' selected':''}>${p}</option>`).join('')}
+      </select>
+      <input class="cp-model" placeholder="model id (opt.)" value="${esc(e.model||'')}" style="flex:1;min-width:108px">
+      <input class="cp-key" type="password" autocomplete="off" placeholder="${e.has_key?'•••• configured':'API key (opt.)'}" style="min-width:118px">
+      <label style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted);cursor:pointer">
+        <input class="cp-enabled" type="checkbox"${e.enabled!==false?' checked':''} style="accent-color:var(--gold)"> on
+      </label>
+      <button type="button" class="tbl-btn" title="Remove" onclick="_removeCollabPool('${esc(e.id)}')">×</button>
+    </div>`).join('');
+}
+function _cpSync(){
+  document.querySelectorAll('#collab-pool-list .cp-row').forEach(row => {
+    const e = _collabPool.find(x=>x.id===row.dataset.id);
+    if (!e) return;
+    e.provider = row.querySelector('.cp-provider').value;
+    e.model = row.querySelector('.cp-model').value.trim();
+    const key = row.querySelector('.cp-key').value;
+    if (key) { e.api_key = key; e.has_key = true; }
+    e.enabled = row.querySelector('.cp-enabled').checked;
+  });
+}
+function _addCollabPool(){
+  _cpSync();
+  _collabPool.push({ id:_cpNewId(), provider:'claude-code', model:'', base_url:'', api_key:'', has_key:false, enabled:true });
+  _renderCollabPool();
+}
+function _removeCollabPool(id){
+  _cpSync();
+  _collabPool = _collabPool.filter(e=>e.id!==id);
+  _renderCollabPool();
+}
+function _collectCollabPool(){
+  _cpSync();
+  return _collabPool.map(({has_key, ...e}) => e);
+}
+
+document.getElementById('cfg-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const form = e.target;
+  const data = {};
+  ['display_name','tagline','system_prompt_addendum','global_output_dir'].forEach(k => {
+    data[k] = form.elements[k]?.value ?? '';
+  });
+  data.model        = form.elements.model?.value;
+  data.vllm_base_url = (form.elements.vllm_base_url?.value ?? '').trim();
+  data.vllm_model    = (form.elements.vllm_model?.value ?? '').trim();
+  data.vllm_api_key  = form.elements.vllm_api_key?.value ?? '';
+  data.embed_backend  = form.elements.embed_backend?.value ?? 'ollama';
+  data.embed_base_url = (form.elements.embed_base_url?.value ?? '').trim() || 'http://localhost:11434';
+  data.embed_model    = (form.elements.embed_model?.value ?? '').trim() || 'nomic-embed-text';
+  data.embed_api_key  = form.elements.embed_api_key?.value ?? '';
+  data.stt_backend    = form.elements.stt_backend?.value ?? 'browser';
+  data.stt_base_url   = (form.elements.stt_base_url?.value ?? '').trim();
+  data.stt_model      = (form.elements.stt_model?.value ?? '').trim() || 'whisper-1';
+  data.stt_api_key    = form.elements.stt_api_key?.value ?? '';
+  data.vision_base_url = (form.elements.vision_base_url?.value ?? '').trim();
+  data.vision_model    = (form.elements.vision_model?.value ?? '').trim();
+  data.vision_api_key  = form.elements.vision_api_key?.value ?? '';
+  data.tts_backend    = form.elements.tts_backend?.value ?? 'edge';
+  data.tts_base_url   = (form.elements.tts_base_url?.value ?? '').trim();
+  data.tts_model      = (form.elements.tts_model?.value ?? '').trim() || 'tts-1';
+  data.tts_api_key    = form.elements.tts_api_key?.value ?? '';
+  data.tts_voice    = form.elements.tts_voice?.value;
+  data.stt_language      = form.elements.stt_language?.value;
+  data.response_language = form.elements.response_language?.value ?? '';
+  // Knowledge base: retrieval toggle + how many excerpts to inject.
+  data.doc_kb_enabled = !!document.getElementById('doc_kb_enabled')?.checked;
+  const _dtk = parseInt(form.elements.doc_top_k?.value, 10);
+  if (!isNaN(_dtk)) data.doc_top_k = _dtk;
+  // Email: blank password = keep stored (the API preserves it, same as the bot
+  // tokens). Ports are numbers; a blank/invalid port is simply not sent so the
+  // stored value survives.
+  data.smtp_host = (form.elements.smtp_host?.value ?? '').trim();
+  data.smtp_user = (form.elements.smtp_user?.value ?? '').trim();
+  data.smtp_pass = form.elements.smtp_pass?.value ?? '';
+  data.notify_to = (form.elements.notify_to?.value ?? '').trim();
+  data.imap_host = (form.elements.imap_host?.value ?? '').trim();
+  const _sp = parseInt(form.elements.smtp_port?.value, 10);
+  if (!isNaN(_sp)) data.smtp_port = _sp;
+  const _ip = parseInt(form.elements.imap_port?.value, 10);
+  if (!isNaN(_ip)) data.imap_port = _ip;
+  // Telegram channel: token blank = keep stored (API preserves it); allow-list
+  // accepts newline- or comma-separated chat ids.
+  data.telegram_enabled = !!document.getElementById('telegram_enabled')?.checked;
+  data.telegram_bot_token = form.elements.telegram_bot_token?.value ?? '';
+  const rawTgChats = (form.elements['telegram_allowed_chats_raw']?.value || '').trim();
+  data.telegram_allowed_chats = rawTgChats
+    ? rawTgChats.split(/[\n,]/).map(s=>s.trim()).filter(Boolean) : [];
+  // Discord channel: token blank = keep stored; allow-list newline/comma-separated.
+  data.discord_enabled = !!document.getElementById('discord_enabled')?.checked;
+  data.discord_bot_token = form.elements.discord_bot_token?.value ?? '';
+  const rawDcChans = (form.elements['discord_allowed_channels_raw']?.value || '').trim();
+  data.discord_allowed_channels = rawDcChans
+    ? rawDcChans.split(/[\n,]/).map(s=>s.trim()).filter(Boolean) : [];
+  // Slack channel: two tokens (blank = keep stored); allow-list newline/comma-separated.
+  data.slack_enabled = !!document.getElementById('slack_enabled')?.checked;
+  data.slack_app_token = form.elements.slack_app_token?.value ?? '';
+  data.slack_bot_token = form.elements.slack_bot_token?.value ?? '';
+  const rawSkChans = (form.elements['slack_allowed_channels_raw']?.value || '').trim();
+  data.slack_allowed_channels = rawSkChans
+    ? rawSkChans.split(/[\n,]/).map(s=>s.trim()).filter(Boolean) : [];
+  // Collaboration (Mode 2)
+  data.collaborate_enabled = !!document.getElementById('collaborate_enabled')?.checked;
+  data.collaborate_skip_critique = !!document.getElementById('collaborate_skip_critique')?.checked;
+  data.collaborate_pool = _collectCollabPool();
+  const rawPaths = (form.elements['doc_paths_raw']?.value || '').trim();
+  data.doc_paths = rawPaths ? rawPaths.split('\n').map(s=>s.trim()).filter(Boolean) : [];
+  const rawEps = (form.elements['ollama_endpoints_raw']?.value || '').trim();
+  data.ollama_endpoints = rawEps ? rawEps.split('\n').map(s=>s.trim()).filter(Boolean) : ['http://localhost:11434'];
+  data.doc_scan_interval = parseInt(form.elements.doc_scan_interval_min?.value || '10') * 60;
+  data.num_ctx     = parseInt(form.elements.num_ctx?.value);
+  data.silence_ms  = parseInt(form.elements.silence_ms?.value);
+  data.max_tool_iterations = parseInt(form.elements.max_tool_iterations?.value);
+  data.memory_top_k = parseInt(form.elements.memory_top_k?.value);
+  // convert minutes back to seconds
+  data.email_poll_interval = parseInt(form.elements.email_poll_interval_min?.value) * 60;
+  data.force_claude_code = !!(document.getElementById('force_claude_code')?.checked);
+  data.claude_code_timeout = parseInt(form.elements.claude_code_timeout?.value) || 300;
+  data.model_chain = _collectModelChain();
+  data.model_chain_routing = !!(document.getElementById('model_chain_routing')?.checked);
+
+  try {
+    const r = await _apiFetch('/api/config', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(data),
+    });
+    const res = await r.json();
+    if (res.ok) {
+      const msg = el('save-msg');
+      msg.classList.add('show');
+      el('restart-note').style.display = '';
+      setTimeout(() => msg.classList.remove('show'), 3000);
+    }
+  } catch(e) {
+    console.error('Save failed:', e);
+  }
+});
+
+// ─── Model inventory ────────────────────────────────────────────────────────
+
+const _TIER_LABELS = {1:'T1 nano',2:'T2 core',3:'T3 large',4:'T4 max',5:'T5 Claude Code'};
+
+async function loadInventory(refresh) {
+  const wrap = el('tier-inventory-rows');
+  if (!wrap) return;
+  wrap.textContent = t('common.loading');
+  try {
+    const url = '/api/models/inventory' + (refresh ? '?refresh=1' : '');
+    const r = await _apiFetch(url);
+    const {models, tier_map} = await r.json();
+    if (!models || !models.length) {
+      wrap.textContent = t('admin.cfg_no_models');
+      return;
+    }
+    // Group by tier
+    const byTier = {};
+    models.forEach(m => { (byTier[m.tier] = byTier[m.tier] || []).push(m); });
+    wrap.innerHTML = Object.keys(byTier).sort().map(t => {
+      const active = tier_map[t];
+      const rows = byTier[t].map(m => {
+        const star = m.name === active ? ' ★' : '';
+        return `<span style="margin-right:12px;${m.name===active?'color:#00d4ff':'opacity:.7'}">${esc(m.name)}${star} (${m.params_b}B)</span>`;
+      }).join('');
+      return `<div style="margin-bottom:4px"><span style="opacity:.5;min-width:72px;display:inline-block">${_TIER_LABELS[t]||'T'+t}:</span>${rows}</div>`;
+    }).join('');
+  } catch(e) {
+    if (el('tier-inventory-rows')) el('tier-inventory-rows').textContent = t('admin.cfg_inv_failed');
+  }
+}
+
+async function refreshInventory() {
+  await loadInventory(true);
+}
+
+// ─── User modal helpers ──────────────────────────────────────────────────────
+
+function toggleApiKeyVis() {
+  const inp = el('modal-apikey');
+  if (inp) inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+// ═══════════════════════════════════════════
+//  CHARTS
+// ═══════════════════════════════════════════
+const _chartDefaults = {
+  responsive: true,
+  animation: false,
+  plugins: { legend: { display: false }, tooltip: {
+    backgroundColor: 'rgba(10,10,36,.95)',
+    borderColor: 'rgba(0,212,255,.2)', borderWidth: 1,
+    titleColor: '#00d4ff', bodyColor: '#d8d4c8',
+    titleFont: { family: "'DM Mono', monospace", size: 10 },
+    bodyFont:  { family: "'DM Mono', monospace", size: 10 },
+  }},
+  scales: {
+    x: { grid: { color: 'rgba(255,255,255,.04)' }, ticks: { color: '#555566', font: { family: "'DM Mono',monospace", size: 9 }, maxRotation: 0, maxTicksLimit: 8 } },
+    y: { grid: { color: 'rgba(255,255,255,.04)' }, ticks: { color: '#555566', font: { family: "'DM Mono',monospace", size: 9 } }, beginAtZero: true },
+  },
+};
+
+function _makeChart(id, color, yMax) {
+  const opts = JSON.parse(JSON.stringify(_chartDefaults));
+  if (yMax) opts.scales.y.max = yMax;
+  return new Chart(document.getElementById(id), {
+    type: 'line',
+    data: { labels: [], datasets: [{ data: [], borderColor: color, backgroundColor: color.replace(')', ',.12)').replace('rgb', 'rgba'), fill: true, tension: 0.3, pointRadius: 2, pointHoverRadius: 4, borderWidth: 1.5 }] },
+    options: opts,
+  });
+}
+
+let _chartVram, _chartUtil, _chartTemp;
+
+function _initCharts() {
+  if (_chartVram) return;
+  _chartVram = _makeChart('chart-vram', 'rgb(0,212,255)', null);
+  _chartUtil  = _makeChart('chart-util', 'rgb(201,162,39)', 100);
+  _chartTemp  = _makeChart('chart-temp', 'rgb(255,100,96)', null);
+}
+
+function _updateCharts(history) {
+  if (!history.length) return;
+  _initCharts();
+
+  // Focus on RTX 4000 (first GPU with most VRAM)
+  const labels = [], vram = [], util = [], temp = [];
+  history.forEach(s => {
+    const t = new Date(s.ts);
+    labels.push(t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    const g = (s.gpu || []).find(g => g.mem_total >= 8000) || s.gpu?.[0];
+    vram.push(g ? g.mem_used : null);
+    util.push(g ? g.util_pct : null);
+    temp.push(g ? g.temp_c  : null);
+  });
+
+  [_chartVram, _chartUtil, _chartTemp].forEach((c, i) => {
+    c.data.labels = labels;
+    c.data.datasets[0].data = [vram, util, temp][i];
+    c.update('none');
+  });
+
+  const span = history.length * 30;
+  const h = Math.floor(span / 3600), m = Math.floor((span % 3600) / 60);
+  el('graph-range').textContent = h ? `last ${h}h ${m}m` : `last ${m}m`;
+}
+
+async function fetchKnowledge() {
+  try {
+    const r = await _apiFetch('/api/knowledge/status');
+    const d = await r.json();
+    const ds = d.doc_store || {};
+    const sc = d.scanner   || {};
+    set('kb-files',  (ds.total_files  ?? 0).toLocaleString());
+    set('kb-chunks', (ds.total_chunks ?? 0).toLocaleString());
+    // Status badge
+    const statusEl = el('kb-status');
+    if (sc.running) {
+      statusEl.innerHTML = `<span class="badge info">${t('admin.dash_scanning')}</span>`;
+    } else if ((d.config?.paths || []).length === 0) {
+      statusEl.innerHTML = `<span class="badge err">${t('admin.dash_no_paths')}</span>`;
+    } else {
+      statusEl.innerHTML = `<span class="badge ok">${t('admin.dash_idle')}</span>`;
+    }
+    // Last scan time
+    if (sc.last_scan_time) {
+      const kbScanTime = new Date(sc.last_scan_time * 1000);
+      set('kb-last-scan', kbScanTime.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}));
+    } else {
+      set('kb-last-scan', t('admin.dash_never'));
+    }
+    // By-type breakdown
+    const bt = ds.by_type || {};
+    el('kb-by-type').textContent = Object.entries(bt)
+      .sort((a,b) => b[1]-a[1])
+      .map(([ext,n]) => `${ext}: ${n}`)
+      .join('  ·  ');
+    // Paths
+    const paths = d.config?.paths || [];
+    el('kb-paths').textContent = paths.length
+      ? t('admin.dash_watching', {paths: paths.join('  ·  ')})
+      : t('admin.dash_no_paths_cfg');
+  } catch(e) {}
+}
+
+async function scanNow() {
+  try {
+    const r = await _apiFetch('/api/knowledge/scan', {method:'POST'});
+    const d = await r.json();
+    if (d.ok) { setTimeout(fetchKnowledge, 2000); }
+  } catch(e) {}
+}
+
+async function fetchMetrics() {
+  try {
+    const r = await _apiFetch('/api/metrics/history');
+    const d = await r.json();
+    _updateCharts(d.history || []);
+  } catch(e) {}
+}
+
+// ═══════════════════════════════════════════
+//  ROLES
+// ═══════════════════════════════════════════
+let _rolesData = {};
+let _allToolNames = [];
+
+async function loadRoles(){
+  [_rolesData] = await Promise.all([
+    _apiFetch('/api/roles').then(r=>r.json()).catch(()=>({})),
+  ]);
+  // Get tool names from dashboard
+  const dash = await _apiFetch('/api/dashboard').then(r=>r.json()).catch(()=>({}));
+  _allToolNames = (dash.tools?.all || []).filter(t=>!t.includes('_'));  // non-MCP only
+  renderRoles();
+}
+
+function renderRoles(){
+  const c = el('roles-container');
+  const roleOrder = ['read-only','standard','power-user','admin'];
+  const MODES = ['assistant','task','read-only'];
+  c.innerHTML = roleOrder.map(role => {
+    const cfg = _rolesData[role] || {};
+    const blocked = cfg.blocked || [];
+    const allowed = cfg.allowed;  // null = all allowed
+    const defMode = cfg.default_mode || 'assistant';
+    const allowedModes = cfg.modes || ['assistant'];
+
+    const toolRows = _allToolNames.map(t => {
+      const isAllowed = allowed === null ? !blocked.includes(t) : allowed.includes(t);
+      return `<label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;padding:3px 0">
+        <input type="checkbox" data-role="${role}" data-tool="${t}" ${isAllowed?'checked':''}
+               style="accent-color:var(--gold)" onchange="roleToolChanged('${role}','${t}',this.checked)">
+        <span style="color:var(--text)">${esc(t)}</span>
+      </label>`;
+    }).join('');
+
+    const modeChecks = MODES.map(m =>
+      `<label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer">
+        <input type="checkbox" data-role="${role}" data-mode="${m}" ${allowedModes.includes(m)?'checked':''}
+               style="accent-color:var(--cyan)" onchange="roleModeChanged('${role}','${m}',this.checked)">
+        <span>${m}</span>
+      </label>`).join('');
+
+    const defOptions = MODES.map(m =>
+      `<option value="${m}" ${defMode===m?'selected':''}>${m}</option>`).join('');
+
+    return `<div class="card" style="margin-bottom:14px">
+      <div class="card-title"><span class="role-badge ${_ROLE_CSS[role]||''}">${esc(role)}</span></div>
+      <div style="display:grid;grid-template-columns:1fr 200px;gap:24px">
+        <div>
+          <div style="font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--label);margin-bottom:8px">${t('admin.roles_tool_access')}</div>
+          <div style="columns:2;gap:12px">${toolRows}</div>
+        </div>
+        <div>
+          <div style="font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--label);margin-bottom:8px">${t('admin.roles_allowed_modes')}</div>
+          <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">${modeChecks}</div>
+          <div style="font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--label);margin-bottom:6px">${t('admin.roles_default_mode')}</div>
+          <select data-role="${role}" data-key="default_mode" onchange="roleKeyChanged('${role}','default_mode',this.value)"
+            style="background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
+            ${defOptions}
+          </select>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function roleToolChanged(role, tool, checked){
+  if(!_rolesData[role]) _rolesData[role] = {allowed:null,blocked:[],modes:['assistant'],default_mode:'assistant'};
+  const cfg = _rolesData[role];
+  if(cfg.allowed === null){
+    // Currently "all allowed except blocked" — manage blocked list
+    if(checked) cfg.blocked = (cfg.blocked||[]).filter(t=>t!==tool);
+    else { cfg.blocked = cfg.blocked||[]; if(!cfg.blocked.includes(tool)) cfg.blocked.push(tool); }
+  } else {
+    // Explicit allowlist
+    if(checked){ if(!cfg.allowed.includes(tool)) cfg.allowed.push(tool); }
+    else cfg.allowed = cfg.allowed.filter(t=>t!==tool);
+  }
+}
+
+function roleModeChanged(role, mode, checked){
+  if(!_rolesData[role]) _rolesData[role] = {};
+  const cfg = _rolesData[role];
+  cfg.modes = cfg.modes || ['assistant'];
+  if(checked){ if(!cfg.modes.includes(mode)) cfg.modes.push(mode); }
+  else cfg.modes = cfg.modes.filter(m=>m!==mode);
+}
+
+function roleKeyChanged(role, key, value){
+  if(!_rolesData[role]) _rolesData[role] = {};
+  _rolesData[role][key] = value;
+}
+
+async function saveRoles(){
+  const r = await _apiFetch('/api/roles', {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(_rolesData)});
+  const msg = el('roles-save-msg');
+  msg.style.display = r.ok ? '' : 'none';
+  if(r.ok) setTimeout(()=>{ msg.style.display='none'; }, 3000);
+}
+
+// ═══════════════════════════════════════════
+//  MCP
+// ═══════════════════════════════════════════
+async function loadMcp(){
+  const servers = await _apiFetch('/api/mcp/servers').then(r=>r.json()).catch(()=>[]);
+  el('mcp-count').textContent = '(' + servers.length + ' configured)';
+  const tbody = el('mcp-tbody');
+  if(!servers.length){
+    tbody.innerHTML=`<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">${t('admin.mcp_none')}</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = servers.map(s=>{
+    const isSuni = s.source === 'suni';
+    const srcBadge = isSuni
+      ? `<span style="font-size:9px;color:var(--gold);border:1px solid rgba(201,162,39,.3);padding:1px 5px;border-radius:2px">SUNI</span>`
+      : `<span style="font-size:9px;color:var(--cyan);border:1px solid rgba(0,212,255,.3);padding:1px 5px;border-radius:2px">Claude Desktop</span>`;
+    return `<tr>
+      <td><strong>${esc(s.name)}</strong></td>
+      <td><span class="status-dot ${s.connected?'on':'off'}"></span>${s.connected?t('admin.mcp_connected'):t('admin.mcp_offline')}${s.connected?'':' <span style="font-size:9px;color:var(--muted)">(restart)</span>'}</td>
+      <td>${srcBadge}</td>
+      <td style="font-size:10px;color:var(--muted)">${esc(s.command)} ${(s.args||[]).slice(0,2).map(esc).join(' ')}</td>
+      <td style="color:var(--cyan)">${s.tool_count}</td>
+      <td class="tbl-actions">
+        ${isSuni ? `<button class="tbl-btn" onclick="openEditMcp(${JSON.stringify(s).replace(/"/g,'&quot;')})">${t('common.edit')}</button>
+        <button class="tbl-btn danger" onclick="deleteMcp('${esc(s.name)}')">${t('common.delete')}</button>`
+        : `<span style="font-size:9px;color:var(--muted)">${t('admin.mcp_readonly')}</span>`}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openAddMcp(){
+  el('modal-mcp-title').textContent=t('admin.mcp_modal_add');
+  el('mcp-edit-name').value='';
+  el('mcp-name').value=''; el('mcp-name').disabled=false;
+  el('mcp-command').value=''; el('mcp-args').value=''; el('mcp-env').value='';
+  el('mcp-err').style.display='none'; el('mcp-test-result').style.display='none';
+  el('modal-mcp').classList.add('open');
+}
+
+function openEditMcp(s){
+  el('modal-mcp-title').textContent=t('admin.mcp_modal_edit');
+  el('mcp-edit-name').value=s.name;
+  el('mcp-name').value=s.name; el('mcp-name').disabled=true;
+  el('mcp-command').value=s.command||'';
+  el('mcp-args').value=(s.args||[]).join('\n');
+  el('mcp-env').value=(s.env_keys||[]).map(k=>k+'=').join('\n');
+  el('mcp-err').style.display='none'; el('mcp-test-result').style.display='none';
+  el('modal-mcp').classList.add('open');
+}
+
+function _parseMcpForm(){
+  const args = el('mcp-args').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  const env  = {};
+  el('mcp-env').value.split('\n').forEach(line=>{
+    const [k,...rest] = line.split('=');
+    if(k && rest.length) env[k.trim()] = rest.join('=').trim();
+  });
+  return { name: el('mcp-name').value.trim(), command: el('mcp-command').value.trim(), args, env };
+}
+
+async function saveMcp(){
+  const d = _parseMcpForm();
+  const editName = el('mcp-edit-name').value;
+  const err = el('mcp-err');
+  err.style.display='none';
+  if(!d.name || !d.command){ err.textContent='Name and command are required'; err.style.display=''; return; }
+  try {
+    const url = editName ? `/api/mcp/servers/${editName}` : '/api/mcp/servers';
+    const method = editName ? 'PUT' : 'POST';
+    const r = await _apiFetch(url, {method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(d)});
+    if(!r.ok) throw new Error((await r.json()).detail);
+    closeModal('modal-mcp');
+    loadMcp();
+  } catch(e){ err.textContent=e.message; err.style.display=''; }
+}
+
+async function deleteMcp(name){
+  if(!confirm(`Remove MCP server "${name}"?`)) return;
+  const r = await _apiFetch(`/api/mcp/servers/${name}`, {method:'DELETE'});
+  if(r.ok) loadMcp();
+  else alert((await r.json()).detail);
+}
+
+async function mcpRestart(){
+  const r = await _apiFetch('/api/mcp/restart', {method:'POST'});
+  if(r.ok){
+    const msg = el('mcp-restart-msg');
+    msg.style.display='';
+    setTimeout(()=>{ msg.style.display='none'; loadMcp(); }, 5000);
+  }
+}
+
+// ═══════════════════════════════════════════
+//  MCP CATALOG
+// ═══════════════════════════════════════════
+let _catalog = [];
+async function openCatalog(){
+  el('modal-catalog').classList.add('open');
+  if(!_catalog.length){
+    const grid = el('catalog-grid');
+    grid.innerHTML = `<div style="color:var(--muted);padding:24px;text-align:center;grid-column:1/-1">${t('admin.mcp_catalog_loading')}</div>`;
+    try {
+      const r   = await _apiFetch('/api/mcp/catalog');
+      const raw = await r.json();
+      _catalog  = Array.isArray(raw) ? raw : [];
+      if(!_catalog.length){
+        grid.innerHTML = '<div style="color:var(--red);padding:24px;text-align:center;grid-column:1/-1">'
+          + (r.ok ? 'Catalog returned no servers.' : `Error ${r.status}: ${raw.detail||'failed to load catalog. Restart SUNI if you just deployed this update.'}`)
+          + '</div>';
+        return;
+      }
+    } catch(e){
+      el('catalog-grid').innerHTML = '<div style="color:var(--red);padding:24px;text-align:center;grid-column:1/-1">Failed to load catalog: ' + esc(String(e)) + '</div>';
+      return;
+    }
+    // Populate category filter (first open only)
+    const cats = [...new Set(_catalog.map(s=>s.category))].sort();
+    const sel  = el('cat-filter');
+    sel.innerHTML = `<option value="">${t('admin.mcp_catalog_all')}</option>` +
+      cats.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
+    el('cat-filter').addEventListener('change', _renderCatalog);
+    el('cat-free-only').addEventListener('change', _renderCatalog);
+  }
+  _renderCatalog();
+}
+function _renderCatalog(){
+  const cat   = el('cat-filter').value;
+  const free  = el('cat-free-only').checked;
+  const items = _catalog.filter(s =>
+    (!cat  || s.category === cat) &&
+    (!free || !s.requires_api_key)
+  );
+  const grid = el('catalog-grid');
+  if(!items.length){ grid.innerHTML=`<div style="color:var(--muted);padding:24px;text-align:center;grid-column:1/-1">${t('admin.mcp_catalog_no_match')}</div>`; return; }
+  grid.innerHTML = items.map(s => {
+    const apiKey = s.requires_api_key
+      ? `<span style="font-size:9px;color:var(--gold);border:1px solid rgba(201,162,39,.3);padding:1px 4px;border-radius:2px">API key</span>`
+      : `<span style="font-size:9px;color:var(--green);border:1px solid rgba(0,227,150,.3);padding:1px 4px;border-radius:2px">Free</span>`;
+    const official = s.official
+      ? `<span style="font-size:9px;color:var(--cyan);border:1px solid rgba(0,212,255,.3);padding:1px 4px;border-radius:2px">Official</span>`
+      : '';
+    return `<div style="background:var(--card-bg);border:1px solid var(--border);border-radius:4px;padding:14px;display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px">
+        <strong style="font-size:12px;color:var(--text)">${esc(s.name)}</strong>
+        <span style="font-size:9px;color:var(--muted);flex-shrink:0">${esc(s.category)}</span>
+      </div>
+      <div style="font-size:10px;color:var(--muted);line-height:1.5">${esc(s.description)}</div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap">${apiKey} ${official}</div>
+      ${s.notes ? `<div style="font-size:9px;color:rgba(201,162,39,.7);line-height:1.4">${esc(s.notes)}</div>` : ''}
+      <button class="tbl-btn primary" onclick="addFromCatalog(${JSON.stringify(s).replace(/"/g,'&quot;')})"
+        style="margin-top:auto;width:100%;justify-content:center">${t('admin.mcp_catalog_add')}</button>
+    </div>`;
+  }).join('');
+}
+function addFromCatalog(s){
+  closeModal('modal-catalog');
+  el('modal-mcp-title').textContent = t('admin.mcp_add_from', {name: s.name});
+  el('mcp-edit-name').value = '';
+  el('mcp-name').value     = s.id;
+  el('mcp-name').disabled  = false;
+  el('mcp-command').value  = s.command || '';
+  el('mcp-args').value     = (s.args || []).join('\n');
+  // Show env keys with placeholder values
+  const envLines = Object.entries(s.env || {}).map(([k,v])=>k+'='+v).join('\n');
+  el('mcp-env').value = envLines;
+  el('mcp-err').style.display='none';
+  el('mcp-test-result').style.display='none';
+  el('modal-mcp').classList.add('open');
+}
+
+async function testMcpFromModal(){
+  const d = _parseMcpForm();
+  const btn = el('mcp-test-btn');
+  const res = el('mcp-test-result');
+  btn.disabled=true; btn.textContent=t('admin.mcp_testing');
+  res.style.display='none';
+  try {
+    const r = await _apiFetch(`/api/mcp/test/${d.name||'_test'}`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(d),
+    });
+    const d2 = await r.json();
+    res.style.display='';
+    if(d2.ok){
+      res.style.color='var(--green)';
+      res.textContent = `Connected — ${d2.tool_count} tool(s): ${(d2.tools||[]).slice(0,5).join(', ')}${d2.tool_count>5?'…':''}`;
+    } else {
+      res.style.color='var(--red)';
+      res.textContent = 'Failed: ' + d2.error;
+    }
+  } catch(e){ res.style.display=''; res.style.color='var(--red)'; res.textContent=e.message; }
+  btn.disabled=false; btn.textContent=t('admin.mcp_test');
+}
+
+// ═══════════════════════════════════════════
+//  SKILLS
+// ═══════════════════════════════════════════
+let _allSkills = [];
+
+async function loadSkills(){
+  const data = await _apiFetch('/api/skills').then(r=>r.json()).catch(()=>[]);
+  _allSkills = Array.isArray(data) ? data : [];
+  el('skills-count').textContent = '(' + _allSkills.length + ')';
+  // Populate category filter
+  const cats = [...new Set(_allSkills.map(s=>s.category))].sort();
+  const sel = el('skill-cat-filter');
+  sel.innerHTML = `<option value="">${t('admin.skills_all_cats')}</option>` +
+    cats.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
+  _renderSkills(_allSkills);
+}
+
+function filterSkills(query){
+  const q   = (query ?? el('skill-search').value).toLowerCase();
+  const cat = el('skill-cat-filter').value;
+  const filtered = _allSkills.filter(s =>
+    (!cat || s.category === cat) &&
+    (!q   || s.name.toLowerCase().includes(q) || (s.description||'').toLowerCase().includes(q))
+  );
+  _renderSkills(filtered);
+}
+
+function _renderSkills(skills){
+  const tbody = el('skills-tbody');
+  if(!skills.length){
+    tbody.innerHTML=`<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">${t('admin.skills_empty')}</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = skills.map(s=>`
+    <tr>
+      <td><strong style="color:var(--text)">${esc(s.name)}</strong></td>
+      <td><span style="font-size:9px;color:var(--cyan);border:1px solid rgba(0,212,255,.3);padding:1px 5px;border-radius:2px">${esc(s.category)}</span></td>
+      <td style="font-size:10px;color:var(--muted);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.description||'')}</td>
+      <td style="color:var(--muted)">v${s.version||1}</td>
+      <td style="color:var(--cyan)">${s.used_count||0}×</td>
+      <td class="tbl-actions">
+        <button class="tbl-btn" onclick="viewSkill('${esc(s.slug)}')">${t('admin.skills_view')}</button>
+        <button class="tbl-btn danger" onclick="deleteSkill('${esc(s.slug)}')">${t('common.delete')}</button>
+      </td>
+    </tr>`).join('');
+}
+
+async function viewSkill(slug){
+  const s = await _apiFetch('/api/skills/'+encodeURIComponent(slug)).then(r=>r.json()).catch(()=>null);
+  if(!s){ alert('Skill not found'); return; }
+  el('modal-skill-title').textContent = t('admin.skills_modal_edit', {name: s.name});
+  el('sk-name').value     = s.name     || '';
+  el('sk-category').value = s.category || 'general';
+  el('sk-desc').value     = s.description || '';
+  el('sk-body').value     = s.body     || '';
+  el('sk-err').style.display = 'none';
+  el('modal-skill').dataset.slug = slug;
+  el('modal-skill').classList.add('open');
+}
+
+function openNewSkill(){
+  el('modal-skill-title').textContent = t('admin.skills_modal_new');
+  el('sk-name').value = ''; el('sk-category').value = 'general';
+  el('sk-desc').value = ''; el('sk-body').value = '';
+  el('sk-err').style.display = 'none';
+  el('modal-skill').dataset.slug = '';
+  el('modal-skill').classList.add('open');
+}
+
+async function saveSkill(){
+  const name = el('sk-name').value.trim();
+  const body = el('sk-body').value.trim();
+  const err  = el('sk-err');
+  if(!name || !body){ err.textContent='Name and body are required'; err.style.display=''; return; }
+  const slug = el('modal-skill').dataset.slug;
+  const payload = {
+    name, body,
+    category:    el('sk-category').value.trim() || 'general',
+    description: el('sk-desc').value.trim(),
+  };
+  // Always POST (create/update — backend handles upsert by slug from name)
+  const r = await _apiFetch('/api/skills', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(slug ? {...payload, slug} : payload),
+  });
+  if(!r.ok){ const d=await r.json().catch(()=>({})); err.textContent=d.detail||'Save failed'; err.style.display=''; return; }
+  closeModal('modal-skill');
+  loadSkills();
+}
+
+async function deleteSkill(slug){
+  if(!confirm(`Delete skill "${slug}"?\nThis cannot be undone.`)) return;
+  const r = await _apiFetch('/api/skills/'+encodeURIComponent(slug), {method:'DELETE'});
+  if(r.ok) loadSkills();
+  else alert((await r.json().catch(()=>({}))).detail || 'Delete failed');
+}
+
+// ═══════════════════════════════════════════
+//  BACKUP
+// ═══════════════════════════════════════════
+async function loadBackups(){
+  const list = await _apiFetch('/api/backup/list').then(r=>r.json()).catch(()=>[]);
+  el('bk-count').textContent = '(' + list.length + ')';
+  const tbody = el('backup-tbody');
+  if(!list.length){
+    tbody.innerHTML=`<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:24px">${t('admin.backup_empty')}</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = list.map(b=>`
+    <tr>
+      <td style="font-family:'DM Mono',monospace;font-size:11px">${esc(b.filename)}</td>
+      <td>${b.size_kb} KB</td>
+      <td>${new Date(b.created_at).toLocaleString()}</td>
+      <td class="tbl-actions">
+        <button class="tbl-btn" onclick="downloadBackup('${esc(b.filename)}')">${t('common.download')}</button>
+        <button class="tbl-btn danger" onclick="deleteBackup('${esc(b.filename)}')">${t('common.delete')}</button>
+      </td>
+    </tr>`).join('');
+}
+
+async function createBackup(){
+  const btn = el('bk-btn');
+  const msg = el('bk-msg');
+  btn.disabled=true; btn.textContent=t('admin.backup_creating');
+  msg.style.display='none';
+  try {
+    const r = await _apiFetch('/api/backup/create', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        include_faiss:   el('bk-faiss').checked,
+        include_logs:    el('bk-logs').checked,
+        include_uploads: el('bk-uploads').checked,
+      }),
+    });
+    const d = await r.json();
+    msg.style.display=''; msg.style.color='var(--green)';
+    msg.textContent = t('admin.backup_created', {name: d.filename});
+    loadBackups();
+  } catch(e){ msg.style.display=''; msg.style.color='var(--red)'; msg.textContent=e.message; }
+  btn.disabled=false; btn.textContent=t('admin.backup_now');
+}
+
+async function downloadBackup(filename){
+  try {
+    const r = await _apiFetch(`/api/backup/download/${encodeURIComponent(filename)}`);
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    const blob = await r.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 1500);
+  } catch(e){ alert('Download failed: ' + e.message); }
+}
+
+async function deleteBackup(filename){
+  if(!confirm(`Delete backup "${filename}"?`)) return;
+  const r = await _apiFetch(`/api/backup/${filename}`, {method:'DELETE'});
+  if(r.ok) loadBackups();
+}
+
+async function restoreBackup(){
+  const file = el('restore-file').files[0];
+  const msg  = el('restore-msg');
+  if(!file){ alert('Select a backup ZIP first'); return; }
+  if(!confirm(`Restore from "${file.name}"?\nThis will overwrite current data. SUNI must be restarted afterwards.`)) return;
+  msg.style.display=''; msg.style.color='var(--cyan)'; msg.textContent=t('admin.backup_restoring');
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    const headers = {'Authorization':'Bearer '+_ST};
+    const r = await fetch('/api/backup/restore', {method:'POST', headers, body:form});
+    const d = await r.json();
+    msg.style.color = d.errors?.length ? 'var(--gold)' : 'var(--green)';
+    msg.textContent = `Restored ${d.restored?.length||0} files.${d.errors?.length?' Errors: '+d.errors.join(', '):''}  Restart SUNI to apply.`;
+  } catch(e){ msg.style.color='var(--red)'; msg.textContent=e.message; }
+}
+
+// ═══════════════════════════════════════════
+//  LOGS
+// ═══════════════════════════════════════════
+let _logInterval = null;
+
+function classifyLine(line) {
+  if (/\|\s*ERROR/.test(line))   return 'll-error';
+  if (/\|\s*WARNING/.test(line)) return 'll-warning';
+  if (/\[REQUEST\]/.test(line))  return 'll-request';
+  if (/\[TOOL\b/.test(line))     return 'll-tool';
+  if (/\[DONE\]/.test(line))     return 'll-done';
+  if (/\[STARTUP\]|\[SHUTDOWN\]/.test(line)) return 'll-startup';
+  return 'll-info';
+}
+
+async function fetchLogs() {
+  const level = el('log-level').value;
+  const date  = el('log-date').value;  // YYYY-MM-DD or empty = today
+  try {
+    const params = new URLSearchParams({lines: 300, level});
+    if (date) params.set('date', date);
+    const r = await fetch(`/api/logs?${params}`);
+    const d = await r.json();
+    const out = el('log-output');
+    out.innerHTML = (d.lines || []).map(line => {
+      const cls = classifyLine(line);
+      return `<span class="${cls}">${esc(line)}</span>`;
+    }).join('\n');
+    el('log-file').textContent = d.file || '';
+    el('log-summary').textContent = t('admin.logs_summary', {total: d.total || 0, showing: (d.lines||[]).length});
+    if (el('log-autoscroll').checked) out.scrollTop = out.scrollHeight;
+  } catch(e) {
+    el('log-output').textContent = t('admin.logs_error', {error: e.message});
+  }
+}
+
+// ═══════════════════════════════════════════
+//  USERS
+// ═══════════════════════════════════════════
+const _ROLE_CSS = {'admin':'role-admin','power-user':'role-power','standard':'role-standard','read-only':'role-readonly'};
+
+async function loadUsers(){
+  const rows = await _apiFetch('/api/users').then(r=>r.json()).catch(()=>[]);
+  el('user-count').textContent = '(' + rows.length + ')';
+  const tbody = el('users-tbody');
+  if(!rows.length){ tbody.innerHTML=`<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">${t('admin.users_none')}</td></tr>`; return; }
+  tbody.innerHTML = rows.map(u=>`
+    <tr>
+      <td><strong>${esc(u.username)}</strong></td>
+      <td><span class="role-badge ${_ROLE_CSS[u.role]||''}">${esc(u.role)}</span></td>
+      <td><span class="status-dot ${u.active?'on':'off'}"></span>${u.active?t('admin.dash_active'):t('admin.dash_disabled')}</td>
+      <td>${u.last_login ? new Date(u.last_login).toLocaleDateString() : '—'}</td>
+      <td>${new Date(u.created_at).toLocaleDateString()}</td>
+      <td class="tbl-actions">
+        <button class="tbl-btn" onclick="openEditUser(${JSON.stringify(u).replace(/"/g,'&quot;')})">${t('common.edit')}</button>
+        <button class="tbl-btn" onclick="resetPassword('${u.id}','${esc(u.username)}')">${t('admin.users_reset_pw')}</button>
+        <button class="tbl-btn danger" onclick="deleteUser('${u.id}','${esc(u.username)}')">${t('common.delete')}</button>
+      </td>
+    </tr>`).join('');
+  // Populate audit user filter
+  const sel = el('audit-filter-user');
+  sel.innerHTML = `<option value="">${t('admin.audit_all_users')}</option>` + rows.map(u=>`<option value="${u.id}">${esc(u.username)}</option>`).join('');
+}
+
+function openCreateUser(){
+  el('modal-user-title').textContent=t('admin.users_modal_new');
+  el('modal-uid').value='';
+  el('modal-username').value='';
+  el('modal-password').value='';
+  el('modal-role').value='standard';
+  el('modal-pw-wrap').style.display='';
+  el('modal-pw-label').textContent=t('common.password');
+  if(el('modal-apikey')) el('modal-apikey').value='';
+  el('modal-err').style.display='none';
+  el('modal-user').classList.add('open');
+}
+
+function openEditUser(u){
+  el('modal-user-title').textContent=t('admin.users_modal_edit');
+  el('modal-uid').value=u.id;
+  el('modal-username').value=u.username;
+  el('modal-password').value='';
+  el('modal-role').value=u.role;
+  el('modal-pw-wrap').style.display='none';
+  if(el('modal-apikey')) el('modal-apikey').value='';
+  // Show placeholder if user has a key set
+  if(el('modal-apikey')) el('modal-apikey').placeholder = u.has_api_key
+    ? 'sk-ant-… (key set — leave blank to keep current)'
+    : 'sk-ant-… — leave blank to use global account';
+  el('modal-err').style.display='none';
+  el('modal-user').classList.add('open');
+}
+
+function closeModal(id){ el(id).classList.remove('open'); }
+
+async function saveUser(){
+  const uid  = el('modal-uid').value;
+  const body = { username: el('modal-username').value.trim(), role: el('modal-role').value };
+  const err  = el('modal-err');
+  err.style.display='none';
+  try {
+    if(uid){
+      // Edit existing
+      const r = await _apiFetch(`/api/users/${uid}`, {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      if(!r.ok) throw new Error((await r.json()).detail);
+      // Save API key if provided
+      const apiKey = el('modal-apikey')?.value?.trim();
+      if(apiKey !== undefined && apiKey !== '') {
+        await _apiFetch(`/api/users/${uid}/settings`, {
+          method:'PUT', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({anthropic_api_key: apiKey}),
+        });
+      }
+    } else {
+      // Create new
+      const pw = el('modal-password').value;
+      const r = await _apiFetch('/api/users', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,password:pw})});
+      if(!r.ok) throw new Error((await r.json()).detail);
+      // Save API key if provided (need user id from response)
+      const newUser = await r.json();
+      const apiKey = el('modal-apikey')?.value?.trim();
+      if(apiKey && newUser.id) {
+        await _apiFetch(`/api/users/${newUser.id}/settings`, {
+          method:'PUT', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({anthropic_api_key: apiKey}),
+        });
+      }
+    }
+    closeModal('modal-user');
+    loadUsers();
+  } catch(e){ err.textContent=e.message; err.style.display=''; }
+}
+
+async function resetPassword(uid, uname){
+  const pw = prompt(`New password for ${uname} (min 8 chars):`);
+  if(!pw) return;
+  const r = await _apiFetch(`/api/users/${uid}/reset-password`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+  if(r.ok) alert('Password updated.');
+  else alert('Error: ' + (await r.json()).detail);
+}
+
+async function deleteUser(uid, uname){
+  if(!confirm(`Delete user "${uname}"? This cannot be undone.`)) return;
+  const r = await _apiFetch(`/api/users/${uid}`, {method:'DELETE'});
+  if(r.ok) loadUsers();
+  else alert('Error: ' + (await r.json()).detail);
+}
+
+// ═══════════════════════════════════════════
+//  AUDIT
+// ═══════════════════════════════════════════
+let _auditOffset = 0;
+const _auditLimit = 50;
+
+async function loadAudit(){
+  _auditOffset = 0;
+  await _fetchAudit();
+}
+
+async function auditPage(dir){
+  _auditOffset = Math.max(0, _auditOffset + dir * _auditLimit);
+  await _fetchAudit();
+}
+
+async function _fetchAudit(){
+  const uid  = el('audit-filter-user').value;
+  const from = el('audit-from').value;
+  const to   = el('audit-to').value;
+  const params = new URLSearchParams({limit:_auditLimit, offset:_auditOffset});
+  if(uid)  params.set('user_id', uid);
+  if(from) params.set('date_from', from);
+  if(to)   params.set('date_to', to);
+  const d = await _apiFetch('/api/audit/logs?'+params).then(r=>r.json()).catch(()=>({rows:[],total:0}));
+  el('audit-total').textContent = t('admin.audit_total', {n: d.total});
+  const page = Math.floor(_auditOffset/_auditLimit)+1;
+  const pages = Math.ceil(d.total/_auditLimit)||1;
+  el('audit-page-info').textContent = t('admin.audit_page', {page, pages});
+  el('audit-prev').disabled = _auditOffset === 0;
+  el('audit-next').disabled = _auditOffset + _auditLimit >= d.total;
+  const tbody = el('audit-tbody');
+  if(!d.rows.length){ tbody.innerHTML=`<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">${t('admin.audit_none')}</td></tr>`; return; }
+  tbody.innerHTML = d.rows.map(r=>`
+    <tr>
+      <td style="white-space:nowrap;font-size:10px">${new Date(r.ts).toLocaleString()}</td>
+      <td><strong>${esc(r.username)}</strong></td>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)">${esc(r.query_preview||'—')}</td>
+      <td><span class="tool-chip">${esc(r.route||'—')}</span></td>
+      <td style="color:var(--muted)">${esc(r.mode||'assistant')}</td>
+      <td style="color:var(--cyan);font-size:10px">${esc(r.tools_called||'—')}</td>
+      <td style="color:var(--gold)">${r.duration_s ? r.duration_s+'s' : '—'}</td>
+    </tr>`).join('');
+}
+
+// ═══════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════
+// ═══════════════════════════════════════════
+//  SIDEBAR — collapse (fully hide, state persisted)
+// ═══════════════════════════════════════════
+function _setSidebar(collapsed){
+  document.getElementById('sidebar').classList.toggle('collapsed', collapsed);
+  document.querySelector('main').classList.toggle('nav-collapsed', collapsed);
+  const btn = document.querySelector('.nav-toggle');
+  if (btn) btn.title = collapsed ? 'Show menu' : 'Hide menu';
+  try { localStorage.setItem('suni_sidebar', collapsed ? 'collapsed' : 'expanded'); } catch(e){}
+}
+function toggleSidebar(){
+  _setSidebar(!document.getElementById('sidebar').classList.contains('collapsed'));
+}
+(function _initSidebar(){
+  let saved; try { saved = localStorage.getItem('suni_sidebar'); } catch(e){}
+  if (saved === 'collapsed') _setSidebar(true);
+})();
+
+_checkAuth().then(()=>{
+  fetchDashboard();
+  fetchMetrics();
+  setInterval(fetchDashboard, 8000);
+  setInterval(fetchMetrics, 30000);
+});
+</script>
+</body>
+</html>

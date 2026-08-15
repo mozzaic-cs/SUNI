@@ -1,0 +1,38 @@
+# Line-ending policy.
+#
+# This repo is developed on Windows (core.autocrlf=true) and now also runs on
+# Linux and macOS. Without these rules, git hands a Linux user CRLF copies of
+# the shell scripts, and `#!/usr/bin/env bash\r` fails with the famously
+# unhelpful "bad interpreter: No such file or directory".
+#
+# Files that a POSIX system executes or parses must be LF in the working tree,
+# on every platform. Files that cmd.exe parses must be CRLF — a .bat with LF
+# endings is mis-tokenised by cmd, which produces equally confusing errors.
+
+# Default: normalise to LF in the repository, let git decide in the checkout.
+* text=auto
+
+# ── Must be LF everywhere ────────────────────────────────────────────────────
+*.sh            text eol=lf
+*.service       text eol=lf
+*.bash          text eol=lf
+Dockerfile      text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+.env.example    text eol=lf
+
+# ── Must be CRLF everywhere ──────────────────────────────────────────────────
+*.bat           text eol=crlf
+*.cmd           text eol=crlf
+*.ps1           text eol=crlf
+
+# ── Binary: never touch ──────────────────────────────────────────────────────
+*.obj           binary
+*.png           binary
+*.jpg           binary
+*.jpeg          binary
+*.ico           binary
+*.pdf           binary
+*.zip           binary
+*.faiss         binary
+*.db            binary

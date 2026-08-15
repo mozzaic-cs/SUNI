@@ -1,0 +1,40 @@
+# Keep the build context small and, more importantly, keep instance data and
+# secrets out of the image. Anything here is invisible to COPY.
+
+# State and secrets — the image must never bake in one deployment's data.
+memory/
+logs/
+backups/
+certs/
+.env
+my-suni-profile/
+
+# VCS and local tooling
+.git/
+.github/
+.venv/
+venv/
+.vscode/
+.idea/
+.claude/
+
+# Build artefacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ruff_cache/
+
+# Large local assets that are not part of the app
+suni/BustBaseMesh_Obj/
+eyeball-obj/
+files/
+cortana*.jpg
+
+# Internal-only documents
+RELEASE_CHECKLIST.md
+scripts/prepare_public_release.py
+scripts/preserve_profile.py
+suni_marketing_pt.html
+assistant-comparison.html

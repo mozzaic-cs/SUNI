@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SUNI — Sign in</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:wght@300;400&display=swap">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#080808;display:flex;align-items:center;justify-content:center;font-family:'DM Mono',monospace}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse 60% 50% at 50% 0%,rgba(201,162,39,.06),transparent 70%),
+             radial-gradient(ellipse 40% 40% at 80% 100%,rgba(0,212,255,.05),transparent 70%)}
+
+.card{
+  width:100%;max-width:380px;padding:44px 40px;position:relative;z-index:1;
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;
+  backdrop-filter:blur(20px);
+}
+
+.logo{
+  font-family:'Syne',sans-serif;font-size:26px;font-weight:800;
+  letter-spacing:.08em;color:#c9a227;text-transform:uppercase;
+  margin-bottom:4px;
+}
+.tagline{font-size:10px;letter-spacing:.12em;color:#555;margin-bottom:36px}
+
+.field{display:flex;flex-direction:column;gap:6px;margin-bottom:18px}
+label{font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:rgba(255,255,255,.5)}
+input{
+  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);
+  color:#d8d4c8;padding:10px 13px;border-radius:5px;
+  font-family:'DM Mono',monospace;font-size:13px;outline:none;
+  transition:border-color .2s;width:100%;
+}
+input:focus{border-color:rgba(0,212,255,.4)}
+input::placeholder{color:#444}
+
+.remember{display:flex;align-items:center;gap:8px;margin-bottom:24px;font-size:11px;color:#555;cursor:pointer}
+.remember input[type=checkbox]{accent-color:#c9a227;width:14px;height:14px}
+
+.btn{
+  width:100%;padding:11px;background:#c9a227;color:#080808;
+  font-family:'Syne',sans-serif;font-size:12px;font-weight:700;
+  letter-spacing:.12em;text-transform:uppercase;border:none;border-radius:5px;
+  cursor:pointer;transition:background .2s;
+}
+.btn:hover{background:#e8c547}
+.btn:disabled{background:#3a2e0e;color:#665520;cursor:not-allowed}
+
+.btn.sso{
+  display:block;text-decoration:none;text-align:center;margin-bottom:14px;
+  background:rgba(0,212,255,.08);color:#7fe3f0;border:1px solid rgba(0,212,255,.3);
+}
+.btn.sso:hover{background:rgba(0,212,255,.16)}
+.divider{
+  display:flex;align-items:center;gap:10px;margin:0 0 16px;
+  font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#444;
+}
+.divider::before,.divider::after{content:'';flex:1;height:1px;background:rgba(255,255,255,.08)}
+
+.error{
+  display:none;margin-top:14px;padding:9px 12px;border-radius:4px;
+  background:rgba(255,69,96,.1);border:1px solid rgba(255,69,96,.25);
+  color:#ff4560;font-size:11px;
+}
+.error.show{display:block}
+
+.setup-note{
+  margin-top:20px;padding:10px 12px;border-radius:4px;
+  background:rgba(201,162,39,.08);border:1px solid rgba(201,162,39,.2);
+  color:#c9a227;font-size:10px;line-height:1.6;
+}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo" id="brand-name">SUNI</div>
+  <div class="tagline" id="brand-tagline"></div>
+
+  <div id="setup-note" class="setup-note" style="display:none">
+    First run detected. Creating the admin account below will set up SUNI for multi-user access.
+  </div>
+
+  <a id="sso-btn" class="btn sso" href="#" style="display:none">Sign in with <span id="sso-name">SSO</span></a>
+  <div id="sso-div" class="divider" style="display:none">or</div>
+
+  <form id="login-form">
+    <div class="field">
+      <label>Username</label>
+      <input type="text" id="username" autocomplete="username" placeholder="your username" required>
+    </div>
+    <div class="field">
+      <label id="pw-label">Password</label>
+      <input type="password" id="password" autocomplete="current-password" placeholder="••••••••" required>
+    </div>
+    <div id="confirm-wrap" class="field" style="display:none">
+      <label>Confirm password</label>
+      <input type="password" id="confirm" placeholder="••••••••">
+    </div>
+    <label class="remember">
+      <input type="checkbox" id="remember"> Keep me signed in for 30 days
+    </label>
+    <button type="submit" class="btn" id="submit-btn">Sign in</button>
+    <div class="error" id="error-msg"></div>
+  </form>
+</div>
+
+<script>
+const isSetup = location.search.includes('setup=1');
+if (isSetup) {
+  document.getElementById('setup-note').style.display = '';
+  document.getElementById('pw-label').textContent = 'Set password';
+  document.getElementById('confirm-wrap').style.display = '';
+  document.getElementById('submit-btn').textContent = 'Create admin account';
+}
+
+// Surface a redirect error (e.g. from a failed/refused SSO callback).
+const _qerr = new URLSearchParams(location.search).get('error');
+if (_qerr) {
+  const err = document.getElementById('error-msg');
+  err.textContent = _qerr;
+  err.classList.add('show');
+}
+
+// Configure available login methods (SSO button / password-only vs SSO-only).
+(async () => {
+  try {
+    const s = await (await fetch('/api/auth/status')).json();
+    // Branding is operator-configurable (Admin -> Configuration -> Identity).
+    // The login page cannot read /api/config, so it comes through auth/status.
+    if (s.display_name) document.getElementById('brand-name').textContent = s.display_name;
+    document.getElementById('brand-tagline').textContent = s.tagline || '';
+    const next = new URLSearchParams(location.search).get('next') || '/';
+    if (s.oidc_enabled && !isSetup) {
+      const b = document.getElementById('sso-btn');
+      document.getElementById('sso-name').textContent = s.oidc_provider_name || 'SSO';
+      b.href = '/api/auth/oidc/authorize?next=' + encodeURIComponent(next);
+      b.style.display = '';
+      document.getElementById('sso-div').style.display = '';
+    }
+    if (!s.password_enabled && !isSetup) {   // SSO-only mode
+      document.getElementById('login-form').style.display = 'none';
+      document.getElementById('sso-div').style.display = 'none';
+    }
+  } catch (e) { /* status endpoint unavailable → show password form as default */ }
+})();
+
+document.getElementById('login-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = document.getElementById('submit-btn');
+  const err = document.getElementById('error-msg');
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value;
+  err.classList.remove('show');
+  btn.disabled = true;
+  btn.textContent = isSetup ? 'Setting up…' : 'Signing in…';
+
+  try {
+    if (isSetup) {
+      const confirm = document.getElementById('confirm').value;
+      if (password !== confirm) { throw new Error('Passwords do not match'); }
+      if (password.length < 8) { throw new Error('Password must be at least 8 characters'); }
+      // First-run: create admin
+      const r = await fetch('/api/auth/setup', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({username, password})
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || 'Setup failed');
+      storeAndRedirect(d);
+    } else {
+      const form = new URLSearchParams();
+      form.append('username', username);
+      form.append('password', password);
+      const r = await fetch('/api/auth/login', {method:'POST', body:form});
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || 'Invalid credentials');
+      storeAndRedirect(d);
+    }
+  } catch(ex) {
+    err.textContent = ex.message;
+    err.classList.add('show');
+    btn.disabled = false;
+    btn.textContent = isSetup ? 'Create admin account' : 'Sign in';
+  }
+});
+
+function storeAndRedirect(d) {
+  const remember = document.getElementById('remember').checked;
+  localStorage.setItem('suni_jwt', d.access_token);
+  if (d.refresh_token && remember) localStorage.setItem('suni_refresh_token', d.refresh_token);
+  const next = new URLSearchParams(location.search).get('next') || '/';
+  location.href = next;
+}
+</script>
+</body>
+</html>

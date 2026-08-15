@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SUNI — Setup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:wght@300;400&display=swap">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{min-height:100%;background:#080808;font-family:'DM Mono',monospace;color:#ddd}
+body{display:flex;align-items:center;justify-content:center;padding:32px 16px}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse 60% 50% at 50% 0%,rgba(201,162,39,.06),transparent 70%),
+             radial-gradient(ellipse 40% 40% at 80% 100%,rgba(0,212,255,.05),transparent 70%)}
+.card{width:100%;max-width:560px;padding:40px;position:relative;z-index:1;
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
+  border-radius:8px;backdrop-filter:blur(20px)}
+.logo{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;letter-spacing:.08em;
+  color:#c9a227;text-transform:uppercase;margin-bottom:2px}
+.sub{font-size:11px;color:#555;letter-spacing:.12em;margin-bottom:26px}
+.steps{display:flex;gap:6px;margin-bottom:26px}
+.dot{height:3px;flex:1;background:rgba(255,255,255,.1);border-radius:2px;transition:background .25s}
+.dot.on{background:#c9a227}
+h2{font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:#eee;margin-bottom:6px}
+.hint{font-size:11.5px;color:#8a8a8a;line-height:1.7;margin-bottom:18px}
+label{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:#777;margin:14px 0 6px}
+input,select,textarea{width:100%;padding:10px 12px;background:rgba(0,0,0,.35);
+  border:1px solid rgba(255,255,255,.12);border-radius:5px;color:#eee;
+  font-family:'DM Mono',monospace;font-size:13px}
+input:focus,select:focus,textarea:focus{outline:none;border-color:rgba(201,162,39,.5)}
+textarea{resize:vertical;min-height:70px}
+.row{display:flex;gap:12px}.row>*{flex:1}
+.actions{display:flex;justify-content:space-between;align-items:center;margin-top:28px;gap:12px}
+button{padding:10px 20px;border-radius:5px;font-family:'DM Mono',monospace;font-size:12px;
+  cursor:pointer;border:1px solid rgba(255,255,255,.15);background:transparent;color:#aaa}
+button:hover{border-color:rgba(255,255,255,.35);color:#eee}
+button.primary{background:#c9a227;border-color:#c9a227;color:#111;font-weight:700}
+button.primary:hover{background:#dbb433}
+button:disabled{opacity:.4;cursor:not-allowed}
+.note{padding:12px 14px;border-radius:5px;font-size:11.5px;line-height:1.7;margin-top:4px}
+.note.warn{background:rgba(255,180,0,.07);border:1px solid rgba(255,180,0,.25);color:#e8c98a}
+.note.ok{background:rgba(0,212,255,.05);border:1px solid rgba(0,212,255,.2);color:#9ad9e8}
+code{background:rgba(0,0,0,.45);padding:2px 6px;border-radius:3px;color:#c9a227;font-size:11.5px}
+.skip{font-size:11px;color:#666;text-decoration:underline;cursor:pointer;background:none;border:none}
+.err{color:#ff6b7f;font-size:11.5px;margin-top:12px;display:none}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo" id="brand">SUNI</div>
+  <div class="sub">FIRST-RUN SETUP</div>
+  <div class="steps">
+    <div class="dot on" data-dot="1"></div>
+    <div class="dot" data-dot="2"></div>
+    <div class="dot" data-dot="3"></div>
+  </div>
+
+  <!-- 1 ─ model -->
+  <section data-step="1">
+    <h2>Choose a model</h2>
+    <div class="hint">SUNI runs models locally through Ollama. Nothing is chosen by
+      default — pick whichever suits your hardware.</div>
+    <div id="model-area"><div class="note ok">Looking for installed models…</div></div>
+  </section>
+
+  <!-- 2 ─ identity -->
+  <section data-step="2" hidden>
+    <h2>Name and language</h2>
+    <div class="hint">How this instance introduces itself, and which language it
+      replies in. Everything here can be changed later in the admin panel.</div>
+    <label>Display name</label>
+    <input id="display_name" placeholder="SUNI" maxlength="40">
+    <label>Tagline</label>
+    <input id="tagline" placeholder="shown on the sign-in screen" maxlength="80">
+    <div class="row">
+      <div>
+        <label>Reply language</label>
+        <select id="response_language">
+          <option value="">Follow the input language</option>
+          <option value="en-GB">English (UK)</option>
+          <option value="en-US">English (US)</option>
+          <option value="pt-PT">Português (PT)</option>
+          <option value="pt-BR">Português (BR)</option>
+          <option value="es-ES">Español</option>
+          <option value="fr-FR">Français</option>
+          <option value="de-DE">Deutsch</option>
+        </select>
+      </div>
+      <div>
+        <label>Voice input language</label>
+        <select id="stt_language">
+          <option value="en-GB">English (UK)</option>
+          <option value="en-US">English (US)</option>
+          <option value="pt-PT">Português (PT)</option>
+          <option value="pt-BR">Português (BR)</option>
+          <option value="es-ES">Español</option>
+          <option value="fr-FR">Français</option>
+          <option value="de-DE">Deutsch</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 ─ documents -->
+  <section data-step="3" hidden>
+    <h2>Documents <span style="color:#555;font-weight:400;font-size:12px">· optional</span></h2>
+    <div class="hint">Folders SUNI should index so it can answer from your own
+      documents. Leave empty to skip — you can add them later.</div>
+    <label>Folders to index (one per line)</label>
+    <textarea id="doc_paths" placeholder="/srv/documents&#10;\\server\share\docs"></textarea>
+    <div class="note warn" style="margin-top:14px">
+      Document search needs an extra dependency that is not installed by
+      default. Install it with <code>pip install -r requirements-embeddings.txt</code>
+      — it pulls PyTorch, which is large.
+    </div>
+  </section>
+
+  <div class="err" id="err"></div>
+  <div class="actions">
+    <button class="skip" id="skip">Skip setup</button>
+    <div style="display:flex;gap:10px">
+      <button id="back" hidden>Back</button>
+      <button class="primary" id="next">Next</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const TOKEN = "__SUNI_JWT__";
+let step = 1, models = [];
+
+const $  = id => document.getElementById(id);
+const api = (path, opts = {}) => fetch(path, {
+  ...opts,
+  headers: { "Content-Type": "application/json",
+             "Authorization": "Bearer " + TOKEN, ...(opts.headers || {}) },
+});
+
+function render() {
+  document.querySelectorAll("[data-step]").forEach(s => {
+    s.hidden = Number(s.dataset.step) !== step;
+  });
+  document.querySelectorAll("[data-dot]").forEach(d => {
+    d.classList.toggle("on", Number(d.dataset.dot) <= step);
+  });
+  $("back").hidden = step === 1;
+  $("next").textContent = step === 3 ? "Finish" : "Next";
+}
+
+// Step 1 — offer what is actually installed rather than a hardcoded list.
+async function loadModels() {
+  try {
+    const r = await api("/api/models/inventory?refresh=1");
+    const d = await r.json();
+    models = d.models || [];
+  } catch { models = []; }
+
+  if (!models.length) {
+    $("model-area").innerHTML = `
+      <div class="note warn">
+        <strong>No models found.</strong><br>
+        SUNI needs at least one model to answer anything. Install Ollama from
+        <code>ollama.com</code>, then pull one:
+        <div style="margin-top:8px"><code>ollama pull qwen2.5:7b</code></div>
+        <div style="margin-top:8px">You can finish setup now and choose a model
+        later in the admin panel.</div>
+      </div>`;
+    return;
+  }
+  const opts = models
+    .slice()
+    .sort((a, b) => (b.params_b || 0) - (a.params_b || 0))
+    .map(m => `<option value="${m.name}">${m.name} · ${m.params_b || "?"}B · tier ${m.tier}</option>`)
+    .join("");
+  $("model-area").innerHTML = `
+    <label>Model</label>
+    <select id="model"><option value="">Auto — best installed model</option>${opts}</select>
+    <div class="note ok" style="margin-top:14px">
+      Found ${models.length} installed model${models.length > 1 ? "s" : ""}.
+      <strong>Auto</strong> keeps SUNI on the best one for this machine and
+      follows any model you add later.
+    </div>`;
+}
+
+function collect() {
+  const raw = ($("doc_paths").value || "").trim();
+  return {
+    model:             ($("model") && $("model").value) || "",
+    display_name:      ($("display_name").value || "").trim(),
+    tagline:           ($("tagline").value || "").trim(),
+    response_language: $("response_language").value,
+    stt_language:      $("stt_language").value,
+    doc_paths:         raw ? raw.split("\n").map(s => s.trim()).filter(Boolean) : [],
+  };
+}
+
+async function finish(payload) {
+  $("next").disabled = true;
+  try {
+    const r = await api("/api/setup/complete", {
+      method: "POST", body: JSON.stringify(payload),
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+    location.href = "/";
+  } catch (e) {
+    $("err").textContent = "Could not save: " + e.message;
+    $("err").style.display = "block";
+    $("next").disabled = false;
+  }
+}
+
+$("next").addEventListener("click", () => {
+  if (step < 3) { step++; render(); return; }
+  finish(collect());
+});
+$("back").addEventListener("click", () => { if (step > 1) { step--; render(); } });
+// Skipping still marks setup done — otherwise the wizard reappears on every
+// visit, which is worse than respecting the choice. Defaults stay as they are.
+$("skip").addEventListener("click", () => finish({}));
+
+render();
+loadModels();
+</script>
+</body>
+</html>

@@ -1,0 +1,66 @@
+# SUNI + Ollama.
+#
+#   docker compose up -d
+#   open https://localhost:8765   (self-signed certificate — expect a warning)
+#
+# The first run creates the admin account in the browser, and SUNI generates
+# its own secrets. Pull a model before chatting:
+#
+#   docker compose exec ollama ollama pull qwen2.5:7b
+#
+services:
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      # Models are large — keep them out of the image and across restarts.
+      - ollama-models:/root/.ollama
+    # Not published to the host by default: SUNI reaches it on the internal
+    # network, and an unauthenticated model server should not be exposed.
+    # Uncomment to use it from the host as well.
+    # ports:
+    #   - "11434:11434"
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # GPU passthrough. Requires the NVIDIA Container Toolkit on the host;
+    # comment this block out to run on CPU (slow, but it works).
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  suni:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      ollama:
+        condition: service_healthy
+    ports:
+      - "8765:8765"
+    environment:
+      # The reason config.ollama_host() exists: inside compose, Ollama is not
+      # on localhost. Without this SUNI would look for a model server in its
+      # own container and appear to start fine.
+      SUNI_OLLAMA_HOST: http://ollama:11434
+    env_file:
+      # Optional: SMTP and channel credentials. "required: false" so the stack
+      # starts without one — everything in it can also be set in the admin panel.
+      - path: .env
+        required: false
+    volumes:
+      # All persistent state. Without this, every restart is a fresh install:
+      # new admin account, no memory, regenerated secrets.
+      - suni-data:/app/memory
+      # Optional: documents to index for the knowledge base, read-only.
+      # - /path/to/your/docs:/data/docs:ro
+
+volumes:
+  ollama-models:
+  suni-data:

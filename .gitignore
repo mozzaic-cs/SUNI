@@ -1,0 +1,38 @@
+# Shipped as .gitignore in the public repo (renamed when the seed is built).
+#
+# Kept separate from this repo's own .gitignore, which also excludes things
+# specific to the maintainer's machine. This file must stay generic: it is the
+# first line of defence for everyone who clones SUNI, and the reason the
+# original repo ended up tracking secrets was that these rules arrived after
+# the files did.
+
+# ── Instance state — never commit ────────────────────────────────────────────
+# Everything SUNI generates at runtime: databases, memory stores, the document
+# index, uploads, and the secrets it creates for itself on first run.
+memory/
+logs/
+backups/
+files/
+
+# ── Credentials ──────────────────────────────────────────────────────────────
+.env
+certs/
+
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# ── Editors / OS ─────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

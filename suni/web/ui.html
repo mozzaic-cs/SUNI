@@ -1,0 +1,1415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>SUNI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
+<script src="/i18n.js"></script>
+<script>
+// Apply operator-configurable branding (Admin -> Configuration -> Identity).
+// Ids are optional per page; a missing element is simply skipped.
+function _applyBranding(cfg) {
+  if (!cfg) return;
+  const name = (cfg.display_name || '').trim();
+  const tag  = (cfg.tagline || '').trim();
+  ['brand-name', 'brand-name-2'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && name) el.textContent = name;
+  });
+  ['brand-tagline', 'brand-tagline-2'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = tag;
+  });
+  if (name) document.title = name;
+}
+</script>
+<style>
+:root {
+  --gold:   #c9a227;
+  --gold-b: #f0c040;
+  --cyan:   #00d4ff;
+  --bg:     #000000;
+  --border: rgba(201,162,39,0.15);
+  --text:   rgba(218,215,240,0.88);
+  --dim:    rgba(170,165,210,0.42);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+/* Dropdown option list — dark theme (browser default is white/unreadable) */
+select option,select optgroup{background:#111;color:var(--text)}
+html,body{height:100%;overflow:hidden;background:var(--bg)}
+#app{position:relative;width:100vw;height:100vh;overflow:hidden}
+
+/* ── CANVAS (fullscreen, behind everything) ── */
+#suni-canvas{
+  position:absolute;inset:0;width:100%;height:100%;display:block;z-index:0;
+}
+
+/* ── HEADER ── */
+header{
+  position:absolute;top:0;left:0;right:0;height:48px;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 22px;z-index:20;
+  background:linear-gradient(to bottom,rgba(5,5,20,.92) 0%,transparent 100%);
+}
+.wordmark{
+  font-family:'Syne',sans-serif;font-weight:800;font-size:16px;
+  letter-spacing:.38em;color:var(--gold);text-transform:uppercase;
+}
+.wordmark sub{
+  font-size:7.5px;font-weight:400;letter-spacing:.1em;color:var(--dim);
+  display:block;margin-top:2px;font-family:'DM Mono',monospace;font-style:normal;
+}
+.h-right{display:flex;align-items:center;gap:9px}
+.mtag{
+  padding:2px 6px;border:1px solid var(--border);border-radius:2px;
+  font-size:8.5px;letter-spacing:.06em;color:var(--dim);font-family:'DM Mono',monospace;
+}
+.live-dot{
+  width:6px;height:6px;border-radius:50%;background:#2ecc71;
+  box-shadow:0 0 7px #2ecc71;animation:blink-dot 2.2s ease-in-out infinite;
+}
+@keyframes blink-dot{0%,100%{opacity:1}55%{opacity:.3}}
+
+/* ── STATE LABEL ── */
+#state-label{
+  position:absolute;top:56px;left:22px;
+  font-family:'Syne',sans-serif;font-size:7.5px;letter-spacing:.26em;
+  text-transform:uppercase;color:var(--dim);z-index:10;
+  transition:color .4s;user-select:none;
+}
+#state-label.thinking{color:var(--cyan)}
+#state-label.speaking{color:var(--gold)}
+#state-label.working{color:#14d98c;font-size:8.5px;letter-spacing:.06em}
+#state-label.browsing{color:#09bfd8;font-size:8.5px;letter-spacing:.06em}
+
+/* ── SUBTITLE ── */
+#subtitle{
+  position:fixed;
+  left:50%;transform:translateX(-50%);
+  bottom:330px;
+  max-width:min(640px,90vw);width:90%;text-align:left;
+  font-family:'DM Mono',monospace;font-style:italic;font-weight:300;font-size:13px;
+  color:var(--gold);line-height:1.58;
+  opacity:0;transition:opacity .55s ease;
+  pointer-events:none;
+  text-shadow:0 0 30px rgba(201,162,39,.5);
+  z-index:10;
+  overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
+}
+#subtitle.show{opacity:1}
+
+/* ── CHAT OVERLAY ── */
+#chat-overlay{
+  position:fixed;bottom:24px;
+  left:50%;transform:translateX(-50%);
+  width:min(680px,94vw);
+  z-index:15;display:flex;flex-direction:column;
+}
+
+#messages{
+  background:rgba(6,6,22,.74);
+  backdrop-filter:blur(26px);-webkit-backdrop-filter:blur(26px);
+  border:1px solid var(--border);border-bottom:none;
+  border-radius:5px 5px 0 0;
+  max-height:240px;overflow-y:auto;
+  padding:13px 13px 7px;
+  display:flex;flex-direction:column;gap:11px;
+  scroll-behavior:smooth;
+  font-family:'DM Mono',monospace;color:var(--text);
+}
+#messages:empty{display:none}
+#messages::-webkit-scrollbar{width:2px}
+#messages::-webkit-scrollbar-track{background:transparent}
+#messages::-webkit-scrollbar-thumb{background:rgba(201,162,39,.28);border-radius:2px}
+
+.msg{max-width:100%;animation:msg-in .2s ease both}
+@keyframes msg-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.msg-role{
+  font-size:7.5px;letter-spacing:.18em;text-transform:uppercase;margin-bottom:3px;
+  font-family:'Syne',sans-serif;
+}
+.msg.user .msg-role{color:var(--gold);text-align:right}
+.msg.suni .msg-role{color:var(--cyan)}
+.msg-body{padding:7px 10px;font-size:12px;line-height:1.65;font-weight:300;border-radius:2px}
+.msg.user .msg-body{
+  background:rgba(201,162,39,.05);border-left:2px solid var(--gold);
+  color:rgba(228,218,186,.88);text-align:right;
+}
+.msg.suni .msg-body{background:rgba(0,212,255,.04);border-left:2px solid var(--cyan)}
+.msg-body strong{color:var(--gold-b);font-weight:500}
+.msg-body em{color:var(--cyan);font-style:italic}
+.msg-body code{
+  background:rgba(201,162,39,.1);border:1px solid rgba(201,162,39,.2);
+  padding:1px 4px;border-radius:2px;font-size:11px;color:var(--gold-b);
+}
+.msg-body p{margin-bottom:5px}.msg-body p:last-child{margin-bottom:0}
+
+.cursor{
+  display:inline-block;width:5px;height:11px;background:var(--cyan);
+  vertical-align:middle;margin-left:2px;animation:blink-c .75s step-end infinite;
+}
+@keyframes blink-c{0%,100%{opacity:1}50%{opacity:0}}
+
+/* ── INPUT AREA ── */
+#input-area{
+  display:flex;gap:6px;align-items:center;padding:9px 11px;
+  background:rgba(5,5,20,.9);
+  backdrop-filter:blur(26px);-webkit-backdrop-filter:blur(26px);
+  border:1px solid var(--border);border-radius:0 0 5px 5px;
+}
+#messages:empty~#input-area{border-radius:5px}
+
+#user-input{
+  flex:1;background:rgba(255,255,255,.03);
+  border:1px solid rgba(201,162,39,.11);border-radius:2px;
+  padding:8px 10px;color:var(--text);
+  font-family:'DM Mono',monospace;font-size:12px;font-weight:300;
+  outline:none;transition:border-color .2s,box-shadow .2s;
+}
+#user-input:focus{border-color:rgba(201,162,39,.42);box-shadow:0 0 0 1px rgba(201,162,39,.08)}
+#user-input::placeholder{color:var(--dim);font-style:italic}
+#user-input:disabled{opacity:.4}
+
+/* ── FILE UPLOAD ── */
+#attach-btn{display:flex;align-items:center;justify-content:center;
+  width:30px;height:30px;flex-shrink:0;cursor:pointer;
+  background:rgba(255,255,255,.03);border:1px solid rgba(201,162,39,.11);
+  border-radius:2px;color:var(--dim);transition:all .18s;}
+#attach-btn:hover{color:var(--gold);border-color:rgba(201,162,39,.42)}
+#file-chips{display:flex;flex-wrap:wrap;gap:5px;padding:0 2px;}
+#file-chips:not(:empty){margin-bottom:7px}
+.file-chip{display:flex;align-items:center;gap:5px;
+  background:rgba(0,212,255,.07);border:1px solid rgba(0,212,255,.2);
+  border-radius:3px;padding:3px 8px;font-size:10px;color:var(--cyan);max-width:200px;
+  font-family:'DM Mono',monospace;}
+.file-chip-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.file-chip-remove{background:none;border:none;color:rgba(0,212,255,.5);
+  cursor:pointer;font-size:13px;padding:0;line-height:1;flex-shrink:0;}
+.file-chip-remove:hover{color:#ff5c5c}
+.file-chip.uploading{opacity:.6;animation:chipPulse 1s infinite;}
+@keyframes chipPulse{0%,100%{opacity:.6}50%{opacity:.9}}
+#drop-overlay{position:fixed;inset:0;z-index:500;display:none;
+  align-items:center;justify-content:center;
+  background:rgba(0,212,255,.06);border:2px dashed rgba(0,212,255,.45);
+  backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);
+  font-family:'DM Mono',monospace;font-size:14px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--cyan);pointer-events:none;}
+#drop-overlay.active{display:flex}
+
+#send-btn{
+  background:linear-gradient(135deg,var(--gold) 0%,#896810 100%);
+  border:none;border-radius:2px;padding:8px 14px;color:#05050e;
+  font-family:'Syne',sans-serif;font-weight:700;font-size:10px;
+  letter-spacing:.1em;cursor:pointer;text-transform:uppercase;
+  transition:filter .18s,transform .1s;white-space:nowrap;
+  touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+}
+#send-btn:hover{filter:brightness(1.2)}
+#send-btn:active{transform:scale(.97)}
+#send-btn:disabled{opacity:.35;cursor:not-allowed;filter:none}
+
+#tts-btn{
+  background:transparent;border:1px solid rgba(0,212,255,.18);
+  border-radius:2px;padding:8px 10px;color:var(--dim);
+  font-size:13px;cursor:pointer;transition:all .2s;flex-shrink:0;
+}
+#tts-btn.on{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 8px rgba(0,212,255,.18)}
+
+#snap-btn{
+  background:transparent;border:1px solid rgba(255,255,255,.14);
+  border-radius:2px;padding:8px 10px;color:var(--dim);
+  font-size:13px;cursor:pointer;transition:all .2s;flex-shrink:0;
+}
+#snap-btn:hover{border-color:var(--cyan);color:var(--cyan)}
+#snap-btn.busy{opacity:.5;cursor:progress}
+#mic-btn{
+  background:transparent;border:1px solid rgba(255,255,255,.14);
+  border-radius:2px;padding:8px 10px;color:var(--dim);
+  font-size:13px;cursor:pointer;transition:all .2s;flex-shrink:0;
+  touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+}
+#mic-btn.listening{
+  border-color:#e74c3c;color:#e74c3c;
+  box-shadow:0 0 10px rgba(231,76,60,.35);
+  animation:mic-pulse .85s ease-in-out infinite;
+}
+#mic-btn:disabled{opacity:.25;cursor:not-allowed}
+@keyframes mic-pulse{0%,100%{box-shadow:0 0 8px rgba(231,76,60,.3)}50%{box-shadow:0 0 18px rgba(231,76,60,.65)}}
+
+@media(max-width:768px){
+  #subtitle{bottom:260px;font-size:12px}
+  #chat-overlay{bottom:12px;width:96vw;padding-bottom:env(safe-area-inset-bottom,0px)}
+  #input-area{border-radius:0 0 5px 5px}
+  #messages{max-height:150px}
+}
+@media(max-height:500px){
+  #messages{max-height:90px}
+  #chat-overlay{bottom:4px}
+  #subtitle{display:none}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="suni-canvas"></canvas>
+  <header>
+    <div class="wordmark"><span id="brand-name">SUNI</span><sub id="brand-tagline"></sub></div>
+    <div class="h-right">
+      <div id="header-meta"></div>
+      <select id="mode-select" title="Conversation mode"
+        style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
+               color:rgba(255,255,255,.6);font-family:'DM Mono',monospace;font-size:9px;
+               letter-spacing:.08em;padding:3px 7px;border-radius:3px;cursor:pointer;
+               display:none">
+        <option value="assistant">● assistant</option>
+        <option value="task">◈ task</option>
+        <option value="read-only">◌ read-only</option>
+      </select>
+      <a href="/chat" title="Switch to Chat mode"
+         style="padding:3px 8px;border:1px solid rgba(201,162,39,.28);border-radius:2px;
+                font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.08em;
+                color:rgba(201,162,39,.6);text-decoration:none;transition:all .2s;"
+         onmouseover="this.style.color='#c9a227';this.style.borderColor='rgba(201,162,39,.6)'"
+         onmouseout="this.style.color='rgba(201,162,39,.6)';this.style.borderColor='rgba(201,162,39,.28)'">
+        ☰ CHAT
+      </a>
+      <a href="/face" title="Switch to Persona mode"
+         style="padding:3px 8px;border:1px solid rgba(201,162,39,.28);border-radius:2px;
+                font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.08em;
+                color:rgba(201,162,39,.6);text-decoration:none;transition:all .2s;"
+         onmouseover="this.style.color='#c9a227';this.style.borderColor='rgba(201,162,39,.6)'"
+         onmouseout="this.style.color='rgba(201,162,39,.6)';this.style.borderColor='rgba(201,162,39,.28)'">
+        ◉ FACE
+      </a>
+      <button id="cam-btn" aria-pressed="false"
+         title="Camera off — click to let the orb sense your presence (stays on this device)"
+         style="background:none;border:1px solid rgba(201,162,39,.28);border-radius:2px;
+                font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.08em;padding:3px 8px;
+                color:rgba(201,162,39,.6);cursor:pointer;transition:all .2s;"
+         onmouseover="if(!this.classList.contains('on')){this.style.color='#c9a227';this.style.borderColor='rgba(201,162,39,.6)'}"
+         onmouseout="if(!this.classList.contains('on')){this.style.color='rgba(201,162,39,.6)';this.style.borderColor='rgba(201,162,39,.28)'}">
+        ◉ CAM
+      </button>
+      <button id="orb-settings-btn" title="Language &amp; voice settings"
+         style="background:none;border:1px solid rgba(201,162,39,.28);border-radius:2px;
+                font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.08em;padding:3px 8px;
+                color:rgba(201,162,39,.6);cursor:pointer;transition:all .2s;"
+         onmouseover="this.style.color='#c9a227';this.style.borderColor='rgba(201,162,39,.6)'"
+         onmouseout="this.style.color='rgba(201,162,39,.6)';this.style.borderColor='rgba(201,162,39,.28)'">
+        ⚙
+      </button>
+      <div class="live-dot" title="Connected"></div>
+    </div>
+  </header>
+  <div id="state-label" data-i18n="orb.idle">IDLE</div>
+  <div id="subtitle"></div>
+  <div id="chat-overlay">
+    <div id="messages"></div>
+    <div id="file-chips"></div>
+    <div id="input-area">
+      <label id="attach-btn" data-i18n-title="chat.attach_file" title="Attach a file">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+        <input type="file" id="file-input" style="display:none" multiple>
+      </label>
+      <button id="snap-btn" type="button" title="Snapshot — capture what the camera sees, then ask about it">📷</button>
+      <input id="user-input" type="text"
+             data-i18n-placeholder="orb.placeholder"
+             placeholder="Speak your mind. I shall observe."
+             autocomplete="off" spellcheck="false"/>
+      <button id="mic-btn" data-i18n-title="orb.mic_hold"  title="Hold to speak">🎤</button>
+      <button id="tts-btn" data-i18n-title="orb.tts_toggle" title="Toggle voice">🔊</button>
+      <button id="send-btn" data-i18n="chat.send">Send</button>
+    </div>
+    <!-- EU AI Act Art. 50(1): persistent AI-interaction disclosure -->
+    <div class="ai-disclosure" data-i18n="common.ai_disclosure"
+         style="text-align:center;font-size:11px;color:var(--text);opacity:.72;margin-top:8px">SUNI is an AI assistant — responses are AI-generated and may be inaccurate.</div>
+  </div>
+</div>
+<!-- drag-drop overlay (full viewport) -->
+<div id="drop-overlay" data-i18n="chat.drop_files">Drop files here</div>
+<!-- Webcam presence sensing — client-side only; frames are sampled to a 64×48
+     canvas in-page and NEVER sent anywhere. Hidden from view. -->
+<video id="cam-video" playsinline muted autoplay style="display:none"></video>
+<canvas id="cam-canvas" width="64" height="48" style="display:none"></canvas>
+<!-- ══ SETTINGS MODAL (orb) ══ -->
+<div id="orb-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);
+     z-index:200;align-items:center;justify-content:center;backdrop-filter:blur(4px);">
+  <div style="background:#0a0a22;border:1px solid rgba(201,162,39,.14);border-radius:5px;
+       width:min(420px,92vw);padding:28px 28px 24px;font-family:'DM Mono',monospace;">
+    <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:14px;letter-spacing:.1em;
+         color:#c9a227;text-transform:uppercase;margin-bottom:20px;
+         display:flex;align-items:center;justify-content:space-between;">
+      <span data-i18n="settings.title">Language &amp; Voice</span>
+      <button id="orb-modal-close" data-i18n-title="common.close" style="background:none;border:none;color:rgba(170,165,210,.45);
+        font-size:16px;cursor:pointer;padding:0;line-height:1;">✕</button>
+    </div>
+    <div style="font-size:10px;color:rgba(170,165,210,.45);margin-bottom:16px;line-height:1.5;
+         padding:8px 10px;background:rgba(201,162,39,.05);border:1px solid rgba(201,162,39,.12);
+         border-radius:3px;">
+      <span data-i18n-html="orb.settings_note">Leave a field on <strong style="color:rgba(201,162,39,.8)">System default</strong>
+      to use the global setting from Admin → Configuration.</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:14px">
+      <label style="font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:rgba(255,255,255,.5)" data-i18n="settings.resp_lang">Response Language</label>
+      <select id="orb-resp-lang" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);
+        color:rgba(218,215,240,.9);padding:8px 10px;border-radius:3px;
+        font-family:'DM Mono',monospace;font-size:12px;outline:none;cursor:pointer;width:100%">
+        <option value="" data-i18n="common.sys_default">System default</option>
+        <option value="en-GB">English (UK)</option>
+        <option value="en-US">English (US)</option>
+        <option value="pt-PT">Português (Portugal)</option>
+        <option value="pt-BR">Português (Brasil)</option>
+        <option value="es-ES">Español</option>
+        <option value="fr-FR">Français</option>
+        <option value="de-DE">Deutsch</option>
+      </select>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:14px">
+      <label style="font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:rgba(255,255,255,.5)" data-i18n="settings.stt_lang">Voice Input Language (STT)</label>
+      <select id="orb-stt-lang" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);
+        color:rgba(218,215,240,.9);padding:8px 10px;border-radius:3px;
+        font-family:'DM Mono',monospace;font-size:12px;outline:none;cursor:pointer;width:100%">
+        <option value="" data-i18n="common.sys_default">System default</option>
+        <option value="en-GB">English (UK)</option>
+        <option value="en-US">English (US)</option>
+        <option value="pt-PT">Português (Portugal)</option>
+        <option value="pt-BR">Português (Brasil)</option>
+        <option value="es-ES">Español</option>
+        <option value="fr-FR">Français</option>
+        <option value="de-DE">Deutsch</option>
+      </select>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:20px">
+      <label style="font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:rgba(255,255,255,.5)" data-i18n="settings.tts_voice">TTS Voice</label>
+      <select id="orb-tts-voice" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);
+        color:rgba(218,215,240,.9);padding:8px 10px;border-radius:3px;
+        font-family:'DM Mono',monospace;font-size:12px;outline:none;cursor:pointer;width:100%">
+        <option value="" data-i18n="common.sys_default">System default</option>
+      </select>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+      <button id="orb-modal-logout" data-i18n="common.sign_out"
+        style="background:transparent;border:1px solid rgba(255,69,96,.28);
+        border-radius:3px;padding:8px 14px;color:rgba(255,69,96,.6);
+        font-family:'Syne',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;
+        text-transform:uppercase;cursor:pointer;transition:all .18s;"
+        onmouseover="this.style.borderColor='#ff4560';this.style.color='#ff4560'"
+        onmouseout="this.style.borderColor='rgba(255,69,96,.28)';this.style.color='rgba(255,69,96,.6)'">
+        Sign out</button>
+      <div style="display:flex;gap:8px">
+        <button id="orb-modal-cancel" data-i18n="common.cancel"
+          style="background:transparent;border:1px solid rgba(255,255,255,.14);
+          border-radius:3px;padding:8px 16px;color:rgba(170,165,210,.45);
+          font-family:'Syne',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;
+          text-transform:uppercase;cursor:pointer;">Cancel</button>
+        <button id="orb-modal-save" data-i18n="common.save"
+          style="background:linear-gradient(135deg,#c9a227 0%,#896810 100%);
+          border:none;border-radius:3px;padding:8px 18px;color:#05050e;
+          font-family:'Syne',sans-serif;font-size:10px;font-weight:700;letter-spacing:.1em;
+          text-transform:uppercase;cursor:pointer;">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<audio id="tts-audio" style="display:none" crossorigin="anonymous"></audio>
+
+<script>
+'use strict';
+// ═══════════════════════════════════════════════════════════════════
+//  WEBGL FLUID ANIMATION  —  Siri-style colorful cloud orb
+// ═══════════════════════════════════════════════════════════════════
+
+const canvas = document.getElementById('suni-canvas');
+
+const VS = `
+attribute vec2 a_pos;
+void main(){gl_Position=vec4(a_pos,0.0,1.0);}
+`;
+
+const FS = `
+precision highp float;
+uniform vec2  u_res;
+uniform float u_t;
+uniform float u_ss; /* smooth state: 0=idle 1=thinking 2=speaking */
+uniform float u_cam; /* webcam presence/motion energy 0..1 (opt-in) */
+
+/* ── noise ── */
+float hash(vec2 p){p=fract(p*vec2(127.1,311.7));p+=dot(p,p.yx+19.19);return fract((p.x+p.y)*p.x);}
+float noise(vec2 p){
+  vec2 i=floor(p),f=fract(p);
+  f=f*f*(3.0-2.0*f);
+  return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);
+}
+float fbm(vec2 p){
+  float v=0.0,a=0.5;
+  for(int i=0;i<5;i++){v+=a*noise(p);p=p*2.07+vec2(3.7+float(i)*6.13);a*=0.5;}
+  return v;
+}
+
+/* ── parallax star layer ── */
+float starLayer(vec2 uv, float scale, float speed, float size, float t){
+  vec2 drift = vec2(sin(t*speed*0.31)*0.018, cos(t*speed*0.23)*0.013);
+  vec2 id    = floor((uv + drift) * scale);
+  vec2 f     = fract((uv + drift) * scale) - 0.5;
+  float h    = hash(id);
+  float h2   = hash(id + vec2(3.7, 9.1));
+  float vis  = step(0.965, h);
+  float twk  = 0.55 + 0.45*sin(t*speed*(1.8+h*2.5) + h*6.28);
+  float d    = length(f - (vec2(h2, hash(id+vec2(1,2)))-0.5)*0.6);
+  return smoothstep(size, 0.0, d) * vis * twk * (0.35+h2*0.65);
+}
+
+void main(){
+  vec2 uv = gl_FragCoord.xy / u_res;
+  /* orb in upper portion of screen, chat panel below */
+  vec2 oc = vec2(0.5, 0.65);
+  vec2 p  = (uv - oc);
+  p.x    *= u_res.x / u_res.y;
+
+  float ss  = u_ss;
+  float thk = clamp(ss, 0.0, 1.0);                    /* thinking blend  0→1 */
+  float spk = clamp(ss - 1.0, 0.0, 1.0);              /* speaking blend  1→2 */
+  float wrk = clamp(ss - 2.0, 0.0, 1.0);              /* working blend   2→3 */
+  float brw = clamp(ss - 3.0, 0.0, 1.0);              /* browsing blend  3→4 */
+  float spd = 1.0 + ss * 0.9 + u_cam * 0.35;   /* your movement gives it a little more life */
+  float t   = u_t * spd;
+
+  /* ── palette ── */
+  vec3 cGold  = vec3(0.788, 0.635, 0.153);
+  vec3 cGoldB = vec3(0.941, 0.753, 0.251);
+  vec3 cAmber = vec3(0.95,  0.55,  0.10);
+  vec3 cCyan  = vec3(0.000, 0.831, 1.000);
+  vec3 cTeal  = vec3(0.000, 0.650, 0.700);
+  vec3 cPurp  = vec3(0.471, 0.188, 0.941);
+  vec3 cBlue  = vec3(0.094, 0.376, 0.941);
+  vec3 cMag   = vec3(0.878, 0.251, 0.627);
+  /* ── background: pure black ── */
+  vec3 bg = vec3(0.0);
+
+  /* ── 3-layer parallax starfield ── */
+  float sL1 = starLayer(uv, 28.0, 0.18, 0.012, u_t); /* far:  dense, tiny, cold  */
+  float sL2 = starLayer(uv, 14.0, 0.38, 0.018, u_t); /* mid:  medium, neutral    */
+  float sL3 = starLayer(uv,  7.0, 0.72, 0.026, u_t); /* near: sparse, warm       */
+  vec3 stCol = sL1*vec3(0.55,0.68,1.0)*0.28
+             + sL2*vec3(0.82,0.90,1.0)*0.44
+             + sL3*vec3(1.00,0.95,0.82)*0.62;
+
+  /* ── blob Lissajous paths ── */
+  float br = 0.108 + ss * 0.019;
+  vec2 b0 = vec2(sin(t*0.710)*br,          cos(t*0.530)*br*0.70);
+  vec2 b1 = vec2(cos(t*0.430+1.20)*br*0.85,sin(t*0.670+0.80)*br*0.62);
+  vec2 b2 = vec2(sin(t*0.580+2.10)*br*0.72,cos(t*0.390+1.50)*br*0.88);
+  vec2 b3 = vec2(cos(t*0.820+0.50)*br*0.65,sin(t*0.470+2.30)*br*0.52);
+  vec2 b4 = vec2(sin(t*0.340+1.70)*br*0.92,cos(t*0.610+0.30)*br*0.67);
+  vec2 b5 = vec2(cos(t*0.910+3.10)*br*0.78,sin(t*0.550+1.10)*br*0.56);
+
+  /* ── blob colours — morph with state ── */
+  vec3 cWork = vec3(0.20, 0.85, 0.55);   /* green-teal: working */
+  vec3 cBrws = vec3(0.10, 0.75, 0.95);   /* bright cyan: browsing */
+  vec3 bc0 = mix(mix(mix(cGold,  cWork, wrk), cBrws, brw), mix(cPurp,  cGoldB, spk), thk);
+  vec3 bc1 = mix(mix(mix(cCyan*0.9, cWork*0.7, wrk), cBrws, brw), mix(cBlue, cCyan, spk), thk*0.65);
+  vec3 bc2 = mix(mix(cAmber*0.75, cWork, wrk), mix(cPurp, cMag, spk), thk);
+  vec3 bc3 = mix(mix(cGoldB, cWork*0.6, wrk), mix(cTeal, cGoldB, spk), thk*0.7);
+  vec3 bc4 = mix(cTeal*0.6, cBlue, thk);
+  vec3 bc5 = mix(cGold*0.5, mix(cMag, cGoldB, spk), clamp(ss*0.5,0.0,1.0));
+
+  float bw0 = 1.00 + spk*0.35;
+  float bw1 = 0.80 + thk*0.42;
+  float bw2 = 0.62 + thk*0.52;
+  float bw3 = 0.75 + spk*0.55;
+  float bw4 = 0.58 + thk*0.60;
+  float bw5 = 0.18 + spk*0.88;
+
+  /* ── gaussian metaball field ── */
+  float bs  = 0.084 + ss*0.014;
+  float bsq = bs*bs;
+  float d0=length(p-b0), d1=length(p-b1), d2=length(p-b2);
+  float d3=length(p-b3), d4=length(p-b4), d5=length(p-b5);
+  float w0=bw0*exp(-d0*d0/bsq), w1=bw1*exp(-d1*d1/bsq), w2=bw2*exp(-d2*d2/bsq);
+  float w3=bw3*exp(-d3*d3/bsq), w4=bw4*exp(-d4*d4/bsq), w5=bw5*exp(-d5*d5/bsq);
+  float field = w0+w1+w2+w3+w4+w5;
+  vec3 blobCol = field>0.001
+    ? (bc0*w0+bc1*w1+bc2*w2+bc3*w3+bc4*w4+bc5*w5)/field
+    : cGold;
+
+  /* ── FBM cloud texture ── */
+  float ns = 3.1 + ss*0.5;
+  float n  = fbm(p*ns         + vec2(u_t*0.065, u_t*0.048));
+  float n2 = fbm(p*ns*1.75    - vec2(u_t*0.048, u_t*0.085) + 7.3);
+  float cloud = n*0.54 + n2*0.46;
+
+  /* ── orb boundary ── */
+  float orbR  = 0.212;
+  float orbD  = length(p);
+  float orbMsk = smoothstep(orbR+0.075, orbR-0.025, orbD);
+
+  /* ── inner core (extra bright center) ── */
+  float core = smoothstep(orbR*0.6, 0.0, orbD) * (0.35 + ss*0.22);
+
+  /* ── density = blobs × cloud ── */
+  float density = clamp((field*0.70 + cloud*0.65)*orbMsk, 0.0, 1.35);
+
+  /* no rim, no glow — clean sphere edge */
+
+  /* ── 3D sphere shading ── */
+  float sz      = sqrt(max(0.0, orbR*orbR - dot(p, p)));
+  vec3  sNorm   = normalize(vec3(p, sz));
+  vec3  vDir    = vec3(0.0, 0.0, 1.0);
+  vec3  lDir    = normalize(vec3(
+                    sin(u_t*0.17)*0.28 - 0.25,
+                    cos(u_t*0.13)*0.18 + 0.52, 0.80));
+  float diff    = max(0.0, dot(sNorm, lDir));
+  vec3  hv      = normalize(lDir + vDir);
+  float spec    = pow(max(0.0, dot(sNorm, hv)), 62.0)
+                * smoothstep(0.0, 0.008, sz);
+  float fresnel = pow(1.0 - max(0.0, dot(sNorm, vDir)), 3.2);
+  float sphMsk  = smoothstep(0.0, 0.006, sz);
+  blobCol  = blobCol * mix(0.28, 1.0, diff);
+  blobCol += vec3(0.96, 0.99, 1.00) * spec * (0.75 + spk*0.55);
+  blobCol  = mix(blobCol, blobCol * 0.12, fresnel * 0.72 * sphMsk);
+
+  /* ── compose ── */
+  vec3 col = bg;
+  /* stars only outside the orb */
+  col += stCol * smoothstep(orbR+0.04, orbR+0.18, orbD);
+  col  = mix(col, blobCol*(1.10+ss*0.20), clamp(density, 0.0, 1.0));
+  col += core * mix(cGoldB, mix(cCyan, cGoldB, spk), thk) * 0.45;
+  col *= 1.0 + spk*0.25;
+
+  /* ── idle = greyscale; colour blooms in as state activates OR when the
+        webcam senses you're present (opt-in), so an idle orb "wakes" for you ── */
+  float luma = dot(col, vec3(0.299, 0.587, 0.114));
+  col = mix(vec3(luma), col, clamp(ss * 1.4 + u_cam * 0.6, 0.0, 1.0));
+  col *= 1.0 + u_cam * 0.10;
+
+  /* ── hard fade to black outside orb + glow radius ── */
+  /* hard clip at orb edge — no halo */
+  col *= smoothstep(orbR + 0.008, orbR - 0.004, orbD);
+
+  /* ── filmic tonemap ── */
+  col  = col / (col + 0.78) * 1.82;
+  col  = clamp(col, 0.0, 1.0);
+
+  gl_FragColor = vec4(col, 1.0);
+}
+`;
+
+// ── compile & link ──────────────────────────────────────────────────
+let gl, prog, uRes, uT, uSS, uCam, glOk = false;
+let _camEnergy = 0;   // smoothed webcam presence/motion energy (0..1), opt-in
+
+try {
+  gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+  if (gl) {
+    const mkShader = (type, src) => {
+      const s = gl.createShader(type);
+      gl.shaderSource(s, src);
+      gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
+        throw new Error(gl.getShaderInfoLog(s));
+      return s;
+    };
+    const vs = mkShader(gl.VERTEX_SHADER,   VS);
+    const fs = mkShader(gl.FRAGMENT_SHADER, FS);
+    prog = gl.createProgram();
+    gl.attachShader(prog, vs); gl.attachShader(prog, fs);
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS))
+      throw new Error(gl.getProgramInfoLog(prog));
+
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER,
+      new Float32Array([-1,-1, 1,-1, -1,1, 1,-1, 1,1, -1,1]),
+      gl.STATIC_DRAW);
+
+    gl.useProgram(prog);
+    const aPos = gl.getAttribLocation(prog, 'a_pos');
+    gl.enableVertexAttribArray(aPos);
+    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+    uRes = gl.getUniformLocation(prog, 'u_res');
+    uT   = gl.getUniformLocation(prog, 'u_t');
+    uSS  = gl.getUniformLocation(prog, 'u_ss');
+    uCam = gl.getUniformLocation(prog, 'u_cam');
+
+    glOk = true;
+  }
+} catch(e) {
+  console.warn('WebGL init failed:', e);
+}
+
+function resizeCanvas() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+  if (gl) gl.viewport(0, 0, canvas.width, canvas.height);
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// Keep chat overlay above virtual keyboard on mobile
+const _overlay = document.getElementById('chat-overlay');
+if (window.visualViewport) {
+  const _adjustOverlay = () => {
+    const vvH = window.visualViewport.height;
+    const winH = window.innerHeight;
+    const kbH = Math.max(0, winH - vvH - window.visualViewport.offsetTop);
+    _overlay.style.bottom = (Math.max(4, kbH + 8)) + 'px';
+  };
+  window.visualViewport.addEventListener('resize', _adjustOverlay);
+  window.visualViewport.addEventListener('scroll', _adjustOverlay);
+}
+
+// ── Auth: JWT from localStorage only ──────────────────────────────────────────
+// Server injects a fresh access token here when the session cookie is valid,
+// so a cleared localStorage never triggers a redirect loop.
+(function(){ const t='__SUNI_JWT__'; if(t && !t.startsWith('__')) localStorage.setItem('suni_jwt',t); })();
+const _ST = localStorage.getItem('suni_jwt') || '';
+function _apiFetch(url, opts={}){
+  opts.headers = {...(opts.headers||{}),"Authorization":"Bearer "+_ST};
+  return fetch(url, opts);
+}
+// Auth check + mode selector init
+let _sessionMode = 'assistant';
+const _sessionId  = localStorage.getItem('suni_session') || (() => {
+  const id = crypto.randomUUID();
+  localStorage.setItem('suni_session', id);
+  return id;
+})();
+
+(async()=>{
+  const fr = await fetch('/api/auth/first-run').then(r=>r.json()).catch(()=>({first_run:false}));
+  if(fr.first_run){ location.href='/login?setup=1'; return; }
+  if(!_ST) { location.href='/login?next=/'; return; }
+  // Detect UI language early from user settings
+  try {
+    const [uSettings, uCfg] = await Promise.all([
+      _apiFetch('/api/users/me/settings').then(r=>r.json()).catch(()=>({})),
+      _apiFetch('/api/config').then(r=>r.json()).catch(()=>({})),
+    ]);
+    _applyBranding(uCfg);
+    const uiLang = uSettings.response_language || uCfg.response_language || 'en';
+    if (typeof setLang !== 'undefined') setLang(uiLang);
+  } catch {}
+  // Load session info (role, mode, allowed modes)
+  const info = await _apiFetch('/api/session/info',
+    {headers:{'x-session-id':_sessionId}}).then(r=>r.json()).catch(()=>null);
+  if(info){
+    _sessionMode = info.mode || 'assistant';
+    const sel = document.getElementById('mode-select');
+    if(sel && info.allowed_modes && info.allowed_modes.length > 1){
+      // Only show selector if user has more than one mode available
+      sel.style.display = '';
+      // Remove options the user can't use
+      Array.from(sel.options).forEach(o => {
+        if(!info.allowed_modes.includes(o.value)) o.remove();
+      });
+      sel.value = _sessionMode;
+      sel.addEventListener('change', async () => {
+        _sessionMode = sel.value;
+        await _apiFetch('/api/session/mode', {
+          method:'POST',
+          headers:{'Content-Type':'application/json','x-session-id':_sessionId},
+          body: JSON.stringify({mode:_sessionMode, session_id:_sessionId}),
+        });
+        // Visual feedback
+        sel.style.color = _sessionMode === 'read-only' ? 'rgba(255,180,0,.7)'
+                        : _sessionMode === 'task'      ? 'rgba(0,212,255,.7)'
+                        : 'rgba(255,255,255,.6)';
+      });
+      // Initial colour
+      sel.style.color = _sessionMode === 'read-only' ? 'rgba(255,180,0,.7)'
+                      : _sessionMode === 'task'      ? 'rgba(0,212,255,.7)'
+                      : 'rgba(255,255,255,.6)';
+    }
+  }
+})();
+
+// ── State machine ────────────────────────────────────────────────────
+let state = 'idle', stateSmooth = 0;
+// State 3 = working (tool executing), state 4 = browsing (playwright active)
+const STATE_TARGET = { idle: 0, thinking: 1, speaking: 2, working: 3, browsing: 4 };
+const stateLabel  = document.getElementById('state-label');
+let   _activeToolName = '';
+
+const _STATE_KEYS = {idle:'orb.idle', thinking:'orb.thinking', speaking:'orb.speaking', working:'orb.working', browsing:'orb.browsing'};
+function setState(s, toolName) {
+  state = s;
+  _activeToolName = toolName || '';
+  stateLabel.className = s;
+  stateLabel.textContent = toolName
+    ? toolName.replace(/_/g,' ').replace(/^playwright /,'').toUpperCase()
+    : (typeof t !== 'undefined' && _STATE_KEYS[s] ? t(_STATE_KEYS[s]) : s.toUpperCase());
+}
+
+// ── Animation loop ───────────────────────────────────────────────────
+let lastTs = 0, T = 0;
+function frame(ts) {
+  const dt = Math.min((ts - lastTs) / 1000, 0.05);
+  lastTs = ts; T += dt;
+
+  const tgt = STATE_TARGET[state] ?? 0;
+  const rate = 4.5 * dt;
+  stateSmooth += (tgt - stateSmooth) * Math.min(rate * 3, 1);
+
+  if (glOk) {
+    gl.useProgram(prog);
+    gl.uniform2f(uRes, canvas.width, canvas.height);
+    gl.uniform1f(uT,  T);
+    gl.uniform1f(uSS, stateSmooth);
+    gl.uniform1f(uCam, _camEnergy);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(ts => { lastTs = ts; requestAnimationFrame(frame); });
+
+// ═══════════════════════════════════════════════════════════════════
+//  WEBCAM PRESENCE SENSING  (opt-in; frames NEVER leave the browser)
+//  Samples the camera to a tiny in-page canvas, measures how much is
+//  moving, and drives _camEnergy → the orb wakes (colour + life) when
+//  you're around and fades back to calm greyscale when the room is empty.
+// ═══════════════════════════════════════════════════════════════════
+const _camBtn    = document.getElementById('cam-btn');
+const _camVideo  = document.getElementById('cam-video');
+const _camCanvas = document.getElementById('cam-canvas');
+const _camCtx    = _camCanvas.getContext('2d', { willReadFrequently: true });
+let _camStream = null, _camTimer = null, _camPrev = null;
+
+// Tunable feel: gain = how strongly motion lights the orb; decayPerTick ~0.965
+// @12fps ≈ 5s fade-out once you stop/leave.
+const CAM = { W:64, H:48, fps:12, thresh:22, gain:8, decayPerTick:0.965 };
+
+function _setCamBtn(on){
+  _camBtn.classList.toggle('on', on);
+  _camBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  _camBtn.style.color       = on ? '#00d4ff' : 'rgba(201,162,39,.6)';
+  _camBtn.style.borderColor = on ? 'rgba(0,212,255,.6)' : 'rgba(201,162,39,.28)';
+  _camBtn.style.boxShadow   = on ? '0 0 8px rgba(0,212,255,.35)' : 'none';
+  _camBtn.title = on
+    ? 'Camera on — the orb senses your presence (stays on this device). Click to turn off.'
+    : 'Camera off — click to let the orb sense your presence (stays on this device)';
+}
+
+async function _camStart(){
+  if(!navigator.mediaDevices?.getUserMedia){ return; }
+  try{
+    _camStream = await navigator.mediaDevices.getUserMedia({ video:{ width:{ideal:320}, height:{ideal:240} }, audio:false });
+  }catch(e){ console.warn('camera:', e); _setCamBtn(false); return; }
+  _camVideo.srcObject = _camStream;
+  try { await _camVideo.play(); } catch {}
+  _camPrev = null; _setCamBtn(true);
+  _camTimer = setInterval(_camTick, Math.round(1000/CAM.fps));
+}
+
+function _camStop(){
+  clearInterval(_camTimer); _camTimer = null;
+  if(_camStream){ _camStream.getTracks().forEach(t=>t.stop()); _camStream = null; }
+  _camVideo.srcObject = null; _camPrev = null;
+  _camEnergy = 0; _setCamBtn(false);
+}
+
+function _camTick(){
+  if(!_camVideo.videoWidth) return;
+  _camCtx.drawImage(_camVideo, 0, 0, CAM.W, CAM.H);
+  let px;
+  try { px = _camCtx.getImageData(0,0,CAM.W,CAM.H).data; } catch { return; }
+  const n = CAM.W*CAM.H, cur = new Uint8Array(n);
+  for(let i=0,j=0;i<n;i++,j+=4){ cur[i] = (px[j]*0.3 + px[j+1]*0.59 + px[j+2]*0.11)|0; }
+  if(_camPrev){
+    let cnt=0;
+    for(let i=0;i<n;i++){ if(Math.abs(cur[i]-_camPrev[i]) > CAM.thresh) cnt++; }
+    const inst = Math.min(1, (cnt/n) * CAM.gain);   // fraction of frame that moved
+    _camEnergy = Math.max(inst, _camEnergy * CAM.decayPerTick);  // jump up, fade slow
+  }
+  _camPrev = cur;
+}
+
+_camBtn.addEventListener('click', () => { if(_camStream) _camStop(); else _camStart(); });
+// Release the camera when the tab is hidden or the page unloads.
+document.addEventListener('visibilitychange', () => { if(document.hidden && _camStream) _camStop(); });
+window.addEventListener('beforeunload', () => { if(_camStream) _camStop(); });
+
+// ── Vision snapshot ──────────────────────────────────────────────────
+// Capture a still and attach it (reuses the upload → file_ids flow) so you can
+// ask SUNI about what the camera sees. Needs a configured VLM — or Claude Code,
+// which can read the saved image file — to actually interpret it. If presence
+// sensing isn't already running, the camera is acquired just for the shot.
+const _snapBtn = document.getElementById('snap-btn');
+async function _snapshot(){
+  if(_snapBtn.classList.contains('busy')) return;
+  _snapBtn.classList.add('busy');
+  let temp = null;
+  try {
+    if(!_camVideo.videoWidth){
+      if(!navigator.mediaDevices?.getUserMedia){ showSub('CAMERA UNSUPPORTED'); return; }
+      try { temp = await navigator.mediaDevices.getUserMedia({ video:{ width:{ideal:1280}, height:{ideal:720} }, audio:false }); }
+      catch(e){ console.warn('camera:', e); showSub('CAMERA UNAVAILABLE'); return; }
+      _camVideo.srcObject = temp; try { await _camVideo.play(); } catch {}
+      await new Promise(r => setTimeout(r, 350));   // let exposure settle
+    }
+    const w = _camVideo.videoWidth||640, h = _camVideo.videoHeight||480;
+    const cnv = document.createElement('canvas'); cnv.width = w; cnv.height = h;
+    cnv.getContext('2d').drawImage(_camVideo, 0, 0, w, h);
+    const blob = await new Promise(res => cnv.toBlob(res, 'image/jpeg', 0.85));
+    if(!blob){ showSub('SNAPSHOT FAILED'); return; }
+    const file = new File([blob], `snapshot-${Date.now()}.jpg`, { type:'image/jpeg' });
+    await _uploadFile(file);
+    showSub('Snapshot attached — ask me about it.');
+    inputEl.focus();
+  } finally {
+    if(temp){ temp.getTracks().forEach(t=>t.stop()); _camVideo.srcObject = _camStream || null; }
+    _snapBtn.classList.remove('busy');
+  }
+}
+_snapBtn?.addEventListener('click', _snapshot);
+
+// ═══════════════════════════════════════════════════════════════════
+//  TTS
+// ═══════════════════════════════════════════════════════════════════
+const audioEl = document.getElementById('tts-audio');
+const ttsBtn  = document.getElementById('tts-btn');
+let ttsOn = true;
+ttsBtn.classList.add('on');
+ttsBtn.addEventListener('click', () => {
+  ttsOn = !ttsOn;
+  ttsBtn.classList.toggle('on', ttsOn);
+});
+
+let audioCtx = null, analyser = null;
+function setupAudio(el) {
+  if (audioCtx) return;
+  try {
+    audioCtx  = new (window.AudioContext || window.webkitAudioContext)();
+    analyser  = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    const src = audioCtx.createMediaElementSource(el);
+    src.connect(analyser);
+    analyser.connect(audioCtx.destination);
+  } catch(e) {}
+}
+
+// Fetch synthesized audio for one clip → object URL (or null on failure).
+async function _fetchTts(text) {
+  try {
+    const res = await _apiFetch('/api/tts', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({text, voice: window._suniTtsVoice || ''})
+    });
+    if (!res.ok) throw new Error('tts fail');
+    return URL.createObjectURL(await res.blob());
+  } catch(e) { console.warn('TTS:', e); return null; }
+}
+
+// Play one pre-fetched clip; the caption is bound here (not at fetch) so it
+// tracks the audio that's actually sounding.
+async function _playUrl(url, text) {
+  try {
+    setupAudio(audioEl);
+    if (audioCtx?.state === 'suspended') await audioCtx.resume();
+    audioEl.src = url;
+    setState('speaking'); showSub(text);
+    await audioEl.play();
+    // Resolve on natural end/error OR on interrupt: send() calls _ttsResolve()
+    // after pausing, since pause() fires no event this await would otherwise see
+    // — without it a re-send mid-speech would park here forever and wedge TTS.
+    await new Promise(r => { _ttsResolve = r; audioEl.onended = r; audioEl.onerror = r; });
+  } catch(e) { console.warn('TTS:', e); }
+  finally { _ttsResolve = null; if (audioEl.src.startsWith('blob:')) URL.revokeObjectURL(audioEl.src); }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  SUBTITLE
+// ═══════════════════════════════════════════════════════════════════
+const subEl = document.getElementById('subtitle');
+let subTimer;
+function showSub(text) {
+  const clean = text
+    .replace(/\*{1,2}([^*]+)\*{1,2}/g,'$1')
+    .replace(/`([^`]+)`/g,'$1')
+    .replace(/#{1,6}\s+/g,'')
+    .replace(/\n+/g,' ').trim().slice(0, 260);
+  subEl.textContent = ''; subEl.classList.add('show');
+  let i = 0; clearInterval(subTimer);
+  subTimer = setInterval(() => {
+    subEl.textContent = clean.slice(0, ++i);
+    if (i >= clean.length) clearInterval(subTimer);
+  }, 15);
+}
+function hideSub() { clearInterval(subTimer); subEl.classList.remove('show'); }
+
+// ═══════════════════════════════════════════════════════════════════
+//  MARKDOWN (minimal)
+// ═══════════════════════════════════════════════════════════════════
+function md(raw) {
+  const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return esc(raw)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .split(/\n{2,}/)
+    .map(p => `<p>${p.replace(/\n/g,'<br>')}</p>`)
+    .join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  CHAT
+// ═══════════════════════════════════════════════════════════════════
+const msgsEl  = document.getElementById('messages');
+const inputEl = document.getElementById('user-input');
+const sendBtn = document.getElementById('send-btn');
+
+function addMsg(role, text = '', streaming = false) {
+  const wrap = document.createElement('div');
+  wrap.className = `msg ${role}`;
+
+  const lbl = document.createElement('div');
+  lbl.className   = 'msg-role';
+  lbl.textContent = role === 'user' ? 'YOU' : 'SUNI';
+
+  const body = document.createElement('div');
+  body.className = 'msg-body';
+
+  if (streaming) {
+    const cur = document.createElement('span');
+    cur.className = 'cursor';
+    body.appendChild(cur);
+    wrap._cur = cur; wrap._raw = '';
+  } else {
+    body.innerHTML = md(text);
+  }
+  wrap._body = body;
+  wrap.appendChild(lbl); wrap.appendChild(body);
+  msgsEl.appendChild(wrap);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+  return wrap;
+}
+
+function appendTok(wrap, tok) {
+  wrap._raw += tok;
+  wrap._body.innerHTML = md(wrap._raw);
+  if (wrap._cur) wrap._body.appendChild(wrap._cur);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+}
+
+function finalMsg(wrap, full) {
+  wrap._body.innerHTML = md(full);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+}
+
+// ── Streaming TTS queue — speak sentence-by-sentence as they arrive ──
+const _ttsQueue = [];
+let _ttsBusy = false, _ttsGen = 0, _ttsFirst = true, _ttsResolve = null, _waitDrainTimer = null;
+
+async function _drainTts() {
+  if (_ttsBusy) return;
+  _ttsBusy = true;
+  const myGen = _ttsGen;
+  // Pipeline: fetch the next clip while the current one plays so network latency
+  // overlaps playback. A new send() bumps _ttsGen; this loop then bails so it
+  // never fights a fresh one over the single <audio> element.
+  let curText = null, curFetch = null;
+  if (_ttsQueue.length) { curText = _ttsQueue.shift(); curFetch = _fetchTts(curText); }
+  while (curFetch && _ttsGen === myGen) {
+    const url = await curFetch, text = curText;
+    if (_ttsGen === myGen && _ttsQueue.length) { curText = _ttsQueue.shift(); curFetch = _fetchTts(curText); }
+    else { curText = null; curFetch = null; }
+    if (url && _ttsGen === myGen) await _playUrl(url, text);
+    else if (url) URL.revokeObjectURL(url);
+  }
+  _ttsBusy = false;
+  // The queue can empty transiently mid-reply (we drain faster than the model
+  // generates) — do NOT go idle here or the state/caption would flicker. The
+  // send() done-handler's waitDrain owns the final idle once streaming ends.
+  if (_ttsQueue.length) _drainTts();   // items enqueued as we wound down
+}
+
+function _enqueueSentence(s) {
+  if (s.trim().length < 4) return;
+  _ttsQueue.push(s);
+  _drainTts();
+}
+
+function _flushTtsBuffer(buf) {
+  // Emit complete sentences as they close.
+  const re = /[^.!?]*[.!?]+(?:\s+|$)/g; let last = 0, m;
+  while ((m = re.exec(buf)) !== null) { _ttsFirst = false; _enqueueSentence(m[0]); last = m.index + m[0].length; }
+  let rest = buf.slice(last);
+  // First fragment of the reply: get something speakable out fast rather than
+  // waiting for a full stop — this is what the listener perceives as latency.
+  if (_ttsFirst) {
+    const clause = rest.search(/[,;:]\s/);
+    if (clause >= 12) { _ttsFirst = false; _enqueueSentence(rest.slice(0, clause + 1)); return rest.slice(clause + 2); }
+    if (rest.length >= 50) {
+      const sp = rest.lastIndexOf(' ');
+      if (sp >= 24) { _ttsFirst = false; _enqueueSentence(rest.slice(0, sp)); return rest.slice(sp + 1); }
+    }
+    return rest;
+  }
+  // Later sentences: if one runs very long without a stop, break at last clause.
+  if (rest.length >= 90) {
+    const idx = Math.max(rest.lastIndexOf(', '), rest.lastIndexOf('; '), rest.lastIndexOf(': '));
+    if (idx > 20) { _enqueueSentence(rest.slice(0, idx + 1)); return rest.slice(idx + 2); }
+  }
+  return rest;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  FILE UPLOAD  (attach button + drag-and-drop)
+// ═══════════════════════════════════════════════════════════════════
+const _escFile = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+let _attachedFiles = [];   // [{file_id, filename, path}]
+
+async function _uploadFile(file) {
+  const chip = _addFileChip(file.name, null);
+  chip.classList.add('uploading');
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res = await _apiFetch('/api/files/upload', { method: 'POST', body: fd });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || 'Upload failed'); }
+    const d = await res.json();
+    chip.classList.remove('uploading');
+    chip.dataset.fileId = d.file_id;
+    _attachedFiles.push({ file_id: d.file_id, filename: d.filename, path: d.path });
+    return d;
+  } catch (e) {
+    chip.remove();
+    showSub('UPLOAD FAILED: ' + e.message);
+    return null;
+  }
+}
+
+function _addFileChip(name, fileId) {
+  const chip = document.createElement('div');
+  chip.className = 'file-chip';
+  chip.dataset.fileId = fileId || '';
+  chip.innerHTML = `<span class="file-chip-name" title="${_escFile(name)}">${_escFile(name)}</span>`
+    + `<button class="file-chip-remove" title="Remove">×</button>`;
+  chip.querySelector('.file-chip-remove').addEventListener('click', () => {
+    if (chip.dataset.fileId) _attachedFiles = _attachedFiles.filter(f => f.file_id !== chip.dataset.fileId);
+    chip.remove();
+  });
+  document.getElementById('file-chips').appendChild(chip);
+  return chip;
+}
+
+function _clearFileChips() {
+  document.getElementById('file-chips').innerHTML = '';
+  _attachedFiles = [];
+}
+
+document.getElementById('file-input').addEventListener('change', async e => {
+  for (const f of Array.from(e.target.files)) await _uploadFile(f);
+  e.target.value = '';
+});
+
+// Drag-and-drop anywhere over the visualization
+const _dropOverlay = document.getElementById('drop-overlay');
+window.addEventListener('dragenter', e => {
+  if (!e.dataTransfer || !e.dataTransfer.types.includes('Files')) return;
+  e.preventDefault();
+  _dropOverlay.classList.add('active');
+});
+window.addEventListener('dragleave', e => {
+  if (e.relatedTarget) return;               // ignore inner-element transitions
+  _dropOverlay.classList.remove('active');
+});
+window.addEventListener('dragover', e => {
+  if (e.dataTransfer && e.dataTransfer.types.includes('Files')) e.preventDefault();
+});
+window.addEventListener('drop', async e => {
+  _dropOverlay.classList.remove('active');
+  if (!e.dataTransfer || !e.dataTransfer.files.length) return;
+  e.preventDefault();
+  for (const f of Array.from(e.dataTransfer.files)) await _uploadFile(f);
+  inputEl.focus();
+});
+
+async function send() {
+  const text = inputEl.value.trim();
+  const fileIds = _attachedFiles.map(f => f.file_id);
+  if ((!text && !fileIds.length) || sendBtn.disabled) return;
+  const displayText = text || `[${_attachedFiles.map(f => f.filename).join(', ')}]`;
+  _clearFileChips();
+  inputEl.value = ''; sendBtn.disabled = true; inputEl.disabled = true;
+
+  addMsg('user', displayText);
+  setState('thinking');
+  const suniWrap = addMsg('suni', '', true);
+  let full = '', sentenceBuf = '';
+  // Retire any still-draining TTS from a previous reply: bump the generation so
+  // the old loop bails, clear the queue, reset first-fragment, stop audio. Do
+  // NOT flip _ttsBusy here — a fresh drain must not start while the old loop is
+  // mid-play, or both would fight the single <audio> element.
+  _ttsGen++; _ttsQueue.length = 0; _ttsFirst = true;
+  try { audioEl.pause(); } catch {}
+  if (_ttsResolve) { _ttsResolve(); _ttsResolve = null; }  // unblock any parked play so the old drain bails
+  clearInterval(_waitDrainTimer);   // stop a previous reply's idle-poll so it can't fire during this one
+
+  try {
+    const res = await _apiFetch('/api/chat', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json', 'x-session-id': _sessionId},
+      body: JSON.stringify({message: text || displayText, session_id: _sessionId, mode: _sessionMode, file_ids: fileIds})
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const reader = res.body.getReader(), dec = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, {stream: true});
+      const lines = buf.split('\n'); buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        let ev; try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+        if (ev.type === 'token') {
+          appendTok(suniWrap, ev.text);
+          if (ttsOn) {
+            sentenceBuf += ev.text;
+            sentenceBuf = _flushTtsBuffer(sentenceBuf);
+          }
+        } else if (ev.type === 'done') {
+          full = ev.text; finalMsg(suniWrap, full);
+          if (ttsOn) {
+            // flush any remaining partial sentence
+            if (sentenceBuf.trim().length > 4) _enqueueSentence(sentenceBuf);
+            sentenceBuf = '';
+            // wait for queue to drain before resetting state (module-level handle
+            // so a re-send can cancel this poll — see clearInterval in send())
+            clearInterval(_waitDrainTimer);
+            _waitDrainTimer = setInterval(() => {
+              if (_ttsQueue.length === 0 && !_ttsBusy) {
+                clearInterval(_waitDrainTimer); setState('idle');
+              }
+            }, 200);
+          } else {
+            setState('idle');
+          }
+        } else if (ev.type === 'error') {
+          finalMsg(suniWrap, `— ${ev.text}`); setState('idle');
+        } else if (ev.type === 'tool_start') {
+          const isBrowser = ev.name && ev.name.startsWith('playwright');
+          setState(isBrowser ? 'browsing' : 'working', ev.name);
+        } else if (ev.type === 'tool_end') {
+          setState('thinking');  // back to thinking between tools
+        } else if (ev.type === 'skill_used') {
+          showSub('SKILL: ' + (ev.name || ''));
+          setTimeout(() => { if (state==='thinking') hideSub(); }, 2500);
+        }
+      }
+    }
+  } catch(e) {
+    finalMsg(suniWrap, `Connection error: ${e.message}`);
+    setState('idle');
+  } finally {
+    sendBtn.disabled = false; inputEl.disabled = false; inputEl.focus();
+  }
+}
+
+sendBtn.addEventListener('click', send);
+inputEl.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  SPEECH TO TEXT
+// ═══════════════════════════════════════════════════════════════════
+const micBtn = document.getElementById('mic-btn');
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+if (SR) {
+  const recognition = new SR();
+  recognition.continuous     = true;
+  recognition.interimResults = true;
+  recognition.lang           = 'en-GB'; // overridden by config below
+
+  let listening     = false;
+  let silenceTimer  = null;
+  let accTranscript = '';
+  let SILENCE_MS    = 2500;
+
+  // Read language: user settings override global config
+  Promise.all([
+    _apiFetch('/api/users/me/settings').then(r => r.json()).catch(() => ({})),
+    _apiFetch('/api/config').then(r => r.json()).catch(() => ({})),
+  ]).then(([prefs, cfg]) => {
+    const sttLang = prefs.stt_language || cfg.stt_language;
+    if (sttLang) recognition.lang = sttLang;
+    if (cfg.silence_ms) SILENCE_MS = cfg.silence_ms;
+    // Store effective tts voice for per-request use
+    window._suniTtsVoice = prefs.tts_voice || cfg.tts_voice || '';
+  }).catch(() => {});
+
+  function _stopAndSend() {
+    clearTimeout(silenceTimer);
+    if (!listening) return;
+    listening = false;
+    recognition.stop();
+    micBtn.classList.remove('listening');
+    inputEl.placeholder = 'Speak your mind. I shall observe.';
+    if (inputEl.value.trim()) send();
+  }
+
+  recognition.onstart = () => {
+    listening = true;
+    micBtn.classList.add('listening');
+    if (!accTranscript) {
+      inputEl.value = '';
+      inputEl.placeholder = 'Listening…';
+    }
+  };
+
+  recognition.onresult = e => {
+    let text = '';
+    for (let i = 0; i < e.results.length; i++) text += e.results[i][0].transcript;
+    inputEl.value = accTranscript ? (accTranscript + ' ' + text).trim() : text;
+    // reset inactivity timer on every speech fragment
+    clearTimeout(silenceTimer);
+    silenceTimer = setTimeout(_stopAndSend, SILENCE_MS);
+  };
+
+  recognition.onend = () => {
+    clearTimeout(silenceTimer);
+    if (listening) {
+      // browser closed the session on its own (long silence / network blip)
+      // save what we have and restart transparently
+      accTranscript = inputEl.value.trim();
+      try { recognition.start(); } catch(err) { _stopAndSend(); }
+    }
+  };
+
+  recognition.onerror = e => {
+    clearTimeout(silenceTimer);
+    listening = false;
+    micBtn.classList.remove('listening');
+    inputEl.placeholder = 'Speak your mind. I shall observe.';
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      micBtn.disabled = true;
+      micBtn.title = t('orb.mic_blocked');
+      _showToast(t('orb.mic_blocked'));
+    } else if (e.error !== 'no-speech') {
+      console.warn('STT:', e.error);
+    }
+  };
+
+  micBtn.addEventListener('click', () => {
+    if (listening) { _stopAndSend(); return; }
+    accTranscript = '';
+    inputEl.value = '';
+    try { recognition.start(); } catch(err) { console.warn('STT start:', err); }
+  });
+
+  // Warn proactively if on HTTP (VPN/IP access) — mic will be blocked by browser
+  if (location.protocol !== 'https:' &&
+      location.hostname !== 'localhost' &&
+      location.hostname !== '127.0.0.1') {
+    micBtn.title = t('orb.mic_https');
+    micBtn.style.opacity = '0.45';
+  }
+} else {
+  micBtn.disabled = true;
+  micBtn.title = t('orb.speech_unavail');
+}
+
+function _showToast(msg) {
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;bottom:100px;left:50%;transform:translateX(-50%);' +
+    'background:rgba(220,60,40,.92);color:#fff;padding:9px 16px;border-radius:4px;' +
+    'font-family:DM Mono,monospace;font-size:12px;z-index:200;white-space:nowrap;' +
+    'pointer-events:none;transition:opacity .4s';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 500); }, 3500);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  STATUS + WELCOME
+// ═══════════════════════════════════════════════════════════════════
+(async () => {
+  try {
+    const d = await (await _apiFetch('/api/status')).json();
+    document.getElementById('header-meta').innerHTML = [
+      `<span class="mtag">${d.model}</span>`,
+      `<span class="mtag">${d.memory} mem</span>`,
+      d.claude_code ? `<span class="mtag">CC ✓</span>` : '',
+    ].join('');
+  } catch {}
+})();
+
+setTimeout(() => {
+  addMsg('suni',
+    'Make yourself comfortable. I have been expecting you — statistically speaking.'
+  );
+}, 500);
+
+// ── Settings modal (orb) ──────────────────────────────────────────
+let _orbUserSettings = {};
+const _orbModal = document.getElementById('orb-modal');
+
+async function _openOrbSettings() {
+  // Load voices if not yet populated
+  const voiceSel = document.getElementById('orb-tts-voice');
+  if (voiceSel.options.length === 1) {
+    const data = await _apiFetch('/api/tts/voices').then(r=>r.json()).catch(()=>({voices:[]}));
+    for (const v of data.voices||[]) {
+      const opt = document.createElement('option'); opt.value = v; opt.textContent = v;
+      voiceSel.appendChild(opt);
+    }
+  }
+  const prefs = await _apiFetch('/api/users/me/settings').then(r=>r.json()).catch(()=>({}));
+  _orbUserSettings = prefs;
+  document.getElementById('orb-resp-lang').value  = prefs.response_language || '';
+  document.getElementById('orb-stt-lang').value   = prefs.stt_language      || '';
+  document.getElementById('orb-tts-voice').value  = prefs.tts_voice         || '';
+  _orbModal.style.display = 'flex';
+}
+
+function _closeOrbModal() { _orbModal.style.display = 'none'; }
+
+document.getElementById('orb-settings-btn').addEventListener('click', _openOrbSettings);
+document.getElementById('orb-modal-close').addEventListener('click', _closeOrbModal);
+document.getElementById('orb-modal-cancel').addEventListener('click', _closeOrbModal);
+_orbModal.addEventListener('click', e => { if (e.target === _orbModal) _closeOrbModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') _closeOrbModal(); });
+
+async function _orbLogout() {
+  try { await _apiFetch('/api/auth/logout', { method: 'POST' }); } catch {}
+  localStorage.removeItem('suni_jwt');
+  localStorage.removeItem('suni_refresh_token');
+  location.href = '/login';
+}
+document.getElementById('orb-modal-logout').addEventListener('click', _orbLogout);
+
+document.getElementById('orb-modal-save').addEventListener('click', async () => {
+  const data = {
+    response_language: document.getElementById('orb-resp-lang').value,
+    stt_language:      document.getElementById('orb-stt-lang').value,
+    tts_voice:         document.getElementById('orb-tts-voice').value,
+  };
+  const result = await _apiFetch('/api/users/me/settings', {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(data),
+  }).then(r=>r.json()).catch(()=>null);
+  if (result) {
+    _orbUserSettings = result;
+    window._suniTtsVoice = result.tts_voice || '';
+    // Apply new STT language immediately
+    if (typeof recognition !== 'undefined') {
+      const cfg = await _apiFetch('/api/config').then(r=>r.json()).catch(()=>({}));
+      recognition.lang = result.stt_language || cfg.stt_language || 'en-GB';
+    }
+    _closeOrbModal();
+    _showToast(t('orb.settings_saved'));
+  } else {
+    _showToast(t('orb.settings_error'));
+  }
+});
+</script>
+</body>
+</html>

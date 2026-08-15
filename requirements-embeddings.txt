@@ -1,0 +1,15 @@
+# ── Optional: document knowledge-base embeddings (Tier-3 doc KB) ─────────────
+# Needed ONLY if you enable the document knowledge base (doc_kb_enabled) and
+# index documents. It pulls PyTorch, which is large (~2.5 GB with CUDA) and
+# hardware-specific. SUNI runs fine without this — the doc-KB semantic search is
+# simply disabled and everything else (chat, memory, channels, voice) works.
+#
+# Install torch FIRST, choosing the build that matches your hardware:
+#   • NVIDIA GPU (recommended):
+#       pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cu124
+#   • CPU only:
+#       pip install torch==2.6.0
+# Then install this file:
+#       pip install -r requirements-embeddings.txt
+
+sentence-transformers==5.4.1
