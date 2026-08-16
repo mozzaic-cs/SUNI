@@ -9,14 +9,19 @@
 # ── Instance state — never commit ────────────────────────────────────────────
 # Everything SUNI generates at runtime: databases, memory stores, the document
 # index, uploads, and the secrets it creates for itself on first run.
-memory/
-logs/
-backups/
-files/
+#
+# LEADING SLASH MATTERS. A bare "memory/" matches at ANY depth, so it also
+# ignores the suni/memory/ PACKAGE — which is how the first release shipped
+# without its memory manager, store and consolidator. Anchor every state
+# directory to the repository root.
+/memory/
+/logs/
+/backups/
+/files/
 
 # ── Credentials ──────────────────────────────────────────────────────────────
 .env
-certs/
+/certs/
 
 # ── Python ───────────────────────────────────────────────────────────────────
 __pycache__/
