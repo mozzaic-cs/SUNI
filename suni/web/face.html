@@ -687,6 +687,29 @@ void main(){
 
 let gl,prog,aPos,aJaw,uMVP,uJaw,uHY,uHZ,uCol,uBri,uPt,uRound;
 let bPos,bJaw,bIdx,bEye,glReady=false;
+let glLost=false;
+
+/* WebGL context loss.
+   On a machine where the GPU is shared with the model backend, loading a 7B
+   model can cost the browser its WebGL context. Nothing handled that: every
+   buffer, texture and program silently became invalid while the render loop
+   kept drawing, leaving a partial head — typically wireframe only, because
+   that is the last geometry still bound.
+   preventDefault() on the lost event is what makes a restore possible at all;
+   without it the browser never fires webglcontextrestored. Re-initialising
+   piecemeal is not realistic here (the mesh, background and eye programs are
+   built by separate one-shot loaders), so a restore reloads the page — which
+   is correct by construction rather than nearly correct. */
+canvas.addEventListener('webglcontextlost', (e) => {
+  e.preventDefault();
+  glLost = true; glReady = false; solidReady = false;
+  console.warn('WebGL context lost — pausing render until it is restored');
+}, false);
+canvas.addEventListener('webglcontextrestored', () => {
+  console.warn('WebGL context restored — reloading to rebuild GPU resources');
+  location.reload();
+}, false);
+
 try{
   gl=canvas.getContext('webgl')||canvas.getContext('experimental-webgl');
   if(gl){
@@ -1330,6 +1353,9 @@ document.getElementById('messages')
 // ── Animation loop ───────────────────────────────────────────────────
 let lastTs = 0, T = 0;
 function frame(ts) {
+  // While the context is lost every GL object is invalid; keep the loop alive
+  // so the page recovers on restore, but draw nothing with dead buffers.
+  if (glLost) { lastTs = ts; requestAnimationFrame(frame); return; }
   const dt = Math.min((ts - lastTs) / 1000, 0.05);
   lastTs = ts; T += dt;
 

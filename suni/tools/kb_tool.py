@@ -48,9 +48,15 @@ async def search(query: str, top_k: int = 8) -> str:
         return "Knowledge Base is not available (document store not initialised)."
     top_k = min(max(1, int(top_k)), 20)
     try:
-        from ..memory.manager import _get_model
+        # _get_model_384, not _get_model: the function was renamed when the
+        # embedding backend became configurable and this caller was missed, so
+        # every search_knowledge_base call failed with an ImportError the model
+        # reported as "an issue with the Knowledge Base search function".
+        # The doc store is a 384-dim FAISS index, so the query must be embedded
+        # with the same 384-dim model — not the 768-dim episodic embedder.
+        from ..memory.manager import _get_model_384
         loop = asyncio.get_event_loop()
-        vec = await loop.run_in_executor(None, lambda: _get_model().encode(query).tolist())
+        vec = await loop.run_in_executor(None, lambda: _get_model_384().encode(query).tolist())
         results = _doc_store.search(vec, top_k=top_k, threshold=0.15)
         if not results:
             return f"No documents found in the Knowledge Base for: {query!r}"
