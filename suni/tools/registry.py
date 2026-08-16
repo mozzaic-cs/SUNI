@@ -103,6 +103,21 @@ class ToolRegistry:
         if prefix not in self._mcp_prefixes:
             self._mcp_prefixes.append(prefix)
 
+    def is_mcp_tool(self, name: str) -> bool:
+        """True if this tool came from an MCP server rather than SUNI itself.
+
+        Needed by the approval gate: MCP tools are named "{server}_{tool}" and
+        so can never match its static list of consequential SUNI tools, which
+        meant every one of them — including shell execution and payments —
+        skipped approval entirely.
+        """
+        return any(name.startswith(p + "_") for p in (self._mcp_prefixes or []))
+
+    def mcp_prefix_of(self, name: str) -> str | None:
+        """The server a tool came from, or None if it is a native SUNI tool."""
+        return next((p for p in (self._mcp_prefixes or [])
+                     if name.startswith(p + "_")), None)
+
     def get_claude_tools(self) -> list[dict]:
         """Format for Anthropic's tool calling API."""
         return [

@@ -114,8 +114,72 @@ _trust_rules: dict[str, dict[str, list[str]]] = {}
 
 # ── Public API ───────────────────────────────────────────────────────────────
 
-def is_consequential(tool_name: str) -> bool:
-    return tool_name in _CONSEQUENTIAL
+# ── MCP tools ────────────────────────────────────────────────────────────────
+# MCP tools are registered as "{server}_{tool}", so they can never appear in
+# _CONSEQUENTIAL above and is_consequential() returned False for every one of
+# them. An MCP server that runs shell commands, deletes files or moves money
+# therefore bypassed the approval gate completely — constrained only by the
+# RBAC prefix list, which for an admin is "all".
+#
+# There is no schema field that says "this tool mutates something", so classify
+# by the action words in the name, and DEFAULT TO CONSEQUENTIAL when the action
+# is unrecognised. A false prompt costs one click and can be dismissed
+# permanently with "always allow this"; a false pass runs the command.
+_MCP_WRITE_VERBS = frozenset("""
+    execute run exec spawn shell command
+    write create delete remove update edit modify move rename copy
+    send post put patch push merge commit deploy publish
+    install uninstall kill terminate stop start restart reset
+    upload insert drop truncate alter grant revoke
+    pay charge refund transfer purchase order subscribe cancel
+    click fill submit type press select drag upload
+    add set apply invite assign close reopen
+""".split())
+
+_MCP_READ_VERBS = frozenset("""
+    get list search read fetch query describe show find view inspect
+    status count browse resolve lookup check snapshot screenshot
+    navigate scroll hover wait docs help ping stat summary history
+    log diff blame tree schema info detail metadata
+""".split())
+
+
+def mcp_is_consequential(tool_name: str, prefix: str | None = None) -> bool:
+    """Whether an MCP tool should require approval, judged from its name.
+
+    Any write-ish word wins outright: "create_or_update_file" is consequential
+    even though "get" would otherwise appear in a sibling tool. A tool with no
+    recognisable action is treated as consequential — unknown capability is not
+    a reason to skip the gate.
+    """
+    name = tool_name
+    if prefix and name.startswith(prefix + "_"):
+        name = name[len(prefix) + 1:]
+    tokens = {t for t in name.lower().replace("-", "_").split("_") if t}
+    if tokens & _MCP_WRITE_VERBS:
+        return True
+    if tokens & _MCP_READ_VERBS:
+        return False
+    return True
+
+
+def is_consequential(tool_name: str, registry=None) -> bool:
+    """True when a tool call must be approved before it runs.
+
+    registry: pass the live ToolRegistry so MCP tools can be classified. It is
+    optional only so existing callers and tests keep working — without it, MCP
+    tools fall back to the static list and are treated as safe, which is the
+    bug this parameter exists to fix.
+    """
+    if tool_name in _CONSEQUENTIAL:
+        return True
+    if registry is not None:
+        try:
+            if registry.is_mcp_tool(tool_name):
+                return mcp_is_consequential(tool_name, registry.mcp_prefix_of(tool_name))
+        except AttributeError:
+            pass          # older registry without MCP awareness
+    return False
 
 
 def is_safe(tool_name: str) -> bool:

@@ -991,7 +991,10 @@ class Orchestrator:
                 # only by a per-user trust rule, NOT by a broad policy-allow.
                 _allow_bypass = _trusted or _pol_action == "allow"
                 _need_gate = (
-                    ((_approval.is_consequential(tc.name) or _pol_action == "ask") and not _allow_bypass)
+                    # registry= lets MCP tools be classified; without it they are
+                    # all treated as safe, which let an MCP shell bypass the gate.
+                    ((_approval.is_consequential(tc.name, registry=self.registry)
+                      or _pol_action == "ask") and not _allow_bypass)
                     or (_verdict == "gate" and not _trusted)
                 )
                 if _need_gate:

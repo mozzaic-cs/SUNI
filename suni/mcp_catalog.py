@@ -36,7 +36,7 @@ CATALOG: list[dict] = [
         "env":              {},
         "requires_api_key": False,
         "official":         True,
-        "notes":            "Replace path with the root directory to expose. Multiple paths can be added as extra args.",
+        "notes":            "Replace path with the root directory to expose. Multiple paths can be added as extra args. OVERLAPS SUNI's built-in read_file/write_file/list_files, which are scoped and RBAC-gated. Useful when you need directories outside SUNI's own scope — set those directories explicitly in args.",
     },
     {
         "id":               "fetch",
@@ -48,7 +48,7 @@ CATALOG: list[dict] = [
         "env":              {},
         "requires_api_key": False,
         "official":         True,
-        "notes":            "",
+        "notes":            "OVERLAPS SUNI's built-in web_fetch/web_search. Worth adding only if you want its HTML-to-Markdown conversion specifically; otherwise it gives the model two ways to do one thing.",
     },
     {
         "id":               "memory",
@@ -60,7 +60,7 @@ CATALOG: list[dict] = [
         "env":              {},
         "requires_api_key": False,
         "official":         True,
-        "notes":            "Complements SUNI's built-in vector memory. Useful for structured fact storage.",
+        "notes":            "Complements SUNI's built-in vector memory. Useful for structured fact storage. OVERLAPS SUNI's own long-term memory, which is already persistent and per-user. Adding this gives the model a second, separate memory that SUNI's consolidation and privacy scoping do not manage.",
     },
     {
         "id":               "time",
@@ -132,7 +132,7 @@ CATALOG: list[dict] = [
         "env":              {},
         "requires_api_key": False,
         "official":         True,
-        "notes":            "Requires uvx. Replace db-path with your .db file. Package may be in archived repo.",
+        "notes":            "Requires uvx. Replace db-path with your .db file. Package may be in archived repo. OVERLAPS the DBHub entry, which covers SQLite plus PostgreSQL/MySQL/MariaDB/SQL Server. Prefer DBHub unless you specifically want the single-engine server.",
     },
     {
         "id":               "postgres",
@@ -277,6 +277,61 @@ CATALOG: list[dict] = [
         "requires_api_key": True,
         "official":         True,
         "notes":            "Use a restricted/test key. Docs at docs.stripe.com/mcp.",
+    },
+    # ── Added 2026-08-16, chosen to fit SUNI rather than to lengthen the list:
+    # each either runs on your own hardware or needs no third-party account,
+    # and none shadows a tool SUNI already has natively.
+    {
+        "id":               "searxng",
+        "name":             "SearXNG Search",
+        "category":         "Search",
+        "description":      "Web search through your own SearXNG instance — metasearch across engines with no tracking, no account and no query leaving your network.",
+        "command":          "npx",
+        "args":             ["-y", "mcp-searxng"],
+        "env":              {"SEARXNG_URL": "http://localhost:8080"},
+        "requires_api_key": False,
+        "official":         False,
+        "notes":            "The only search option here that keeps queries on your own infrastructure — the others (Brave, Exa, Firecrawl) send them to a vendor. Needs a SearXNG instance: docker run -d -p 8080:8080 searxng/searxng. Point SEARXNG_URL at it.",
+    },
+    {
+        "id":               "markitdown",
+        "name":             "MarkItDown",
+        "category":         "Files",
+        "description":      "Convert PDF, Word, Excel, PowerPoint, images and audio into clean Markdown the model can actually read. Runs locally.",
+        "command":          "uvx",
+        "args":             ["markitdown-mcp"],
+        "env":              {},
+        "requires_api_key": False,
+        "official":         True,
+        "notes":            "Microsoft. SUNI writes PDFs and indexes documents into its knowledge base, but has no general converter — this fills that gap for one-off files. No network calls.",
+    },
+    {
+        "id":               "dbhub",
+        "name":             "DBHub",
+        "category":         "Database",
+        "description":      "One database server for PostgreSQL, MySQL, MariaDB, SQL Server and SQLite — schema inspection and queries across all of them.",
+        "command":          "npx",
+        "args":             ["-y", "@bytebase/dbhub", "--transport", "stdio",
+                             "--dsn", "<your database DSN>"],
+        "env":              {},
+        "requires_api_key": False,
+        "official":         False,
+        "notes":            "Credentials are your own database's, in the DSN — nothing is sent to a third party. Covers the engines the separate sqlite/postgres entries do not (MySQL, MariaDB, SQL Server). Start with a read-only account: writes go through the approval gate, but least privilege is cheaper than trusting it.",
+    },
+    {
+        "id":               "netdata",
+        "name":             "Netdata",
+        "category":         "Utility",
+        "description":      "Real-time infrastructure monitoring — per-second metrics, logs, alerts and ML anomaly detection across your machines.",
+        # Not an npm/PyPI package: the bridge binary ships WITH the Netdata
+        # agent and speaks WebSocket to it. Verified — there is no @netdata/mcp
+        # on npm (404), which is what this entry originally claimed.
+        "command":          "/usr/sbin/nd-mcp",
+        "args":             ["ws://localhost:19999/mcp"],
+        "env":              {"ND_MCP_BEARER_TOKEN": "<contents of the mcp api key file>"},
+        "requires_api_key": True,
+        "official":         True,
+        "notes":            "Requires a local Netdata agent (Linux/macOS); the nd-mcp bridge is installed with it — adjust the path if yours differs (e.g. /opt/netdata/usr/sbin/nd-mcp). The bearer token is generated locally at /var/lib/netdata/mcp_dev_preview_api_key, so nothing leaves your network despite the API-key flag. Complements SUNI's own monitor tool, which does up-down checks rather than metrics and anomaly detection.",
     },
 ]
 
