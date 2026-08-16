@@ -32,7 +32,11 @@ DEFAULTS: dict[str, Any] = {
     "claude_code_persona":    "",      # Claude Code tier persona override; "" = generic default
     "system_prompt_addendum": "",
     "stt_language":           "en-GB",
-    "response_language":      "",      # "" = follow stt_language; or explicit e.g. "pt-PT"
+    # English is the default for everything — speech in, speech out, and text.
+    # Explicit rather than "" (which meant "follow stt_language"), so the reply
+    # language does not silently change with the microphone setting. Set "" to
+    # restore follow-the-input behaviour, or any BCP-47 code (e.g. "pt-PT").
+    "response_language":      "en-GB",
     # Empty = auto: SUNI_OLLAMA_HOST / OLLAMA_HOST from the environment, else
     # http://localhost:11434. A hardcoded default here would win over the
     # environment and make the app unconfigurable wherever Ollama is not on

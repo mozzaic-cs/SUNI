@@ -703,6 +703,7 @@ let glLost=false;
 canvas.addEventListener('webglcontextlost', (e) => {
   e.preventDefault();
   glLost = true; glReady = false; solidReady = false;
+  revealT = 0; revealStart = -1;
   console.warn('WebGL context lost — pausing render until it is restored');
 }, false);
 canvas.addEventListener('webglcontextrestored', () => {
@@ -745,14 +746,24 @@ const EXCLUDE = {'Group16029':1,'Group64944':1};   /* dense eyeball geometry (wi
 /* ── lit shader program for solid mode ── */
 const VS2=`attribute vec3 a_pos; attribute vec3 a_nrm; attribute float a_jaw;
 uniform mat4 u_mvp,u_model; uniform float u_jaw,u_hingeY,u_hingeZ;
-varying vec3 v_n;
+varying vec3 v_n; varying float v_y;
 vec3 jr(vec3 p,float w){ float ja=u_jaw*w; vec3 pv=vec3(0.0,u_hingeY,u_hingeZ); vec3 r=p-pv; float c=cos(ja),s=sin(ja); return pv+vec3(r.x,c*r.y-s*r.z,s*r.y+c*r.z); }
 vec3 jn(vec3 n,float w){ float ja=u_jaw*w; float c=cos(ja),s=sin(ja); return vec3(n.x,c*n.y-s*n.z,s*n.y+c*n.z); }
-void main(){ vec3 p=jr(a_pos,a_jaw); vec3 n=jn(a_nrm,a_jaw); gl_Position=u_mvp*vec4(p,1.0); v_n=mat3(u_model)*n; }`;
+void main(){ vec3 p=jr(a_pos,a_jaw); vec3 n=jn(a_nrm,a_jaw); gl_Position=u_mvp*vec4(p,1.0); v_n=mat3(u_model)*n;
+  /* object-space height, used by the materialise sweep in the fragment stage */
+  v_y=p.y; }`;
 const FS2=`precision mediump float;
 uniform vec3 u_color; uniform float u_bright; uniform float u_time; varying vec3 v_n;
+/* Materialise sweep: 0 = nothing solid yet, 1 = fully solid. The head spans
+   roughly y in [-0.85, 0.85] after normalisation, so the cut line is mapped a
+   little beyond both ends to guarantee a clean start and finish. */
+uniform float u_reveal; varying float v_y;
 float hash(float n){ return fract(sin(n)*43758.5453); }
 void main(){
+  float cut = mix(-1.05, 1.05, u_reveal);
+  /* Above the line the surface has not formed yet — leave the wireframe
+     showing through rather than drawing an unlit shell over it. */
+  if (v_y > cut) discard;
   vec3 N=normalize(v_n);
   float diff=max(0.0,dot(N,normalize(vec3(-0.35,0.45,0.82))));
   float fres=pow(1.0-max(0.0,dot(N,vec3(0.0,0.0,1.0))),2.2);
@@ -763,9 +774,24 @@ void main(){
   col*=0.80+0.20*sl;
   /* subtle per-frame flicker */
   col*=0.95+0.05*hash(floor(u_time*15.0));
+  /* Leading edge of the sweep: a bright band that decays with distance below
+     the cut, plus a little noise so it reads as energy rather than a ruler.
+     Skipped once fully materialised so the finished head is untouched. */
+  if (u_reveal < 1.0) {
+    float d = cut - v_y;
+    float band = 1.0 - smoothstep(0.0, 0.075, d);
+    float jitter = 0.85 + 0.15 * hash(floor(v_y * 220.0) + floor(u_time * 30.0));
+    col += vec3(0.55, 0.92, 1.0) * band * jitter * 2.4;
+  }
   gl_FragColor=vec4(col*u_bright, 1.0);
 }`;
-let progS=null, aSp,aSn,aSj, uSmvp,uSmodel,uSjaw,uShy,uShz,uScol,uSbri,uStime;
+let progS=null, aSp,aSn,aSj, uSmvp,uSmodel,uSjaw,uShy,uShz,uScol,uSbri,uStime,uSreveal;
+/* Materialise transition: the solid mesh finishes loading well after the
+   wireframe is already on screen, and it used to pop in between two frames.
+   revealT drives a sweep that fills the head from the chin up while the
+   wireframe fades out over it. */
+let revealT=0, revealStart=-1;
+const REVEAL_SECS=1.9;
 function ensureSolidProgram(){
   if(progS||!glReady) return;
   const mk=(ty,src)=>{ const s=gl.createShader(ty); gl.shaderSource(s,src); gl.compileShader(s);
@@ -778,7 +804,7 @@ function ensureSolidProgram(){
   uSmvp=gl.getUniformLocation(progS,'u_mvp'); uSmodel=gl.getUniformLocation(progS,'u_model');
   uSjaw=gl.getUniformLocation(progS,'u_jaw'); uShy=gl.getUniformLocation(progS,'u_hingeY'); uShz=gl.getUniformLocation(progS,'u_hingeZ');
   uScol=gl.getUniformLocation(progS,'u_color'); uSbri=gl.getUniformLocation(progS,'u_bright');
-  uStime=gl.getUniformLocation(progS,'u_time');
+  uStime=gl.getUniformLocation(progS,'u_time'); uSreveal=gl.getUniformLocation(progS,'u_reveal');
 }
 
 function parseOBJ(text){
@@ -1133,6 +1159,11 @@ function renderHead(dt){
   gl.uniform1f(uBri, 0.85+act*0.5+(speaking?mouthOpen*0.25:0));
 
   if(modelReady && mode==='solid' && solidReady){
+    /* Start the sweep the first frame the solid mesh is usable. */
+    if(revealStart < 0) revealStart = T;
+    revealT = Math.min(1, (T - revealStart) / REVEAL_SECS);
+    /* ease-out so it decelerates into place instead of stopping dead */
+    const rEase = 1 - Math.pow(1 - revealT, 3);
     gl.enable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
     gl.useProgram(progS);
     gl.uniformMatrix4fv(uSmvp,false,mvp);
@@ -1141,6 +1172,7 @@ function renderHead(dt){
     gl.uniform3f(uScol,col[0]/255,col[1]/255,col[2]/255);
     gl.uniform1f(uSbri, 0.72+act*0.4+(speaking?mouthOpen*0.2:0));
     gl.uniform1f(uStime, T);
+    gl.uniform1f(uSreveal, rEase);
     gl.bindBuffer(gl.ARRAY_BUFFER,bsPos); gl.enableVertexAttribArray(aSp); gl.vertexAttribPointer(aSp,3,gl.FLOAT,false,0,0);
     gl.bindBuffer(gl.ARRAY_BUFFER,bsNrm); gl.enableVertexAttribArray(aSn); gl.vertexAttribPointer(aSn,3,gl.FLOAT,false,0,0);
     gl.bindBuffer(gl.ARRAY_BUFFER,bsJaw); gl.enableVertexAttribArray(aSj); gl.vertexAttribPointer(aSj,1,gl.FLOAT,false,0,0);
@@ -1149,6 +1181,16 @@ function renderHead(dt){
     if(modelEyes) drawEyeballs(mvp, act);
     gl.disable(gl.DEPTH_TEST); gl.enable(gl.BLEND);
     gl.useProgram(prog);
+    if(revealT < 1){
+      /* The wireframe is what the un-materialised region should look like, so
+         keep drawing it and let it fade as the solid takes over. Without this
+         the head would simply grow out of nothing. */
+      gl.uniform1f(uPt,1.0);
+      gl.uniform1f(uBri,(0.85+act*0.5)*(1.0-rEase)*0.9);
+      gl.bindBuffer(gl.ARRAY_BUFFER,bmPos); gl.enableVertexAttribArray(aPos); gl.vertexAttribPointer(aPos,3,gl.FLOAT,false,0,0);
+      gl.bindBuffer(gl.ARRAY_BUFFER,bmJaw); gl.enableVertexAttribArray(aJaw); gl.vertexAttribPointer(aJaw,1,gl.FLOAT,false,0,0);
+      gl.drawArrays(gl.LINES,0,mCount);
+    }
     return;
   }
   if(modelReady){
