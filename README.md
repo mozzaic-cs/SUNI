@@ -25,6 +25,41 @@ collaborate on one answer**. Runs on your own hardware; your data stays yours.
 
 ---
 
+## How the distinctive parts actually work
+
+The list above names things; this is the mechanism behind the four that are hard
+to find elsewhere. The full picture — every module, route and background job — is
+the diagram at **`/architecture`** once you're running.
+
+**Multi-model collaboration** (`suni/core/orchestrate.py`) is conductor-worker, not
+peer debate. Every model in the pool answers the task independently and in
+parallel, each then peer-reviews the others' drafts, and one model merges drafts
+plus critiques into a single answer spoken as SUNI — the collaboration stays
+backstage. The value comes from **decorrelated** models: two providers catch what
+one misses, and a lone model self-critiquing is a weak critic. It is opt-in per
+message, because these are cloud frontier models: **this mode sends data off the
+box**, and the local single-model path remains the private default. Being a
+knowing per-message choice is the point.
+
+**Governance is a chain, not a checkbox.** An intent review classifies the request
+before work starts, an in-chat approval gate previews consequential tool calls and
+waits for you, tool policies and RBAC bound what is reachable at all, and an output
+guard inspects the answer on the way out. Approvals are written to an audit trail.
+MCP tools are classified by action verb and **default to requiring approval** when
+the verb is unrecognised — a false prompt costs one click, a false pass runs the
+command.
+
+**Memory is four stores, not one blob.** Episodic (what happened), collective
+(shared across users), procedural (skills learned by doing, which grow with use),
+and document RAG over your own files. Facts that contradict each other are
+superseded rather than deleted, and removal is reversible.
+
+**Images are generated on the same machine as the text** — Stable Diffusion via
+`diffusers`, with the pipeline loaded and released around each call so it shares
+one 8 GB card with the chat model.
+
+---
+
 ## SUNI in the wild
 
 [**suniverse.online**](https://suniverse.online) is a SUNI instance that has been

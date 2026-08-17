@@ -1311,6 +1311,18 @@ body.simple .section-gap{height:6px!important}
           <span style="color:var(--teal)">lifecycle_counts() active/deprecated · distinct from collective status</span>
         </div>
       </div>
+
+      <div class="node" style="border-color:rgba(155,89,182,.4);min-width:230px">
+        <div class="node-tag" style="background:rgba(155,89,182,.06);color:var(--purple)">image_tool.py · diffusers · Stable Diffusion</div>
+        <div class="node-title" style="color:var(--purple)">Local Image Generation <span class="new-badge" style="background:rgba(155,89,182,.14);color:var(--purple)">new</span></div>
+        <div class="node-detail">
+          <span>Pictures are generated on the same machine as the text</span>
+          Optional extra — requirements-imagegen.txt (torch + diffusers)<br>
+          VRAM-managed: the pipeline is loaded and released around each call so
+          it shares an 8&nbsp;GB card with the chat model<br>
+          <span style="color:var(--purple)">Result is shown on the Face stage and can be attached to a reply</span>
+        </div>
+      </div>
     </div>
 
   </div>
@@ -1374,6 +1386,64 @@ body.simple .section-gap{height:6px!important}
   </div>
 </div>
 
+<!-- ══ DEPLOYMENT & PACKAGING ══ -->
+<div class="section-gap" style="height:10px"></div>
+<div class="lane" id="lane-deploy">
+  <div class="lane-header" style="color:var(--teal)">
+    <span>Deployment &amp; Packaging</span>
+    <span style="font-size:9px;color:var(--muted);font-weight:400;letter-spacing:.04em">runs on Linux, macOS and Windows · nothing Windows-specific left in the boot path</span>
+    <span class="new-badge" style="background:rgba(20,217,140,.15);color:var(--teal)">Phase 11</span>
+  </div>
+  <div class="lane-content" style="align-items:flex-start">
+
+    <div class="node" style="border-color:rgba(20,217,140,.35);min-width:240px">
+      <div class="node-tag" style="background:rgba(20,217,140,.06);color:var(--teal)">Dockerfile · docker-compose.yml</div>
+      <div class="node-title" style="color:var(--teal)">Container</div>
+      <div class="node-detail">
+        <span>docker compose up -d — SUNI + Ollama on a private network</span>
+        Ollama is NOT baked into the image: it needs the GPU and is large<br>
+        Runs as uid 10001, never root — run_shell's guard is a heuristic, not a sandbox<br>
+        <span style="color:var(--teal)">/app/memory and /app/certs are volumes; without them every restart is a fresh install</span>
+      </div>
+    </div>
+
+    <div class="node" style="border-color:rgba(0,212,255,.35);min-width:240px">
+      <div class="node-tag" style="background:rgba(0,212,255,.06);color:var(--cyan)">web.py · gen_cert.py</div>
+      <div class="node-title" style="color:var(--cyan)">TLS on First Run</div>
+      <div class="node-detail">
+        <span>A self-signed certificate is generated before the first request</span>
+        Both quickstarts say to open https://localhost:8765 — nothing used to
+        create a certificate, so that URL failed and users fell back to http,
+        creating the admin password over cleartext<br>
+        <span style="color:var(--cyan)">SUNI_NO_TLS=1 opts out, for a proxy that terminates TLS itself</span>
+      </div>
+    </div>
+
+    <div class="node" style="border-color:rgba(201,162,39,.35);min-width:240px">
+      <div class="node-tag" style="background:rgba(201,162,39,.07);color:var(--gold)">setup.html · /api/auth/first-run</div>
+      <div class="node-title" style="color:var(--gold)">First-Run Wizard</div>
+      <div class="node-detail">
+        <span>No seeded credentials — the first visitor creates the admin account</span>
+        Config carries setup_completed; a config file lacking the key is treated
+        as a pre-existing install, so upgrades are not sent back to the wizard<br>
+        <span style="color:var(--gold)">No default model is pinned — the admin chooses, else best installed at the core tier</span>
+      </div>
+    </div>
+
+    <div class="node" style="min-width:240px">
+      <div class="node-tag">pyproject.toml · deploy/suni.service · start_suni.sh</div>
+      <div class="node-title">Install Paths</div>
+      <div class="node-detail">
+        <span>pip wheel · systemd unit · POSIX and Windows launchers</span>
+        Python 3.10+ · optional extras kept out of the base install:<br>
+        requirements-embeddings / -imagegen (torch) · -articles (unixODBC)<br>
+        <span style="color:var(--teal)">pyodbc is imported lazily — an eager import blocked boot on Linux entirely</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
 <!-- ══ LEGEND ══ -->
 <div class="legend">
   <div class="legend-title">Legend</div>
@@ -1392,6 +1462,7 @@ body.simple .section-gap{height:6px!important}
   <div class="legend-item"><span class="new-badge" style="background:rgba(155,89,182,.12);color:var(--purple)">new</span> Phase 6.4: web_url route (web_fetch hint) · memory SYSTEM dedup · _sanitize_response (DOC-EXCERPT) · file-serve JWT token auth · _inject_dl_token · configurable output directory (global + per-user)</div>
   <div class="legend-item"><span class="new-badge" style="background:rgba(0,212,255,.12);color:var(--cyan)">new</span> Phase 7: adaptive memory — LLM supersession · soft-deprecation (lifecycle) · weekly consolidation · conversation dedup · age-out</div>
   <div class="legend-item"><span class="new-badge" style="background:rgba(201,162,39,.14);color:var(--gold)">new</span> Phase 7: EU AI Act Art 50 — AI-interaction disclosure · AI-generated content marking (PDF/email) · risk classification · safeguard mapping</div>
+  <div class="legend-item"><span class="new-badge" style="background:rgba(20,217,140,.15);color:var(--teal)">new</span> Phase 11: deployment — Docker + compose · TLS generated on first run · first-run wizard · pip wheel · systemd unit · cross-platform boot path · local image generation</div>
 </div>
 
 <script>
