@@ -46,10 +46,27 @@ if __name__ == '__main__':
     cert = Path(__file__).parent / 'certs' / 'cert.pem'
     key  = Path(__file__).parent / 'certs' / 'key.pem'
 
+    # Generate the certificate on first run rather than waiting to be asked.
+    # Both documented quickstarts — pip and Docker — say to open
+    # https://localhost:8765, but nothing created a certificate, so the very
+    # first thing a new user saw was a TLS error. Reaching for http:// then
+    # worked, which meant the admin account and its password were created over
+    # cleartext on a port that binds every interface.
+    #
+    # SUNI_NO_TLS=1 opts out, for deployments behind a proxy that terminates
+    # TLS itself. A failure here is not fatal: serving plaintext is worse than
+    # TLS but much better than refusing to start.
+    if not (cert.exists() and key.exists()) and os.environ.get('SUNI_NO_TLS') != '1':
+        try:
+            import gen_cert  # noqa: F401  — writes certs/ on import
+            print('  generated a self-signed certificate in certs/')
+        except Exception as _e:
+            print(f'  could not generate a certificate ({_e}); continuing without TLS')
+
     if cert.exists() and key.exists():
         print(f'\n  SUNI is listening at  https://localhost:{port}  (TLS)\n')
         uvicorn.run(app, host='0.0.0.0', port=port, log_level='warning',
                     ssl_certfile=str(cert), ssl_keyfile=str(key))
     else:
-        print(f'\n  SUNI is listening at  http://localhost:{port}  (no TLS — run gen_cert.py)\n')
+        print(f'\n  SUNI is listening at  http://localhost:{port}  (no TLS)\n')
         uvicorn.run(app, host='0.0.0.0', port=port, log_level='warning')

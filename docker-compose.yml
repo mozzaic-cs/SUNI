@@ -43,6 +43,10 @@ services:
       ollama:
         condition: service_healthy
     ports:
+      # Published on every host interface. On a machine reachable from outside,
+      # bind it to loopback instead — "127.0.0.1:8765:8765" — and put a reverse
+      # proxy with a real certificate in front; the certificate generated on
+      # first boot is self-signed and meant for local use.
       - "8765:8765"
     environment:
       # The reason config.ollama_host() exists: inside compose, Ollama is not
@@ -58,9 +62,15 @@ services:
       # All persistent state. Without this, every restart is a fresh install:
       # new admin account, no memory, regenerated secrets.
       - suni-data:/app/memory
+      # The self-signed certificate generated on first boot. Persisted so the
+      # browser is not asked to trust a brand-new certificate every restart.
+      # Delete this volume to get a fresh one; empty it to serve plain HTTP
+      # instead (only sensible behind a proxy that terminates TLS).
+      - suni-certs:/app/certs
       # Optional: documents to index for the knowledge base, read-only.
       # - /path/to/your/docs:/data/docs:ro
 
 volumes:
   ollama-models:
   suni-data:
+  suni-certs:

@@ -48,9 +48,14 @@ COPY --chown=suni:suni . .
 # create_app() creates the relative "files" output directory at startup, and
 # WORKDIR made /app root-owned, so the container exited with
 # "PermissionError: [Errno 13] Permission denied: 'files'".
-RUN mkdir -p /app/memory /app/logs /app/files \
- && chown suni:suni /app /app/memory /app/logs /app/files
-VOLUME ["/app/memory"]
+#
+# /app/certs is created HERE, owned by suni, on purpose: a named volume mounted
+# at a path that exists in the image inherits that path's ownership, while one
+# mounted at a path that does not exist is created root-owned — and then
+# gen_cert.py below cannot write to it.
+RUN mkdir -p /app/memory /app/logs /app/files /app/certs \
+ && chown suni:suni /app /app/memory /app/logs /app/files /app/certs
+VOLUME ["/app/memory", "/app/certs"]
 
 USER suni
 
@@ -63,14 +68,17 @@ EXPOSE 8765
 # /api/auth/status is public and cheap, and it exercises config loading — so a
 # healthy result means more than "the port is open".
 #
-# HTTP is tried FIRST because certs/ is excluded from the image, so the
-# container serves plain HTTP unless someone mounts certificates. Probing HTTPS
-# first made uvicorn log "Invalid HTTP request received" on every health check —
-# a TLS handshake against a plaintext port — filling the log with warnings that
-# looked like an application fault. --insecure covers the mounted-cert case,
-# where SUNI serves its own self-signed certificate.
+# HTTPS is tried FIRST because the entrypoint below generates a certificate, so
+# TLS is the normal case; --insecure because that certificate is self-signed.
+# The HTTP fallback covers a deployment that deliberately removes the cert to
+# sit behind a terminating proxy. Probing the wrong scheme first is not just
+# untidy: a TLS handshake against a plaintext port makes uvicorn log "Invalid
+# HTTP request received" every interval, which reads as an application fault.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
-  CMD curl -fsS http://localhost:8765/api/auth/status \
-      || curl -fsS --insecure https://localhost:8765/api/auth/status || exit 1
+  CMD curl -fsS --insecure https://localhost:8765/api/auth/status \
+      || curl -fsS http://localhost:8765/api/auth/status || exit 1
 
+# web.py generates the self-signed certificate on first run, so nothing is
+# needed here — the /app/certs volume above is what keeps it stable across
+# restarts. Set SUNI_NO_TLS=1 to serve plaintext behind a terminating proxy.
 CMD ["python", "web.py"]
