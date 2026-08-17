@@ -4,7 +4,7 @@ A **self-hosted, privacy-first AI assistant and orchestrator**. Voice, a 3D pers
 long-term memory, tools, messaging channels, and — uniquely — **multiple models that
 collaborate on one answer**. Runs on your own hardware; your data stays yours.
 
-![license: MIT](https://img.shields.io/badge/license-MIT-blue) ![python: 3.12](https://img.shields.io/badge/python-3.12-blue)
+![license: MIT](https://img.shields.io/badge/license-MIT-blue) ![python: 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
 
 ---
 
@@ -17,17 +17,32 @@ collaborate on one answer**. Runs on your own hardware; your data stays yours.
 - **Memory + knowledge base** — episodic + collective memory, document RAG, and a **learned-skills** store (procedural memory) that grows as you use it.
 - **Pluggable models** — local Ollama/vLLM **plus** Claude, OpenAI, Gemini, and **no-key subscription CLIs** (Claude Code, Codex).
 - **Governance** — RBAC, intent judge, output guard, tool policies, approval previews, OIDC/SSO, rate limiting, audit log.
-- **Batteries included** — **19 starter skills** and a **22-server MCP catalog** you can one-click add.
+- **Batteries included** — **19 starter skills** and a **26-server MCP catalog** you can one-click add.
+
+---
+
+## SUNI in the wild
+
+[**suniverse.online**](https://suniverse.online) is a SUNI instance that has been
+running for months. She writes and publishes news commentary there in her own
+voice — dry, sardonic, allergic to exclamation marks — illustrated with images she
+generates locally on the same machine.
+
+It is the maintainer's own deployment rather than a hosted service or part of this
+repository, and the publishing pipeline behind it is specific to that setup. What
+it does demonstrate is the parts that *are* here working together over a long
+period: the configurable persona, local image generation, long-running autonomy,
+and memory that survives across sessions.
 
 ---
 
 ## Quickstart
 
-**Prerequisites:** Python 3.12 and [Ollama](https://ollama.com).
+**Prerequisites:** Python 3.10+ and [Ollama](https://ollama.com).
 
 ```bash
-git clone <your-repo-url> suni && cd suni
-ollama pull qwen2.5:7b          # the default local model
+git clone https://github.com/mozzaic-cs/SUNI.git suni && cd suni
+ollama pull qwen2.5:7b          # any model works; SUNI uses what you have
 python install.py               # creates a venv and installs dependencies
 ```
 
