@@ -4,6 +4,10 @@ A **self-hosted, privacy-first AI assistant and orchestrator**. Voice, a 3D pers
 long-term memory, tools, messaging channels, and — uniquely — **multiple models that
 collaborate on one answer**. Runs on your own hardware; your data stays yours.
 
+![SUNI's persona materialising: a wireframe head resolving into a lit holographic face, eyes igniting as the sweep passes them](docs/media/suni-materialise.gif)
+
+*The Persona interface booting. Rendered locally in WebGL — no video, no cloud.*
+
 ![license: MIT](https://img.shields.io/badge/license-MIT-blue) ![python: 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
 
 ---
