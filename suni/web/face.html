@@ -746,53 +746,27 @@ const EXCLUDE = {'Group16029':1,'Group64944':1};   /* dense eyeball geometry (wi
 /* ── lit shader program for solid mode ── */
 const VS2=`attribute vec3 a_pos; attribute vec3 a_nrm; attribute float a_jaw;
 uniform mat4 u_mvp,u_model; uniform float u_jaw,u_hingeY,u_hingeZ;
-/* u_reveal and u_time are declared in both stages; the linker merges them into
-   one uniform, so the existing uSreveal/uStime locations drive both. */
-uniform float u_reveal,u_time;
-varying vec3 v_n; varying float v_y; varying vec3 v_p; varying float v_asm;
-float vh(vec3 q){ return fract(sin(dot(q, vec3(12.9898,78.233,37.719)))*43758.5453); }
+varying vec3 v_n; varying float v_y; varying vec3 v_p;
 vec3 jr(vec3 p,float w){ float ja=u_jaw*w; vec3 pv=vec3(0.0,u_hingeY,u_hingeZ); vec3 r=p-pv; float c=cos(ja),s=sin(ja); return pv+vec3(r.x,c*r.y-s*r.z,s*r.y+c*r.z); }
 vec3 jn(vec3 n,float w){ float ja=u_jaw*w; float c=cos(ja),s=sin(ja); return vec3(n.x,c*n.y-s*n.z,s*n.y+c*n.z); }
-void main(){
-  vec3 p=jr(a_pos,a_jaw); vec3 n=jn(a_nrm,a_jaw);
-  /* Reported UNDISPLACED: the fragment stage's noise must be stable in object
-     space, and the height is what the sweep is defined against. */
-  v_y=p.y; v_p=p; v_n=mat3(u_model)*n;
-
-  /* Assembly. v_asm is 1 for geometry the wave has not reached (scattered),
-     0 for geometry it has passed (in place), and in between for the band that
-     is currently flying in. Applied AFTER the jaw rotation so it composes with
-     the hinge rather than distorting it. */
-  float cut = mix(-0.88, 0.88, u_reveal);
-  float d = cut - p.y;
-  v_asm = (u_reveal >= 1.0) ? 0.0 : clamp(1.0 - smoothstep(-0.34, 0.03, d), 0.0, 1.0);
-  if (v_asm > 0.0) {
-    vec3 r = vec3(vh(a_pos*1.7)-0.5, vh(a_pos*2.3+7.0)-0.5, vh(a_pos*3.1+13.0)-0.5);
-    r = normalize(r + vec3(0.0001));            /* never normalize a zero vector */
-    /* squared so the collapse is slow far out and snaps hard at the end */
-    float amp = 0.60 * v_asm * v_asm;
-    vec3 drift = vec3(sin(u_time*1.9 + vh(a_pos)*6.283),
-                      cos(u_time*1.5 + vh(a_pos+3.0)*6.283), 0.0) * 0.06 * v_asm;
-    p += r*amp + drift;
-  }
-  gl_Position=u_mvp*vec4(p,1.0);
-}`;
+void main(){ vec3 p=jr(a_pos,a_jaw); vec3 n=jn(a_nrm,a_jaw); gl_Position=u_mvp*vec4(p,1.0); v_n=mat3(u_model)*n;
+  /* object-space height and position — the materialise sweep uses the height,
+     the noise that breaks up its edge uses the full position */
+  v_y=p.y; v_p=p; }`;
 const FS2=`precision mediump float;
-uniform vec3 u_color; uniform float u_bright; varying vec3 v_n;
-/* u_time and u_reveal are shared with the VERTEX stage, and WebGL 1 refuses to
-   link a program whose shared uniforms disagree on precision. Fragment shaders
-   here default to mediump; vertex shaders default to highp — so these two are
-   qualified explicitly. highp rather than mediump on purpose: at mediump,
-   u_time quantises to roughly 0.3s once uptime reaches a few minutes, which
-   would make the debris drift visibly step. */
-uniform highp float u_time;
+uniform vec3 u_color; uniform float u_bright; uniform float u_time; varying vec3 v_n;
 /* Materialise sweep: 0 = nothing solid yet, 1 = fully solid.
    The mesh measures y in [-0.85, 0.85], so the cut runs to ±0.88 — just enough
    margin for a clean first and last sliver. It used to run to ±1.05, which
    wasted 0.18s at each end doing nothing visible: the head was already fully
    solid while the animation kept running, which is part of why the eyes felt
    late. Keep CUT_LO/CUT_HI in the JS in sync with these numbers. */
-uniform highp float u_reveal; varying float v_y; varying vec3 v_p; varying float v_asm;
+uniform float u_reveal; varying float v_y; varying vec3 v_p;
+/* Ghost pass: > 0 draws the WHOLE head as a translucent fresnel shell before
+   any of it has solidified — the hologram acquiring its target. Fragment-stage
+   only, so no cross-stage precision agreement is required (a shared uniform
+   whose precision differs between stages will not link in WebGL 1). */
+uniform float u_ghost;
 float hash(float n){ return fract(sin(n)*43758.5453); }
 
 /* 3D value noise, used to break the sweep's edge into organic patches instead
@@ -806,21 +780,43 @@ float vnoise(vec3 p){
              mix(mix(h3(i+vec3(0.0,0.0,1.0)), h3(i+vec3(1.0,0.0,1.0)), f.x),
                  mix(h3(i+vec3(0.0,1.0,1.0)), h3(i+vec3(1.0,1.0,1.0)), f.x), f.y), f.z);
 }
+/* leading-edge falloff, used once per channel to get chromatic fringing */
+float edgeBand(float d){ return d < 0.0 ? 0.0 : 1.0 - smoothstep(0.0, 0.075, d); }
 
 void main(){
-  /* The gate is now the ASSEMBLY factor, not raw height: fragments still in
-     flight must render (they are the debris), while anything the wave has not
-     reached yet must not. Noise makes that boundary ragged rather than a line.
-     At u_reveal >= 1.0 the vertex stage forces v_asm to 0, so the threshold is
-     1.0 and nothing can be discarded — the finished head is always whole. */
-  float thr = 1.0;
+  /* Ghost first. It ignores the reveal cut in the sense that it covers the part
+     NOT yet solid — the whole silhouette is present from the start, and the
+     sweep converts ghost into surface. Drawing it over the solid region as well
+     would double-add onto an already-bright leading edge and wash it out, which
+     is the blow-out the scattered-debris attempt suffered from. */
+  if (u_ghost > 0.0) {
+    if (v_y <= mix(-0.88, 0.88, u_reveal)) discard;
+    vec3 Ng = normalize(v_n);
+    /* The draw call culls back faces, so max(0,...) is the right fresnel here.
+       Without that culling every back face scored ~1.0 and the additive pass
+       stacked front + back + ears + skull + mouth cavity into hard-edged bright
+       blobs covering ~4% of the frame — measured, not guessed. The exponent
+       above 2.0 keeps the band a rim rather than a wash; with culling plus 2.4
+       the pass peaks at ~1% of the frame. */
+    float fg = pow(1.0 - max(0.0, dot(Ng, vec3(0.0,0.0,1.0))), 2.4);
+    float shimmer = 0.85 + 0.15*sin(u_time*6.0 + v_y*22.0);
+    gl_FragColor = vec4(vec3(0.42,0.82,1.0) * fg * 2.8 * shimmer, fg * u_ghost);
+    return;
+  }
+  float cut = mix(-0.88, 0.88, u_reveal);
+  float cutN = cut;
   if (u_reveal < 1.0) {
-    float amp = 0.16 * (1.0 - u_reveal * u_reveal);
+    /* Two octaves so the edge has both large tongues and fine crumbling.
+       Amplitude falls to zero as the sweep completes, which guarantees the
+       crown is never left with noise-punched holes at the end. */
+    float amp = 0.13 * (1.0 - u_reveal * u_reveal);
     float n  = vnoise(v_p * 7.0);
     float n2 = vnoise(v_p * 19.0 + vec3(u_time * 0.35));
-    thr = 0.985 - ((n * 0.72 + n2 * 0.28) - 0.5) * 2.0 * amp;
+    cutN = cut + ((n * 0.72 + n2 * 0.28) - 0.5) * 2.0 * amp;
   }
-  if (v_asm >= thr) discard;
+  /* Above the line the surface has not formed yet — leave the wireframe
+     showing through rather than drawing an unlit shell over it. */
+  if (v_y > cutN) discard;
   vec3 N=normalize(v_n);
   float diff=max(0.0,dot(N,normalize(vec3(-0.35,0.45,0.82))));
   float fres=pow(1.0-max(0.0,dot(N,vec3(0.0,0.0,1.0))),2.2);
@@ -835,28 +831,22 @@ void main(){
      finished head is byte-for-byte what it was before any of this existed. */
   if (u_reveal < 1.0) {
     float jitter = 0.85 + 0.15 * hash(floor(v_y * 220.0) + floor(u_time * 30.0));
-    /* Debris glows, brightest while it is still furthest out, cooling as it
-       lands — so the in-flight band IS the leading edge. Chromatic fringing
-       comes from reading that ramp at a slightly different offset per channel,
-       like a mis-converged display. */
-    vec3 band = vec3(smoothstep(0.0, 0.60, v_asm + 0.07),
-                     smoothstep(0.0, 0.60, v_asm),
-                     smoothstep(0.0, 0.60, v_asm - 0.07));
+    /* Chromatic fringing: each channel reads the falloff at a slightly
+       different height, so the wave carries a red-to-blue split like a
+       mis-converged display rather than a clean white line. */
+    vec3 band = vec3(edgeBand(cutN + 0.014 - v_y),
+                     edgeBand(cutN         - v_y),
+                     edgeBand(cutN - 0.014 - v_y));
     col += band * vec3(1.0, 0.92, 1.05) * jitter * 2.6;
-
-    /* Glitch scanlines: a few horizontal bands per second get channel-shifted
-       and over-driven. Rare by construction (>0.93 of a hash) so it reads as
-       interference during boot, not as a broken renderer. */
-    float bandId = floor(v_y * 42.0);
-    float g = hash(bandId * 1.7 + floor(u_time * 14.0) * 3.1);
-    if (g > 0.93) {
-      col.r *= 1.45; col.b *= 1.30; col.g *= 0.78;
-      col *= 1.22;
-    }
   }
   gl_FragColor=vec4(col*u_bright, 1.0);
 }`;
-let progS=null, aSp,aSn,aSj, uSmvp,uSmodel,uSjaw,uShy,uShz,uScol,uSbri,uStime,uSreveal;
+let progS=null, aSp,aSn,aSj, uSmvp,uSmodel,uSjaw,uShy,uShz,uScol,uSbri,uStime,uSreveal,uSghost;
+/* Ghost lock-on: fades in quickly, then dissolves as the solid surface fills
+   it, so the two stages hand over instead of fighting each other. */
+const GHOST_IN_SECS=0.22;
+/* Beat where the outline exists and the sweep has not begun. */
+const GHOST_LEAD=0.45;
 /* Materialise transition: the solid mesh finishes loading well after the
    wireframe is already on screen, and it used to pop in between two frames.
    revealT drives a sweep that fills the head from the chin up while the
@@ -876,6 +866,7 @@ function ensureSolidProgram(){
   uSjaw=gl.getUniformLocation(progS,'u_jaw'); uShy=gl.getUniformLocation(progS,'u_hingeY'); uShz=gl.getUniformLocation(progS,'u_hingeZ');
   uScol=gl.getUniformLocation(progS,'u_color'); uSbri=gl.getUniformLocation(progS,'u_bright');
   uStime=gl.getUniformLocation(progS,'u_time'); uSreveal=gl.getUniformLocation(progS,'u_reveal');
+  uSghost=gl.getUniformLocation(progS,'u_ghost');
 }
 
 function parseOBJ(text){
@@ -1245,24 +1236,7 @@ function renderHead(dt){
   }
   gazeX+=(gazeTX-gazeX)*Math.min(1,3*dt); gazeY+=(gazeTY-gazeY)*Math.min(1,3*dt);
 
-  /* Reveal clock, hoisted above the view matrix: the settle below needs it, and
-     it used to be updated inside the solid draw branch. */
-  if(modelReady && mode==='solid' && solidReady){
-    if(revealStart < 0) revealStart = T;
-    revealT = Math.min(1, (T - revealStart) / REVEAL_SECS);
-  }
-  const rEase = 1 - Math.pow(1 - revealT, 3);
-  /* Settle: the head arrives slightly small and off-axis and eases into place,
-     so the assembly has weight instead of appearing at its final transform.
-     settle = 1 when there is no solid mesh, so a wireframe-only head is never
-     left permanently shrunken and rotated. */
-  const settle  = solidReady ? rEase : 1;
-  const sYaw    = (1 - settle) * 0.17;
-  /* a small punch as the eyes light — sin() so it rises and falls */
-  const sPop    = (eyeRevealT > 0 && eyeRevealT < 1) ? Math.sin(eyeRevealT*Math.PI)*0.020 : 0;
-  const sScale  = 0.94 + 0.06*settle + sPop;
-
-  const yaw=Math.sin(T*0.22)*0.20+gazeX*0.12+(modelReady?MODEL_YAW:0)+sYaw;
+  const yaw=Math.sin(T*0.22)*0.20+gazeX*0.12+(modelReady?MODEL_YAW:0);
   const pitch=Math.sin(T*0.18)*0.07+gazeY*0.08-0.03;
   const jaw=mouthOpen*0.34;
   const breath=1+Math.sin(T*0.9)*0.010;
@@ -1270,7 +1244,7 @@ function renderHead(dt){
   const asp=canvas.width/canvas.height;
   const proj=m4persp(0.80,asp,0.1,100);
   let view=m4mul(m4trans(0,0.24,-3.05), m4mul(m4rotX(pitch), m4rotY(yaw)));
-  view=m4mul(view, m4scale(breath*sScale,breath*sScale,breath*sScale));
+  view=m4mul(view, m4scale(breath,breath,breath));
   const mvp=m4mul(proj,view);
 
   gl.viewport(0,0,canvas.width,canvas.height);
@@ -1293,7 +1267,14 @@ function renderHead(dt){
   gl.uniform1f(uBri, 0.85+act*0.5+(speaking?mouthOpen*0.25:0));
 
   if(modelReady && mode==='solid' && solidReady){
-    /* revealT / rEase are computed above, before the view matrix. */
+    /* Start the clock the first frame the solid mesh is usable. The sweep itself
+       is held back by GHOST_LEAD so the ghost outline gets a beat on its own —
+       lock-on, THEN resolve. Without the lead both started together and the
+       ghost read as a flash rather than an acquisition. */
+    if(revealStart < 0) revealStart = T;
+    revealT = Math.min(1, Math.max(0, (T - revealStart - GHOST_LEAD) / REVEAL_SECS));
+    /* ease-out so it decelerates into place instead of stopping dead */
+    const rEase = 1 - Math.pow(1 - revealT, 3);
     gl.enable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
     gl.useProgram(progS);
     gl.uniformMatrix4fv(uSmvp,false,mvp);
@@ -1307,6 +1288,28 @@ function renderHead(dt){
     gl.bindBuffer(gl.ARRAY_BUFFER,bsNrm); gl.enableVertexAttribArray(aSn); gl.vertexAttribPointer(aSn,3,gl.FLOAT,false,0,0);
     gl.bindBuffer(gl.ARRAY_BUFFER,bsJaw); gl.enableVertexAttribArray(aSj); gl.vertexAttribPointer(aSj,1,gl.FLOAT,false,0,0);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,bsIdx);
+
+    /* Ghost pass — the not-yet-solid part of the head as a translucent rim,
+       handing over to the surface as the sweep rises. Additive so it cannot
+       darken the nebula behind it, and with
+       depth WRITES off (test still on) so a translucent shell never occludes
+       the solid surface drawn immediately after it. */
+    /* Fades in fast, then only gently — the ghost region shrinks to nothing on
+       its own as the sweep rises, so a hard alpha fade on top of that would make
+       the last of it vanish before the surface arrives. Hard zero at completion
+       so this stops being an extra full-mesh pass every frame, forever. */
+    const ghostA = rEase >= 1 ? 0
+      : 0.92 * Math.min(1, (T - revealStart) / GHOST_IN_SECS) * (1 - 0.35 * rEase);
+    if (ghostA > 0.01) {
+      gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE); gl.depthMask(false);
+      gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK);
+      gl.uniform1f(uSghost, ghostA);
+      gl.drawElements(gl.TRIANGLES,sCount,sIdxType,0);
+      gl.uniform1f(uSghost, 0.0);
+      gl.disable(gl.CULL_FACE);
+      gl.depthMask(true); gl.disable(gl.BLEND);
+    }
+
     gl.drawElements(gl.TRIANGLES,sCount,sIdxType,0);
     if(modelEyes){
       /* compare against the EASED value — that is what the shader draws */
