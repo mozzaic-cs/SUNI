@@ -614,6 +614,81 @@ def create_app() -> FastAPI:
         elif running:
             await _stop_channel(name)
 
+
+    # ── Scheduled invocations ──────────────────────────────────────────────
+    async def _schedule_runner(stop_event):
+        """Replay due prompts through the orchestrator, as their owner.
+
+        Deliberately runs each entry under the owner's role AS IT IS NOW, looked
+        up fresh every fire. A snapshot taken at creation would let a schedule
+        preserve permissions its owner has since lost.
+
+        Delivery is performed HERE, not by the model. A scheduled run has no
+        approver, so send_email would either be denied (making delivery
+        impossible) or allowed unattended (letting a model choose recipients with
+        nobody watching). The destination was fixed by a human when the schedule
+        was created.
+        """
+        from .. import schedules as _sched
+        from .. import agents as _agents
+        from ..notifications import email_notify as _mail
+        # Wait before the first pass. The first due() call creates schedules.db,
+        # and doing that while the app is still warming up put a ~800ms outlier
+        # on the very first request. Nothing is lost: an entry due at startup
+        # simply fires one tick later.
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=30)
+        except asyncio.TimeoutError:
+            pass
+        while not stop_event.is_set():
+            try:
+                for s in _sched.due():
+                    owner = _auth.get_user(s["owner_id"])
+                    if not owner or not owner.get("active", True):
+                        _sched.mark_ran(s["id"], "skipped: owner inactive", s["cadence"])
+                        continue
+                    role = owner.get("role", "standard")
+                    profile = None
+                    if s["agent_slug"]:
+                        visible = {a["slug"] for a in _agents.list_for_user(owner["id"], role)}
+                        if s["agent_slug"] in visible:
+                            profile = _agents.get(s["agent_slug"])
+                            if profile:
+                                profile["_username"] = owner.get("username", "")
+                        else:
+                            _sched.mark_ran(s["id"], "skipped: agent not available to owner",
+                                            s["cadence"])
+                            continue
+                    status = "ok"
+                    try:
+                        from ..core.context import Context as _Ctx
+                        ctx = _Ctx()
+                        answer = await orchestrator._safe_run(
+                            s["prompt"], ctx,
+                            memory_override=_get_user_memory(owner["id"]),
+                            user_role=role,
+                            user_id=owner["id"],
+                            agent_profile=profile,
+                        )
+                        d = s.get("delivery") or {}
+                        if d.get("type") == "email" and d.get("to"):
+                            _mail.send_email(d["to"], f"SUNI — {s['name']}", answer,
+                                             user_id=owner["id"])
+                    except Exception as exc:
+                        status = f"error: {exc}"
+                        _log.error("[SCHEDULE] %s failed: %s", s["id"], exc, exc_info=True)
+                    _sched.mark_ran(s["id"], status, s["cadence"])
+                    _audit.log_event(owner["id"], owner.get("username", ""),
+                                     "schedule.ran",
+                                     detail=f"{s['name']} -> {status}"[:100],
+                                     target_id=s["id"], agent_slug=s["agent_slug"])
+            except Exception as exc:
+                _log.error("[SCHEDULE] runner loop error: %s", exc, exc_info=True)
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=30)
+            except asyncio.TimeoutError:
+                pass
+
     @app.on_event("startup")
     async def _startup():
         nonlocal orchestrator, registry, _tier_map
@@ -663,6 +738,7 @@ def create_app() -> FastAPI:
             get_paths=lambda: suni_config.get("doc_paths", []),
             get_interval=lambda: suni_config.get("doc_scan_interval", 600),
         ))
+        asyncio.create_task(_schedule_runner(stop_event))
         # News/web monitor
         _monitor_interval = suni_config.get("monitor_interval", 3600)
         from .. import monitor as _monitor_mod
@@ -2409,6 +2485,69 @@ def create_app() -> FastAPI:
             return JSONResponse({"error": "not found or not yours"}, status_code=403)
         _audit.log_event(user["id"], user["username"], "agent.deleted",
                          target_id=slug, agent_slug=slug)
+        return JSONResponse({"ok": True})
+
+    # ── Schedules ──────────────────────────────────────────────────────────
+
+    @app.get("/api/schedules")
+    async def schedules_list_api(user: dict = Depends(get_current_user)):
+        from .. import schedules as _s
+        return JSONResponse({"schedules": _s.list_for_user(user["id"], user.get("role", ""))})
+
+    @app.post("/api/schedules")
+    async def schedules_create_api(request: Request, user: dict = Depends(get_current_user)):
+        from .. import schedules as _s
+        from .. import agents as _agents
+        body = await request.json()
+        name = str(body.get("name") or "").strip()
+        prompt = str(body.get("prompt") or "").strip()
+        cadence = str(body.get("cadence") or "").strip()
+        if not (name and prompt and cadence):
+            return JSONResponse({"error": "name, prompt and cadence are required"},
+                                status_code=400)
+
+        # An agent may only be scheduled by someone who can already use it —
+        # otherwise a schedule would be a way to invoke agents you cannot reach.
+        slug = str(body.get("agent") or "").strip()
+        if slug:
+            visible = {a["slug"] for a in _agents.list_for_user(user["id"], user.get("role", ""))}
+            if slug not in visible:
+                return JSONResponse({"error": "unknown agent"}, status_code=403)
+
+        # Delivery is fixed here, by a human. The model never picks a recipient.
+        delivery = body.get("delivery") or {}
+        if delivery.get("type") == "email" and not str(delivery.get("to") or "").strip():
+            return JSONResponse({"error": "email delivery needs a 'to' address"},
+                                status_code=400)
+        try:
+            rec = _s.create(name=name, prompt=prompt, cadence=cadence,
+                            owner_id=user["id"], owner_name=user["username"],
+                            agent_slug=slug, delivery=delivery)
+        except _s.CadenceError as exc:
+            # Refuse rather than substitute a cadence the user did not ask for.
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        _audit.log_event(user["id"], user["username"], "schedule.created",
+                         detail=f"{name} [{cadence}]", target_id=rec["id"],
+                         agent_slug=slug)
+        return JSONResponse({"schedule": rec})
+
+    @app.delete("/api/schedules/{sched_id}")
+    async def schedules_delete_api(sched_id: str, user: dict = Depends(get_current_user)):
+        from .. import schedules as _s
+        if not _s.delete(sched_id, user["id"], user.get("role", "")):
+            return JSONResponse({"error": "not found or not yours"}, status_code=403)
+        _audit.log_event(user["id"], user["username"], "schedule.deleted", target_id=sched_id)
+        return JSONResponse({"ok": True})
+
+    @app.post("/api/schedules/{sched_id}/enabled")
+    async def schedules_toggle_api(sched_id: str, request: Request,
+                                   user: dict = Depends(get_current_user)):
+        from .. import schedules as _s
+        body = await request.json()
+        ok = _s.set_enabled(sched_id, bool(body.get("enabled", True)),
+                            user["id"], user.get("role", ""))
+        if not ok:
+            return JSONResponse({"error": "not found or not yours"}, status_code=403)
         return JSONResponse({"ok": True})
 
     # ── Projects ───────────────────────────────────────────────────────────
