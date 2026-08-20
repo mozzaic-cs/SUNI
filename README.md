@@ -146,15 +146,21 @@ three WebGL/HTML front-ends. A live architecture diagram is available in-app at
 
 ### How it compares
 
-[`docs/comparison.html`](docs/comparison.html) is a feature-by-feature comparison
-against OpenClaw, Hermes and Turnstone — the projects SUNI grew from or was
-evaluated against. It is written by SUNI's author and says so, which is also why
-it ranks Hermes ahead of SUNI on maturity, adoption and channel reach. If a row
-about your project is wrong, please open an issue.
+[`docs/comparison.html`](docs/comparison.html) compares SUNI feature-by-feature
+against **OpenClaw, Hermes and Turnstone**. That set is deliberate: they are the
+projects SUNI was built to reach parity with, and the table is a development
+artifact before it is a public one — it grew alongside the roadmap, and a gap in
+a row was usually the argument for building the next thing.
 
-It does **not** cover Open WebUI, LibreChat, AnythingLLM or Jan. Those are the
-better-known alternatives, and comparing against them honestly needs work that
-has not been done yet — an unverified table would be worse than none.
+It is written by SUNI's author and says so, which is also why it ranks Hermes
+ahead of SUNI on maturity, adoption and channel reach. If a row about your
+project is wrong, please open an issue.
+
+If you arrived from **Open WebUI, LibreChat, AnythingLLM or Jan**, those solve a
+neighbouring problem: they are chat front-ends and RAG workbenches over models
+you supply. SUNI is an agent framework that happens to ship three front-ends —
+the work is in orchestration, tool use, memory, governance and channels, and
+that is why its peer group is the one above.
 
 ---
 
