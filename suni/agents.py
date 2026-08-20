@@ -318,6 +318,34 @@ def delete(slug: str, user_id: str, user_role: str = "") -> bool:
     return True
 
 
+def record_invocation(slug: str, user_id: str, username: str, grants: dict[str, Any]) -> None:
+    """Record that an agent ran, and what it was permitted to reach.
+
+    The per-request audit row carries `agent_slug`, answering "which agent handled
+    this". This answers the harder question when reconstructing a decision later:
+    what could it reach AT THAT MOMENT. Grants are re-derived per invocation from
+    a file the user can edit and a role that can change, so neither the profile on
+    disk nor the role as it stands today is evidence of what applied then.
+
+    Never raises: an audit write is not worth losing the user's answer over, and
+    the per-request row lands regardless.
+    """
+    tools = grants.get("allowed_tools")
+    mcp = grants.get("mcp_prefixes")
+    detail = (
+        f"model={grants.get('model') or 'default'} "
+        f"mode={grants.get('mode') or '?'} "
+        f"tools={'all' if tools is None else len(tools)} "
+        f"mcp={'all' if mcp is None else (','.join(mcp) or 'none')} "
+        f"blocked={len(grants.get('blocked_tools') or [])}"
+    )
+    try:
+        from . import audit as _audit
+        _audit.log_event(user_id, username, "agent.invoked", detail=detail, target_id=slug)
+    except Exception:      # noqa: BLE001 — never fail a request over an audit write
+        pass
+
+
 def mark_used(slug: str) -> None:
     with _conn() as c:
         c.execute(

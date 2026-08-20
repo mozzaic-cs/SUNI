@@ -364,6 +364,15 @@ header{
         <option value="read-only">◌ read-only</option>
         <option value="collaborate">✦ collaborate</option>
       </select>
+      <!-- Agent picker. Hidden until at least one agent exists, so an install
+           with none looks exactly as it did before. -->
+      <select id="agent-select" title="Agent"
+        style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
+               color:rgba(255,255,255,.6);font-family:'DM Mono',monospace;font-size:9px;
+               letter-spacing:.08em;padding:3px 7px;border-radius:3px;cursor:pointer;
+               display:none">
+        <option value="">◇ SUNI</option>
+      </select>
       <a href="/" title="Switch to Orb mode"
          style="padding:3px 8px;border:1px solid rgba(201,162,39,.28);border-radius:2px;
                 font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.08em;
@@ -1773,6 +1782,36 @@ function _emitSentences(buf, onEmit) {
 // ═══════════════════════════════════════════════════════════════════
 const _camBtn    = document.getElementById('cam-btn');
 const _camVideo  = document.getElementById('cam-video');
+/* Agent picker: the server returns only agents this user may use, already
+   resolved to their EFFECTIVE grants, so the tooltip shows what the agent can
+   actually do for this person rather than what its file asks for. */
+let _agentSlug = '';
+(async () => {
+  try {
+    const r = await _apiFetch('/api/agents');
+    if (!r.ok) return;
+    const { agents } = await r.json();
+    const sel = document.getElementById('agent-select');
+    if (!sel || !agents || !agents.length) return;      // none defined — stay hidden
+    for (const a of agents) {
+      if (a.enabled === false) continue;
+      const o = document.createElement('option');
+      o.value = a.slug;
+      o.textContent = '◈ ' + a.name;
+      const e = a.effective || {};
+      o.title = `${a.description || ''}
+model: ${e.model} · mode: ${e.mode} · tools: ${e.tools}`;
+      sel.appendChild(o);
+    }
+    sel.style.display = '';
+    sel.addEventListener('change', () => {
+      _agentSlug = sel.value;
+      showSub(_agentSlug ? `Handing over to ${sel.options[sel.selectedIndex].textContent.replace('◈ ','')}.`
+                         : 'Back to SUNI.');
+    });
+  } catch (e) { /* agents are optional — never block the page on them */ }
+})();
+
 const _camCanvas = document.getElementById('cam-canvas');
 const _camCtx    = _camCanvas.getContext('2d', { willReadFrequently: true });
 let _camStream = null, _camTimer = null, _camPrev = null;
@@ -2205,7 +2244,7 @@ async function send() {
     const res = await _apiFetch('/api/chat', {
       method: 'POST',
       headers: {'Content-Type':'application/json', 'x-session-id': _sessionId},
-      body: JSON.stringify({message: text || displayText, session_id: _sessionId, mode: _sessionMode, file_ids: fileIds, ui: 'face'})
+      body: JSON.stringify({message: text || displayText, session_id: _sessionId, mode: _sessionMode, agent: _agentSlug, file_ids: fileIds, ui: 'face'})
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 

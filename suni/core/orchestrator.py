@@ -501,6 +501,16 @@ class Orchestrator:
                 )
                 if _agent_grants["mode"] != conv_mode and _agent_grants["mode"]:
                     conv_mode = _agent_grants["mode"]
+                # Traceability: record what this agent was permitted to reach on
+                # THIS invocation. Grants are re-derived each time from an
+                # editable file and a role that can change, so the profile as it
+                # stands later is not evidence of what applied here.
+                from ..agents import record_invocation as _rec, mark_used as _used
+                _slug = str(agent_profile.get("slug") or "")
+                if _slug:
+                    _rec(_slug, user_id, str(agent_profile.get("_username") or ""),
+                         _agent_grants)
+                    _used(_slug)
 
             _start_tier = min(max(complexity_score(user_input), DEFAULT_TIER), MAX_LOCAL_TIER)
             _log.info("[TIER]    start=%d  max_local=%d (floor=core)", _start_tier, MAX_LOCAL_TIER)
@@ -817,6 +827,7 @@ class Orchestrator:
         user_id: str = "",
         claude_api_key: str = "",
         images: list[str] | None = None,
+        agent_profile: dict | None = None,
     ) -> str:
         """Wrapper that guarantees any unhandled exception is logged."""
         original_memory = self.memory
@@ -829,7 +840,7 @@ class Orchestrator:
                                   user_mcp_servers=user_mcp_servers,
                                   event_cb=event_cb, user_id=user_id,
                                   images=images,
-                                  claude_api_key=claude_api_key)
+                                  claude_api_key=claude_api_key, agent_profile=agent_profile)
         except _bhealth.BackendUnavailableError as exc:
             # Breaker is open — the local model backend is down. Return a clean,
             # user-facing message. run() yields a STRING (_run_inner returns

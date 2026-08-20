@@ -1635,6 +1635,26 @@ def create_app() -> FastAPI:
             _set_session_mode(session_id, body["mode"])
             conv_mode = body["mode"]
 
+        # Agent profile, if one was selected. Loaded server-side by slug and
+        # checked against what THIS user may use — the client sends a name, never
+        # a profile, so a caller cannot hand in a forged definition. Grants are
+        # still re-resolved inside the orchestrator against the caller's role, so
+        # this check is about visibility, not privilege.
+        _agent_profile = None
+        _agent_slug = str(body.get("agent") or "").strip()
+        if _agent_slug:
+            from .. import agents as _agents
+            _visible = {a["slug"] for a in _agents.list_for_user(user["id"], user_role)}
+            if _agent_slug in _visible:
+                _agent_profile = _agents.get(_agent_slug)
+                if _agent_profile and not _agent_profile.get("enabled", True):
+                    _agent_profile = None
+                if _agent_profile:
+                    _agent_profile["_username"] = user["username"]
+            else:
+                _log.warning("[AGENT] %s requested agent %r they cannot use",
+                             user["username"], _agent_slug)
+
         # Per-user language and MCP preferences
         _prefs     = _user_settings.get(user["id"])
         _resp_lang = _prefs.get("response_language", "")
@@ -1733,6 +1753,7 @@ def create_app() -> FastAPI:
                     # buffer until the run finished. Benefits tool events too.
                     _run_task = asyncio.create_task(orchestrator._safe_run(
                         message, context,
+                        agent_profile=_agent_profile,
                         memory_override=user_memory,
                         user_role=user_role,
                         conv_mode=conv_mode,
@@ -1786,6 +1807,7 @@ def create_app() -> FastAPI:
                     duration_s=round(time.time() - t0, 2),
                     prompt_tokens=_usage_acc.prompt,
                     gen_tokens=_usage_acc.gen,
+                    agent_slug=(_agent_profile or {}).get("slug", ""),
                 )
             except Exception as e:
                 _log.error("[CHAT_ERR] %s", e, exc_info=True)
@@ -2321,6 +2343,71 @@ def create_app() -> FastAPI:
             _log.info("[MONITOR] manual check: %d new alert(s)", len(alerts))
         background_tasks.add_task(_run)
         return JSONResponse({"ok": True, "message": "Check started in background"})
+
+    # ── Agents ─────────────────────────────────────────────────────────────
+    # Any authenticated user may author a profile. That is safe because a profile
+    # can only ever NARROW what its invoker can reach (suni.agents.effective_grants)
+    # — authoring one grants the author nothing they did not already have.
+
+    @app.get("/api/agents")
+    async def agents_list_api(user: dict = Depends(get_current_user)):
+        from .. import agents as _agents
+        role = user.get("role", "standard")
+        rows = _agents.list_for_user(user["id"], role)
+        # Report the EFFECTIVE grants, not the declared ones: what an agent can do
+        # differs by who is asking, and showing the file's wish list would tell a
+        # restricted user their agent has reach it will not actually get.
+        prefixes = getattr(getattr(orchestrator, "registry", None), "_mcp_prefixes", [])
+        for r in rows:
+            g = _agents.effective_grants(r, role, prefixes)
+            r["effective"] = {
+                "tools": "all" if g["allowed_tools"] is None else len(g["allowed_tools"]),
+                "mcp": "all" if g["mcp_prefixes"] is None else g["mcp_prefixes"],
+                "mode": g["mode"],
+                "model": g["model"] or "default",
+            }
+        return JSONResponse({"agents": rows})
+
+    @app.post("/api/agents")
+    async def agents_create_api(request: Request, user: dict = Depends(get_current_user)):
+        from .. import agents as _agents
+        body = await request.json()
+        name = str(body.get("name") or "").strip()
+        prompt = str(body.get("system_prompt") or "").strip()
+        if not name or not prompt:
+            return JSONResponse({"error": "name and system_prompt are required"},
+                                status_code=400)
+        rec = _agents.create(
+            name=name,
+            system_prompt=prompt,
+            owner_id=user["id"],
+            description=str(body.get("description") or ""),
+            model=str(body.get("model") or ""),
+            mode=str(body.get("mode") or "assistant"),
+            tools=body.get("tools"),
+            blocked=body.get("blocked") or [],
+            mcp_servers=body.get("mcp_servers"),
+        )
+        _audit.log_event(user["id"], user["username"], "agent.created",
+                         detail=f"name={name}", target_id=rec["slug"])
+        return JSONResponse({"agent": rec})
+
+    @app.get("/api/agents/{slug}")
+    async def agents_get_api(slug: str, user: dict = Depends(get_current_user)):
+        from .. import agents as _agents
+        role = user.get("role", "standard")
+        if slug not in {a["slug"] for a in _agents.list_for_user(user["id"], role)}:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        return JSONResponse({"agent": _agents.get(slug)})
+
+    @app.delete("/api/agents/{slug}")
+    async def agents_delete_api(slug: str, user: dict = Depends(get_current_user)):
+        from .. import agents as _agents
+        role = user.get("role", "standard")
+        if not _agents.delete(slug, user["id"], role):
+            return JSONResponse({"error": "not found or not yours"}, status_code=403)
+        _audit.log_event(user["id"], user["username"], "agent.deleted", target_id=slug)
+        return JSONResponse({"ok": True})
 
     # ── Projects ───────────────────────────────────────────────────────────
 

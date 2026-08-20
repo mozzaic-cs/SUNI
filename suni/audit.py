@@ -49,6 +49,12 @@ def init_db() -> None:
             c.execute("ALTER TABLE audit_log ADD COLUMN prompt_tokens INTEGER DEFAULT 0")
         if "gen_tokens" not in cols:
             c.execute("ALTER TABLE audit_log ADD COLUMN gen_tokens INTEGER DEFAULT 0")
+        # Which user-defined agent profile handled the request, if any. Empty
+        # means SUNI answered as itself. Without this a request run under a
+        # profile — different prompt, possibly a different model, a narrowed
+        # tool set — is indistinguishable in the log from an ordinary one.
+        if "agent_slug" not in cols:
+            c.execute("ALTER TABLE audit_log ADD COLUMN agent_slug TEXT DEFAULT ''")
 
 
 def log(
@@ -65,6 +71,7 @@ def log(
     approved_by:   str = "",
     prompt_tokens: int = 0,
     gen_tokens:    int = 0,
+    agent_slug:    str = "",
 ) -> None:
     tools_str = ",".join(tools_called) if tools_called else ""
     with _conn() as c:
@@ -72,14 +79,14 @@ def log(
             """INSERT INTO audit_log
                (ts, user_id, username, session_id, ip_address, query_preview,
                 route, mode, tools_called, tool_errors, duration_s, approved_by,
-                prompt_tokens, gen_tokens)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                prompt_tokens, gen_tokens, agent_slug)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 datetime.now(timezone.utc).isoformat(),
                 user_id, username, session_id, ip_address,
                 query_preview[:100],
                 route, mode, tools_str, tool_errors, duration_s, approved_by,
-                int(prompt_tokens or 0), int(gen_tokens or 0),
+                int(prompt_tokens or 0), int(gen_tokens or 0), agent_slug,
             ),
         )
 
