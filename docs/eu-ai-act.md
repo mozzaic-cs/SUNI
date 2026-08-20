@@ -78,6 +78,54 @@ SaaS user would not have. This is the trade-off that comes with the control.
 
 ---
 
+## Traceability — what is recorded, per user
+
+Article 12 asks for automatic recording of events over a system's lifetime, and
+Article 26(6) requires a deployer of a high-risk system to keep those logs. SUNI
+records this per request, in an append-only SQLite table (`suni/audit.py`,
+`memory/audit.db`):
+
+| Column | Why it matters |
+|---|---|
+| `ts`, `user_id`, `username`, `session_id` | who did what, when, in which session |
+| `ip_address` | origin of the request |
+| `query_preview` | what was asked (truncated) |
+| `route`, `mode` | which path handled it — assistant, task, read-only, collaborate |
+| `tools_called`, `tool_errors` | **which tools actually ran, and whether they failed** |
+| `approved_by` | **who authorised a consequential action** |
+| `duration_s`, `prompt_tokens`, `gen_tokens` | cost and latency attribution per user |
+
+`tools_called` and `approved_by` are the two that matter most for oversight: they
+turn "the assistant did something" into "this user asked this, that tool ran, and
+this person approved it." Governance decisions are recorded through the same table
+via `log_event()`, so approvals and rejections sit in one timeline with the
+requests that caused them. There is a CSV export (`export_csv`) and an Audit tab
+in the admin panel.
+
+### The retention gap — read this before relying on the above
+
+**Nothing purges the audit log.** `purge_old(days)` exists in `suni/audit.py` and
+**is never called**; there is no retention setting in the config or the admin
+panel. The module docstring claims entries are auto-purged after a configurable
+90 days. That is not true today, and this document would rather say so than
+repeat it.
+
+The practical consequences point in opposite directions, which is why it needs a
+deliberate decision rather than a default:
+
+- **GDPR storage limitation (Art 5(1)(e))** — the table holds IP addresses,
+  usernames and query content indefinitely. For personal data that is a
+  data-minimisation problem, and an erasure request currently has no mechanism.
+- **AI Act Art 26(6)** — a deployer of a high-risk system must keep logs for **at
+  least six months**. Any retention policy set below ~180 days would conflict with
+  that obligation, so "just purge aggressively" is the wrong reflex.
+
+Until this is wired up, treat audit retention as **manual**: the deployer decides,
+and prunes `memory/audit.db` themselves. If you are subject to either regime,
+that is a decision to make consciously rather than inherit.
+
+---
+
 ## Existing controls mapped to high-risk themes
 
 SUNI is not a high-risk system and has not been through a conformity assessment.
@@ -86,9 +134,11 @@ shortens the work if a deployment ever does fall under Annex III:
 
 | Control | File | Theme |
 |---|---|---|
-| Append-only audit log | `memory/audit.db`, `suni/audit.py` | Art 12 — record-keeping |
+| Append-only audit log, per user, with tools called and approver | `suni/audit.py` | Art 12 — record-keeping |
 | In-chat approval gate (Allow / Deny before consequential tool calls) | `suni/approval.py` | Art 14 — human oversight |
-| RBAC, shell denylist, `UNTRUSTED` content markers | `suni/rbac.py`, `suni/policy.py` | Art 15 — robustness |
+| RBAC, per-user roles and tool policies | `suni/rbac.py`, `suni/policy.py` | Art 14 — bounded autonomy |
+| Shell denylist, `UNTRUSTED` content markers, MCP tools defaulting to approval | `suni/policy.py`, `suni/approval.py` | Art 15 — robustness |
+| Intent review before work starts, output guard before the answer leaves | `suni/core/` | Art 15 — accuracy controls |
 
 ---
 

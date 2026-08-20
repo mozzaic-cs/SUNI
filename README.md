@@ -59,6 +59,20 @@ superseded rather than deleted, and removal is reversible.
 `diffusers`, with the pipeline loaded and released around each call so it shares
 one 8 GB card with the chat model.
 
+**She tracks where you are, and that never leaves your browser.** Opt-in and off
+by default: the webcam feed is sampled to a **64×48** canvas at 15fps, a
+frame-diff motion centroid is computed **in the page**, and that steers the
+head's yaw and pitch and the eyes' gaze — so the persona looks at you rather than
+through you. The Orb maps the same signal to presence: it wakes into colour when
+someone is there and fades to greyscale a few seconds after you leave. **No frame
+is ever sent anywhere** — there is no server call in the tracking path at all,
+and the camera is released on toggle-off, on tab-hidden and on unload.
+
+Recognising *what* it is looking at is a separate, explicit act: a snapshot
+button captures one still and sends it to a vision model you configure (or to
+Claude Code). That one does leave the machine, which is exactly why it is a
+button you press rather than something running continuously.
+
 **Transparency is built in, not bolted on.** The EU AI Act's Article 50
 obligations became applicable on 2 August 2026, and SUNI implements them: a
 non-dismissible AI disclosure in every interface, and synthetic output marked so
