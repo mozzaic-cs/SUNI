@@ -21,6 +21,7 @@ collaborate on one answer**. Runs on your own hardware; your data stays yours.
 - **Memory + knowledge base** — episodic + collective memory, document RAG, and a **learned-skills** store (procedural memory) that grows as you use it.
 - **Pluggable models** — local Ollama/vLLM **plus** Claude, OpenAI, Gemini, and **no-key subscription CLIs** (Claude Code, Codex).
 - **Governance** — RBAC, intent judge, output guard, tool policies, approval previews, OIDC/SSO, rate limiting, audit log.
+- **EU AI Act transparency, implemented** — Article 50 disclosure in every UI, and synthetic output marked **machine-readably** (PDF `/Info`, RFC 3834 email headers), not just visibly. See [`docs/eu-ai-act.md`](docs/eu-ai-act.md).
 - **Batteries included** — **19 starter skills** and a **26-server MCP catalog** you can one-click add.
 
 ---
@@ -57,6 +58,16 @@ superseded rather than deleted, and removal is reversible.
 **Images are generated on the same machine as the text** — Stable Diffusion via
 `diffusers`, with the pipeline loaded and released around each call so it shares
 one 8 GB card with the chat model.
+
+**Transparency is built in, not bolted on.** The EU AI Act's Article 50
+obligations became applicable on 2 August 2026, and SUNI implements them: a
+non-dismissible AI disclosure in every interface, and synthetic output marked so
+that *other software* can detect it — PDF `/Info` metadata alongside the visible
+footer, and RFC 3834 `Auto-Submitted` headers on outgoing mail alongside the
+visible body notice. The machine-readable half is the part that is easy to skip
+and awkward to retrofit, because it has to happen everywhere output leaves the
+system. [`docs/eu-ai-act.md`](docs/eu-ai-act.md) sets out what is implemented,
+what the risk posture is, and — just as importantly — what none of it claims.
 
 ---
 
