@@ -341,7 +341,8 @@ def record_invocation(slug: str, user_id: str, username: str, grants: dict[str, 
     )
     try:
         from . import audit as _audit
-        _audit.log_event(user_id, username, "agent.invoked", detail=detail, target_id=slug)
+        _audit.log_event(user_id, username, "agent.invoked", detail=detail,
+                         target_id=slug, agent_slug=slug)
     except Exception:      # noqa: BLE001 — never fail a request over an audit write
         pass
 

@@ -98,6 +98,7 @@ def log_event(
     detail:    str = "",
     target_id: str = "",
     ip_address: str = "",
+    agent_slug: str = "",
 ) -> None:
     """
     Log a non-chat governance/system event, reusing the audit_log table so it
@@ -109,12 +110,14 @@ def log_event(
         c.execute(
             """INSERT INTO audit_log
                (ts, user_id, username, session_id, ip_address, query_preview,
-                route, mode, tools_called, tool_errors, duration_s, approved_by)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                route, mode, tools_called, tool_errors, duration_s, approved_by,
+                agent_slug)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 datetime.now(timezone.utc).isoformat(),
                 user_id, username, "", ip_address,
                 detail[:100], action, "governance", target_id, 0, 0.0, user_id,
+                agent_slug,
             ),
         )
 

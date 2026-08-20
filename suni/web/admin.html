@@ -448,6 +448,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
     <button class="tab" onclick="switchTab('roles',this)"     data-i18n="admin.nav_roles">Roles</button>
     <button class="tab" onclick="switchTab('mcp',this)"       data-i18n="admin.nav_mcp">MCP</button>
     <button class="tab" onclick="switchTab('skills',this)"    data-i18n="admin.nav_skills">Skills</button>
+    <button class="tab" onclick="switchTab('agents',this)">Agents</button>
     <button class="tab" onclick="switchTab('backup',this)"    data-i18n="admin.nav_backup">Backup</button>
     <button class="tab" onclick="switchTab('config',this)"    data-i18n="admin.nav_config">Configuration</button>
     <button class="tab" onclick="switchTab('benchmarks',this)">Benchmarks</button>
@@ -1209,6 +1210,34 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
 </div>
 
 <!-- ════════════════════ SKILLS ════════════════════ -->
+<div class="panel" id="panel-agents">
+  <div class="card" style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div class="card-title" style="margin:0;border:none">Agents</div>
+      <span id="agents-count" style="font-size:10px;color:var(--muted)"></span>
+      <button class="tbl-btn primary" onclick="openNewAgent()" style="margin-left:auto">+ New agent</button>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5">
+      A named prompt, an optional model, and an optional narrowing of the tools an
+      agent may use. An agent can only ever <strong>reduce</strong> what the person
+      running it could already do — the grants shown below are the effective ones
+      for <em>you</em>, after intersecting with your role.
+    </div>
+  </div>
+  <div class="card">
+    <table class="tbl" id="agents-table">
+      <thead><tr>
+        <th>Name</th><th>Description</th><th>Model</th><th>Mode</th>
+        <th>Tools</th><th>Used</th><th></th>
+      </tr></thead>
+      <tbody id="agents-tbody"></tbody>
+    </table>
+    <div id="agents-empty" style="display:none;padding:24px;text-align:center;color:var(--muted);font-size:12px">
+      No agents yet. SUNI answers as itself.
+    </div>
+  </div>
+</div>
+
 <div class="panel" id="panel-skills">
   <div class="card" style="margin-bottom:16px">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
@@ -1241,6 +1270,47 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
 </div>
 
 <!-- Skills edit modal -->
+<div class="modal-overlay" id="modal-agent">
+  <div class="modal" style="width:min(680px,96vw);max-height:85vh;overflow:hidden;display:flex;flex-direction:column">
+    <div class="modal-title">
+      <span>New agent</span>
+      <button class="modal-x" onclick="closeModal('modal-agent')">✕</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div class="field">
+        <label>Name</label>
+        <input type="text" id="ag-name" placeholder="Research Assistant" style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
+      </div>
+      <div class="field">
+        <label>Model — blank uses the normal tier selection</label>
+        <input type="text" id="ag-model" placeholder="qwen2.5:7b" style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
+      </div>
+    </div>
+    <div class="field" style="margin-bottom:10px">
+      <label>Description (one sentence — shown in the agent list)</label>
+      <input type="text" id="ag-desc" placeholder="Reads and summarises; never sends anything." style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
+    </div>
+    <div class="field" style="margin-bottom:10px">
+      <label>Allowed tools, comma-separated — blank inherits whatever the person running it may use</label>
+      <input type="text" id="ag-tools" placeholder="web_search, web_fetch" style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
+      <div style="font-size:10px;color:var(--muted);margin-top:4px">
+        Listing a tool here cannot grant it: the final set is this list intersected
+        with the role of whoever runs the agent.
+      </div>
+    </div>
+    <div class="field" style="flex:1;display:flex;flex-direction:column">
+      <label>System prompt — how should this agent behave?</label>
+      <textarea id="ag-prompt" rows="8" placeholder="You research topics and always cite your sources."
+        style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%;flex:1;resize:vertical;line-height:1.5"></textarea>
+    </div>
+    <div id="ag-err" style="display:none;color:var(--danger);font-size:11px;margin-top:8px"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+      <button class="tbl-btn" onclick="closeModal('modal-agent')">Cancel</button>
+      <button class="tbl-btn primary" onclick="saveAgent()">Create agent</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-skill">
   <div class="modal" style="width:min(680px,96vw);max-height:85vh;overflow:hidden;display:flex;flex-direction:column">
     <div class="modal-title">
@@ -1486,6 +1556,7 @@ function switchTab(name, btn) {
   if (name === 'roles')  loadRoles();
   if (name === 'mcp')    loadMcp();
   if (name === 'skills') loadSkills();
+  if (name === 'agents') loadAgents();
   if (name === 'backup') loadBackups();
   if (name === 'benchmarks') loadBenchmarks();
   if (name !== 'benchmarks') { clearInterval(_bmProgTimer); _bmProgTimer = null; }
@@ -2716,7 +2787,85 @@ async function testMcpFromModal(){
 // ═══════════════════════════════════════════
 let _allSkills = [];
 
-async function loadSkills(){
+async /* ── Agents ─────────────────────────────────────────────────────────────────
+   The list endpoint returns EFFECTIVE grants — what each agent can do for the
+   person looking at it, which differs by role. Showing the file's declared
+   grants instead would promise reach the agent will not actually get. */
+async function loadAgents() {
+  const tb = document.getElementById('agents-tbody');
+  const empty = document.getElementById('agents-empty');
+  const table = document.getElementById('agents-table');
+  try {
+    const r = await _apiFetch('/api/agents');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const { agents } = await r.json();
+    document.getElementById('agents-count').textContent =
+      agents.length ? `${agents.length} defined` : '';
+    tb.innerHTML = '';
+    table.style.display = agents.length ? '' : 'none';
+    empty.style.display = agents.length ? 'none' : '';
+    for (const a of agents) {
+      const e = a.effective || {};
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        `<td><strong>${esc(a.name)}</strong><div style="font-size:10px;color:var(--muted)">${esc(a.slug)}</div></td>` +
+        `<td style="max-width:280px">${esc(a.description || '')}</td>` +
+        `<td>${esc(e.model || 'default')}</td>` +
+        `<td>${esc(e.mode || '')}</td>` +
+        `<td>${e.tools === 'all' ? 'all' : e.tools}</td>` +
+        `<td>${a.used_count || 0}</td>` +
+        `<td style="text-align:right"><button class="tbl-btn" onclick="deleteAgent('${esc(a.slug)}')">Delete</button></td>`;
+      tb.appendChild(tr);
+    }
+  } catch (err) {
+    tb.innerHTML = `<tr><td colspan="7" style="color:var(--danger)">Could not load agents: ${esc(String(err))}</td></tr>`;
+  }
+}
+
+function openNewAgent(){
+  el('ag-name').value = ''; el('ag-desc').value = '';
+  el('ag-model').value = ''; el('ag-tools').value = '';
+  el('ag-prompt').value = '';
+  el('ag-err').style.display = 'none';
+  el('modal-agent').classList.add('open');
+}
+
+async function saveAgent(){
+  const name   = el('ag-name').value.trim();
+  const prompt_ = el('ag-prompt').value.trim();
+  const err    = el('ag-err');
+  if(!name || !prompt_){
+    err.textContent = 'Name and system prompt are both required.';
+    err.style.display = ''; return;
+  }
+  const toolsRaw = el('ag-tools').value.trim();
+  const r = await _apiFetch('/api/agents', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      name,
+      description: el('ag-desc').value.trim(),
+      system_prompt: prompt_,
+      model: el('ag-model').value.trim(),
+      // blank means "inherit whatever the person running it may use"
+      tools: toolsRaw ? toolsRaw.split(',').map(s=>s.trim()).filter(Boolean) : null,
+    }),
+  });
+  if(!r.ok){
+    err.textContent = 'Could not create agent (HTTP ' + r.status + ').';
+    err.style.display = ''; return;
+  }
+  closeModal('modal-agent');
+  loadAgents();
+}
+
+async function deleteAgent(slug) {
+  if (!confirm(`Delete agent "${slug}"? Conversations that used it are unaffected.`)) return;
+  const r = await _apiFetch('/api/agents/' + encodeURIComponent(slug), { method: 'DELETE' });
+  if (!r.ok) { alert('Could not delete: HTTP ' + r.status); return; }
+  loadAgents();
+}
+
+function loadSkills(){
   const data = await _apiFetch('/api/skills').then(r=>r.json()).catch(()=>[]);
   _allSkills = Array.isArray(data) ? data : [];
   el('skills-count').textContent = '(' + _allSkills.length + ')';

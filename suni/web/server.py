@@ -2389,7 +2389,8 @@ def create_app() -> FastAPI:
             mcp_servers=body.get("mcp_servers"),
         )
         _audit.log_event(user["id"], user["username"], "agent.created",
-                         detail=f"name={name}", target_id=rec["slug"])
+                         detail=f"name={name}", target_id=rec["slug"],
+                         agent_slug=rec["slug"])
         return JSONResponse({"agent": rec})
 
     @app.get("/api/agents/{slug}")
@@ -2406,7 +2407,8 @@ def create_app() -> FastAPI:
         role = user.get("role", "standard")
         if not _agents.delete(slug, user["id"], role):
             return JSONResponse({"error": "not found or not yours"}, status_code=403)
-        _audit.log_event(user["id"], user["username"], "agent.deleted", target_id=slug)
+        _audit.log_event(user["id"], user["username"], "agent.deleted",
+                         target_id=slug, agent_slug=slug)
         return JSONResponse({"ok": True})
 
     # ── Projects ───────────────────────────────────────────────────────────
