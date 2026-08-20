@@ -152,6 +152,50 @@ _ARTICLES_HINT = (
 )
 
 
+# Delegation to a named agent. Without this the 7B tier does not reliably pick
+# invoke_agent out of ~57 tools — an observed run wandered into skills_list and
+# offered to create a skill instead. Registering a tool is not the same as the
+# model finding it, which is what the articles route above exists to fix too.
+_AGENT_TASK = re.compile(
+    r'\b(ask|tell|get|have|delegate|hand (?:this|it|that) (?:to|over))\b[^.?!]{0,60}'
+    r'\b(agent|agents)\b'
+    r'|\bagent\b[^.?!]{0,30}\b(to|should|please)\b',
+    re.IGNORECASE,
+)
+_AGENT_HINT = (
+    "[Router: the user is asking for a NAMED AGENT to do this. Call "
+    "invoke_agent(agent, task) with the name they used and the task stated in "
+    "full — the agent does not see this conversation. If you are unsure the "
+    "agent exists, call list_agents first. Do NOT do the work yourself and "
+    "report it as though the agent did it, and do NOT invent an agent name. "
+    "If the task is under-specified, ask the user before delegating — the agent "
+    "cannot see this conversation and cannot ask follow-up questions itself.]"
+)
+
+# Recurring work — "every morning", "each hour", "daily at 8". These need a
+# scheduled SUNI turn, which is create_schedule; create_scheduled_task is a
+# Windows Task Scheduler entry for OS commands and is not the same thing.
+_SCHEDULE_TASK = re.compile(
+    r'\b(every|each)\s+(morning|evening|night|day|hour|week|monday|tuesday|wednesday|'
+    r'thursday|friday|saturday|sunday|\d+\s*(?:m|min|mins|minutes|h|hr|hrs|hours))\b'
+    r'|\b(daily|hourly|weekly|nightly)\b'
+    r'|\bat \d{1,2}:\d{2}\s*(?:am|pm)?\b[^.?!]{0,40}\b(every|each|daily)\b',
+    re.IGNORECASE,
+)
+_SCHEDULE_HINT = (
+    "[Router: the user is asking for something RECURRING. Call "
+    "create_schedule(name, prompt, cadence, agent?, email_to?). Cadence must be "
+    "one of: 'every 30m', 'every 2h', 'hourly', 'daily at HH:MM', "
+    "'weekly on mon at HH:MM'. If what they asked for does not fit one of those, "
+    "say so and ask — do NOT substitute a different schedule. The prompt you "
+    "store must stand alone: it runs later with no conversation history. Ask for "
+    "the email address if they want it delivered; never guess one. "
+    "If ANY required detail is missing — the address, the time, which calendar, "
+    "what to include — ASK the user for it and create nothing until they answer. "
+    "A schedule built on a guessed detail runs wrong every day, unattended.]"
+)
+
+
 class TaskRouter:
     """
     Fast pattern classifier. Call route() to get the strategy, then
@@ -169,6 +213,12 @@ class TaskRouter:
             return "pdf"
         if _BROWSER_TASK.search(text):
             return "browser"
+        # Checked early: "ask the X agent to do Y every morning" is both, and
+        # scheduling it is the outer intent — the schedule carries the agent.
+        if _SCHEDULE_TASK.search(text):
+            return "schedule"
+        if _AGENT_TASK.search(text):
+            return "agent"
         if _CODING_TASK.search(text) and _TECH_KEYWORD.search(text):
             return "claude_code"
         if len(text.split()) > 50 and _CODING_TASK.search(text):
@@ -197,6 +247,10 @@ class TaskRouter:
             return _EMAIL_HINT
         if route == "claude_code":
             return _CLAUDE_CODE_HINT
+        if route == "agent":
+            return _AGENT_HINT
+        if route == "schedule":
+            return _SCHEDULE_HINT
         if route == "browser":
             return _BROWSER_HINT
         if route == "web_url":

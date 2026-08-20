@@ -102,6 +102,11 @@ _CONSEQUENTIAL: dict[str, list[str]] = {
     # so these fail closed on unattended paths (e.g. webhooks).
     "claude_task":           ["task"],
     "claude_code":           ["task"],
+    # Creates recurring, unattended execution under the user's identity — a
+    # heavier commitment than writing a file, which is already gated. The
+    # preview shows the cadence and where results are sent.
+    "create_schedule":       ["name", "cadence", "email_to"],
+    "delete_schedule":       ["schedule_id"],
 }
 
 # Pending approvals: {approval_id: {"user_id": str, "future": Future, "tool": str, ...}}

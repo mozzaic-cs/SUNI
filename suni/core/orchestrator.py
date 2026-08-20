@@ -56,6 +56,7 @@ def _lang_instruction(response_language: str = "") -> str | None:
     return f"Always reply in the language with BCP-47 code '{lang}'."
 
 _log = get_logger(__name__)
+_NL = chr(10)      # newline as a constant, so hint-building needs no escapes
 
 # Global activity ring-buffer — readable by the dashboard API
 activity_log: deque = deque(maxlen=20)
@@ -247,6 +248,11 @@ class Orchestrator:
         from ..tools import memory_tool as _memory_tool
         _key_token = CLAUDE_API_KEY_CTX.set(claude_api_key)
         _uid_token = USER_ID_CTX.set(user_id)
+        # Role and resolved grants for this turn, so a nested invoke_agent can
+        # intersect against what is actually in force rather than re-deriving
+        # from the role and discarding the calling agent's narrowing.
+        from ..tools.agent_tool import CURRENT_ROLE as _ROLE_CTX
+        _role_token = _ROLE_CTX.set(user_role)
         # Bind THIS user's memory manager for the memory_* tools (task-local, so
         # concurrent users never cross). Identity comes from here, not tool args.
         _mem_token = _memory_tool.bind(self.memory)
@@ -259,6 +265,7 @@ class Orchestrator:
         finally:
             CLAUDE_API_KEY_CTX.reset(_key_token)
             USER_ID_CTX.reset(_uid_token)
+            _ROLE_CTX.reset(_role_token)
             _memory_tool.reset(_mem_token)
 
     async def _run_inner(
@@ -383,6 +390,26 @@ class Orchestrator:
         from ..user_settings import resolve_output_dir as _rod
         _out_dir = _rod(user_id)
         hint = self._router.get_hint(route, output_dir=_out_dir)
+        # Name the agents that actually exist. The hint alone was not enough: a
+        # 7B tier told to "call invoke_agent with the name they used" still
+        # reached for run_shell, because it had evidence run_shell exists and
+        # none that the agent does. Listing them turns a guess into a lookup.
+        if route in ("agent", "schedule") and user_id:
+            try:
+                from ..agents import list_for_user as _lfu
+                _av = [a for a in _lfu(user_id, user_role) if a.get("enabled", True)]
+                if _av:
+                    _names = "; ".join(
+                        f"{a['name']} (slug: {a['slug']})"
+                        + (f" — {a['description']}" if a.get("description") else "")
+                        for a in _av)
+                    hint = (hint or "") + _NL + f"[Agents available to this user: {_names}]"
+                elif route == "agent":
+                    hint = (hint or "") + _NL + (
+                        "[This user has NO agents defined. Say so plainly instead of "
+                        "doing the work and presenting it as an agent's.]")
+            except Exception:      # noqa: BLE001 — a hint is never worth a failed turn
+                pass
         if hint:
             context.add(Message(role=Role.SYSTEM, content=hint, agent="router"))
             console.print(f"  [dim]→ router: [bold]{route}[/bold][/dim]")
@@ -495,6 +522,7 @@ class Orchestrator:
             _agent_grants = None
             if agent_profile:
                 from ..agents import effective_grants as _eff
+                from ..tools.agent_tool import CURRENT_GRANTS as _GR
                 _agent_grants = _eff(
                     agent_profile, user_role,
                     getattr(self.registry, "_mcp_prefixes", []),
@@ -511,8 +539,17 @@ class Orchestrator:
                     _rec(_slug, user_id, str(agent_profile.get("_username") or ""),
                          _agent_grants)
                     _used(_slug)
+                _GR.set(_agent_grants)
 
             _start_tier = min(max(complexity_score(user_input), DEFAULT_TIER), MAX_LOCAL_TIER)
+            # Delegation and scheduling are structured tool-selection tasks, and
+            # the core tier is measurably bad at them: with the right tool
+            # registered, the hint injected and the agent named, observed runs
+            # still reached for run_shell and db_query instead. Start these a
+            # tier higher — the model has to pick one tool out of ~57 and get its
+            # arguments right, which is exactly what the smaller models fail at.
+            if route in ("agent", "schedule"):
+                _start_tier = min(max(_start_tier + 1, DEFAULT_TIER + 1), MAX_LOCAL_TIER)
             _log.info("[TIER]    start=%d  max_local=%d (floor=core)", _start_tier, MAX_LOCAL_TIER)
             ts = time.perf_counter()
             response = await self._agent_loop(context, trace, route,

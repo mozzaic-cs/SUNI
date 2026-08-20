@@ -270,6 +270,12 @@ def _build_orchestrator(
     registry.register(claude_code_advanced.INIT_SCHEMA, claude_code_advanced.init_handler)
     registry.register(claude_code_advanced.SCHEDULE_SCHEMA, claude_code_advanced.schedule_handler)
     registry.register(claude_code_advanced.ADVISOR_SCHEMA, claude_code_advanced.advisor_handler)
+    from ..tools import agent_tool, schedule_tool
+    registry.register(agent_tool.SCHEMA, agent_tool.handler)
+    registry.register(agent_tool.LIST_SCHEMA, agent_tool.list_handler)
+    registry.register(schedule_tool.SCHEMA, schedule_tool.handler)
+    registry.register(schedule_tool.LIST_SCHEMA, schedule_tool.list_handler)
+    registry.register(schedule_tool.DELETE_SCHEMA, schedule_tool.delete_handler)
     registry.register(web_tool.SEARCH_SCHEMA, web_tool.search)
     registry.register(web_tool.FETCH_SCHEMA,  web_tool.fetch_url)
     registry.register(email_tool.SCHEMA, email_tool.handler)
@@ -325,6 +331,11 @@ def _build_orchestrator(
         skill_store=skill_store, tier_agents=tier_agents,
     )
     orchestrator._last_tier_map = tier_map   # for the runtime backend switch
+    # invoke_agent runs a nested turn, so it needs the orchestrator. Bound here
+    # rather than imported inside the tool, which would be a circular import and
+    # would also leave the tool silently answering "unavailable" if the wiring
+    # were ever missed.
+    agent_tool.bind(orchestrator)
     return orchestrator, registry
 
 
