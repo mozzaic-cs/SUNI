@@ -156,6 +156,29 @@ class Orchestrator:
         """Register an OllamaAgent for a specific tier number."""
         self._tier_agents[tier] = agent
 
+    def _agent_for_model(self, model: str) -> BaseAgent | None:
+        """Backend for a model named by an agent profile, built once and reused.
+
+        Cached because a profile is invoked repeatedly and construction opens a
+        client; keyed by model name, which is what the profile actually pins.
+        """
+        if not model:
+            return None
+        cache = getattr(self, "_model_agents", None)
+        if cache is None:
+            cache = self._model_agents = {}
+        if model in cache:
+            return cache[model]
+        try:
+            from ..models.factory import make_agent as _make_agent
+            from ..main import resolve_system_prompt as _sys
+            agent = _make_agent(name=f"profile:{model}", model=model, system_prompt=_sys())
+        except Exception as exc:
+            _log.warning("[AGENT] make_agent(%r) failed: %s", model, exc)
+            return None
+        cache[model] = agent
+        return agent
+
     def _agent_for_tier(self, tier: int) -> BaseAgent | None:
         """Return the best available agent at or below the requested tier."""
         for t in range(tier, 0, -1):
@@ -878,6 +901,24 @@ class Orchestrator:
         # Tier setup: pick starting agent, allow escalation up through all local tiers then T5
         current_tier  = starting_tier if starting_tier > 0 else DEFAULT_TIER
         current_agent = self._agent_for_tier(current_tier) or self.primary
+
+        # An agent profile may pin a model. Escalation is then suppressed for the
+        # rest of this request: the point of choosing a model is that it answers,
+        # and a tier step would silently swap it out mid-run — the setting would
+        # appear to work while doing nothing on exactly the harder prompts it was
+        # chosen for. Falling back to the tier system on construction failure is
+        # deliberate; refusing to answer would be worse than answering by default.
+        _pinned = False
+        _pin_model = (grants or {}).get("model") or ""
+        if _pin_model:
+            pinned_agent = self._agent_for_model(_pin_model)
+            if pinned_agent is not None:
+                current_agent = pinned_agent
+                _pinned = True
+                _log.info("[AGENT] model pinned to %s by agent profile", _pin_model)
+            else:
+                _log.warning("[AGENT] could not build agent for pinned model %r — "
+                             "falling back to the tier system", _pin_model)
         _t5_available = cc_rbac_ok and CLAUDE_CODE_TIER in self._tier_agents
 
         # Emit initial tier so UI can show the orb in the right state immediately
@@ -905,7 +946,8 @@ class Orchestrator:
             trace.append((f"model inference #{iteration + 1} [{tier_label}]", elapsed, note))
 
             # Escalation: step up tiers on capability failure; final stop is T5
-            if (not response.has_tool_calls() and needs_escalation(response.content)):
+            if (not _pinned and not response.has_tool_calls()
+                    and needs_escalation(response.content)):
                 next_tier = current_tier + 1
                 next_agent = self._tier_agents.get(next_tier)
                 if next_agent and next_tier <= MAX_LOCAL_TIER:
