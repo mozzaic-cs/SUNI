@@ -203,6 +203,12 @@ class TaskRouter:
     """
 
     def route(self, text: str) -> str:
+        # Recurring FIRST. "email me X every day at 8" is a schedule that happens
+        # to be delivered by mail, not an email to send now — and the email
+        # branch sends immediately, so losing this race means a request to set
+        # something up silently performs it once instead.
+        if _SCHEDULE_TASK.search(text):
+            return "schedule"
         # Email only takes direct path when it's a simple send (no fetch required)
         if _EMAIL_TASK.search(text) and not _EMAIL_NEEDS_FETCH.search(text):
             return "email"
@@ -213,10 +219,6 @@ class TaskRouter:
             return "pdf"
         if _BROWSER_TASK.search(text):
             return "browser"
-        # Checked early: "ask the X agent to do Y every morning" is both, and
-        # scheduling it is the outer intent — the schedule carries the agent.
-        if _SCHEDULE_TASK.search(text):
-            return "schedule"
         if _AGENT_TASK.search(text):
             return "agent"
         if _CODING_TASK.search(text) and _TECH_KEYWORD.search(text):

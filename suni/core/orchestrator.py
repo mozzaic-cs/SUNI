@@ -58,6 +58,11 @@ def _lang_instruction(response_language: str = "") -> str | None:
 _log = get_logger(__name__)
 _NL = chr(10)      # newline as a constant, so hint-building needs no escapes
 
+# Structured tool-selection (delegation, scheduling) needs at least a mid tier.
+# Measured: at tier 2 the same prompt chose four different wrong tools across
+# four runs. Below this, escalate rather than answer badly.
+_MIN_TIER_FOR_STRUCTURED = 3
+
 # Global activity ring-buffer — readable by the dashboard API
 activity_log: deque = deque(maxlen=20)
 
@@ -481,6 +486,30 @@ class Orchestrator:
             context.add(response)
             _tick("direct pdf", ts)
         # ── direct email path ─────────────────────────────────────────
+        elif route == "schedule" and not _readonly:
+            # Deterministic first: parsing beats tool-selection here, and it
+            # asks for anything missing instead of inventing it. Returns None
+            # when the text only looked recurring, and the normal pipeline runs.
+            _direct = await self._handle_schedule_direct(
+                user_input, trace, user_id, user_role, event_cb=event_cb)
+            if _direct is not None:
+                # Every branch here must yield a Message: _run_inner ends with
+                # response.content. Returning the bare string produced an empty
+                # reply — the handler ran in 0.9s, answered correctly, and the
+                # user saw nothing.
+                response = Message(role=Role.ASSISTANT, content=_direct, agent="schedule")
+                context.add(response)
+            else:
+                response = await self._agent_loop(context, trace, route,
+                                                  user_role=user_role, conv_mode=conv_mode,
+                                                  user_mcp_servers=user_mcp_servers,
+                                                  event_cb=event_cb,
+                                                  starting_tier=_start_tier,
+                                                  user_id=user_id,
+                                                  user_input=user_input,
+                                                  cc_rbac_ok=_cc_rbac_ok,
+                                                  grants=_agent_grants)
+                context.add(response)
         elif route == "email" and not _readonly and "send_email" in self.registry.names():
             ts = time.perf_counter()
             response = await self._handle_email_direct(user_input, context, trace)
@@ -550,6 +579,19 @@ class Orchestrator:
             # arguments right, which is exactly what the smaller models fail at.
             if route in ("agent", "schedule"):
                 _start_tier = min(max(_start_tier + 1, DEFAULT_TIER + 1), MAX_LOCAL_TIER)
+                # Automatic escalation when nothing local is up to it. These are
+                # structured tool-selection tasks, and the observed failure was
+                # not a near miss — four runs of one prompt picked four
+                # different wrong tools. Below tier 3 the honest thing is to
+                # hand off rather than produce a confident wrong answer, so if
+                # T5 is registered and permitted, go straight there.
+                if MAX_LOCAL_TIER < _MIN_TIER_FOR_STRUCTURED and _cc_rbac_ok                         and CLAUDE_CODE_TIER in self._tier_agents:
+                    _log.info("[TIER] no local model above tier %d for a %s task — "
+                              "escalating to T5", MAX_LOCAL_TIER, route)
+                    if event_cb:
+                        event_cb({"type": "tier_escalate", "from": MAX_LOCAL_TIER,
+                                  "to": CLAUDE_CODE_TIER, "reason": "no_capable_local"})
+                    _start_tier = CLAUDE_CODE_TIER
             _log.info("[TIER]    start=%d  max_local=%d (floor=core)", _start_tier, MAX_LOCAL_TIER)
             ts = time.perf_counter()
             response = await self._agent_loop(context, trace, route,
@@ -781,6 +823,87 @@ class Orchestrator:
 
         reply = f"PDF saved as `{filename}`.\n\n{result}"
         return Message(role=Role.ASSISTANT, content=reply, agent=self.primary.name)
+
+
+    async def _handle_schedule_direct(
+        self, user_input: str, trace: list, user_id: str, user_role: str,
+        event_cb=None,
+    ) -> str | None:
+        """Set up a recurring run without asking a model to pick a tool.
+
+        Returns the reply, or None to fall through to the normal pipeline.
+
+        The structured part — cadence, delivery, which agent — is parsed by
+        regex, because that is the part the local tiers get wrong. Measured, not
+        assumed: repeated runs of the same prompt called skills_list, run_shell,
+        db_query and send_email, never create_schedule, with the tool registered
+        and named in an injected hint.
+        """
+        from . import schedule_intent as _si
+        from .. import agents as _agents
+        from .. import schedules as _s
+
+        try:
+            known = [a for a in _agents.list_for_user(user_id, user_role)
+                     if a.get("enabled", True)]
+        except Exception:
+            known = []
+        parsed = _si.parse(user_input, known)
+        if not parsed["recurring"]:
+            return None                       # not a scheduling request after all
+
+        # Ask before building. This is the whole reason for the direct path: an
+        # unattended job built on a guessed detail is wrong every single run.
+        q = _si.question(parsed)
+        if q:
+            _tick = trace.append
+            _tick(("schedule: asked for missing detail", 0.0, ""))
+            extra = ""
+            if parsed["agent_named"] and not parsed["agent_slug"]:
+                extra = (f" Also, I have no agent called {parsed['agent_named']!r} — "
+                         f"tell me which of these to use, or I will handle it myself: "
+                         + (", ".join(a["name"] for a in known) if known else "none defined")
+                         + ".")
+            return q + extra
+
+        if parsed["agent_named"] and not parsed["agent_slug"]:
+            return (f"I have no agent called {parsed['agent_named']!r}. Available: "
+                    + (", ".join(a["name"] for a in known) if known else "none") +
+                    ". Say which to use, or ask me to do it myself.")
+
+        # The stored prompt runs later with no conversation history, so strip the
+        # scheduling and delivery clauses — otherwise the run would try to email
+        # itself a second time.
+        task = _si.strip_scheduling(user_input)
+        name = _si.suggest_name(task)
+        delivery = {"type": "email", "to": parsed["email_to"]} if parsed["email_to"] else {}
+
+        # Same gate the tool would have hit: recurring unattended execution.
+        if event_cb:
+            decision = await _approval.request_approval(
+                "create_schedule",
+                {"name": name, "cadence": parsed["cadence"],
+                 "email_to": parsed["email_to"] or "(not emailed)",
+                 "agent": parsed["agent_slug"] or "(SUNI)", "prompt": task},
+                user_id, event_cb,
+            )
+            if decision != "allow":
+                return "Left it unscheduled."
+
+        try:
+            rec = _s.create(name=name, prompt=task, cadence=parsed["cadence"],
+                            owner_id=user_id, agent_slug=parsed["agent_slug"],
+                            delivery=delivery)
+        except _s.CadenceError as exc:
+            return f"I could not schedule that: {exc}"
+
+        bits = [f"Scheduled: {parsed['cadence']}, first run "
+                f"{rec['next_run'][:16].replace('T', ' ')} UTC"]
+        if parsed["agent_slug"]:
+            bits.append(f"handled by {parsed['agent_slug']}")
+        if delivery:
+            bits.append(f"emailed to {delivery['to']}")
+        return ". ".join(bits) + f". Ask me to list your schedules to change it. (id: {rec['id']})"
 
     async def _handle_email_direct(
         self, user_input: str, context: Context, trace: list
