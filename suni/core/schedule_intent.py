@@ -201,3 +201,25 @@ def suggest_name(task: str) -> str:
         return "Scheduled run"
     label = " ".join(words[:6])
     return (label[:1].upper() + label[1:])[:60]
+
+
+_DELEGATION_STRIP = [
+    r"^\s*(?:suni[,:]?\s*)?(?:please\s+)?",
+    r"\b(?:can you\s+)?(?:please\s+)?(?:ask|tell|get|have)\s+"
+    r"(?:the\s+)?[\"'“‘]?[\w\s-]{0,40}?agent[\"'”’]?\s+(?:to\s+)?",
+]
+
+
+def strip_delegation(text: str) -> str:
+    """The task with the "ask the X agent to" wrapper removed.
+
+    The agent never sees this conversation, so it is handed the instruction
+    itself rather than a request addressed to somebody else — otherwise it reads
+    "ask the network agent to check the services" and starts looking for an
+    agent of its own.
+    """
+    out = text
+    for pat in _DELEGATION_STRIP:
+        out = re.sub(pat, " ", out, count=1, flags=re.IGNORECASE)
+    out = re.sub(r"\s{2,}", " ", out).strip(" ,.;:")
+    return out or text.strip()

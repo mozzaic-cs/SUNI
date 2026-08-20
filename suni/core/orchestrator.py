@@ -486,6 +486,23 @@ class Orchestrator:
             context.add(response)
             _tick("direct pdf", ts)
         # ── direct email path ─────────────────────────────────────────
+        elif route == "agent" and not _readonly:
+            _direct = await self._handle_agent_direct(
+                user_input, trace, user_id, user_role, event_cb=event_cb)
+            if _direct is not None:
+                response = Message(role=Role.ASSISTANT, content=_direct, agent="delegate")
+                context.add(response)
+            else:
+                response = await self._agent_loop(context, trace, route,
+                                                  user_role=user_role, conv_mode=conv_mode,
+                                                  user_mcp_servers=user_mcp_servers,
+                                                  event_cb=event_cb,
+                                                  starting_tier=_start_tier,
+                                                  user_id=user_id,
+                                                  user_input=user_input,
+                                                  cc_rbac_ok=_cc_rbac_ok,
+                                                  grants=_agent_grants)
+                context.add(response)
         elif route == "schedule" and not _readonly:
             # Deterministic first: parsing beats tool-selection here, and it
             # asks for anything missing instead of inventing it. Returns None
@@ -824,6 +841,62 @@ class Orchestrator:
         reply = f"PDF saved as `{filename}`.\n\n{result}"
         return Message(role=Role.ASSISTANT, content=reply, agent=self.primary.name)
 
+
+
+    async def _handle_agent_direct(
+        self, user_input: str, trace: list, user_id: str, user_role: str,
+        event_cb=None,
+    ) -> str | None:
+        """Delegate to a named agent without asking a model to choose a tool.
+
+        Returns the agent's answer, or None to fall through.
+
+        Same reasoning as the scheduling path: the model has to pick invoke_agent
+        out of ~57 tools and fill in the name, and measurement said it does not.
+        Extracting the name is a regex problem. Deciding what to do once the
+        agent is identified is not, so the sub-turn is still a full model turn —
+        run under the agent's profile with grants intersected as usual.
+        """
+        from . import schedule_intent as _si
+        from .. import agents as _agents
+        from ..tools import agent_tool as _at
+
+        try:
+            known = [a for a in _agents.list_for_user(user_id, user_role)
+                     if a.get("enabled", True)]
+        except Exception:
+            known = []
+        parsed = _si.parse(user_input, known)
+        if not parsed["agent_named"]:
+            return None                     # no agent named — ordinary request
+
+        if not parsed["agent_slug"]:
+            # Refuse by name rather than quietly doing it myself and presenting
+            # the result as the agent's. Being wrong loudly is recoverable.
+            avail = ", ".join(a["name"] for a in known) if known else "none defined"
+            return (f"I have no agent called {parsed['agent_named']!r}. "
+                    f"Available: {avail}. Say which to use, or ask me to do it myself.")
+
+        profile = _agents.get(parsed["agent_slug"])
+        if not profile:
+            return f"The agent {parsed['agent_named']!r} could not be loaded."
+        profile["_username"] = ""
+
+        task = _si.strip_delegation(user_input)
+        ts = time.perf_counter()
+        depth_token = _at.AGENT_DEPTH.set(_at.AGENT_DEPTH.get(0) + 1)
+        try:
+            sub = Context()
+            answer = await self._safe_run(
+                task, sub, user_role=user_role, user_id=user_id,
+                agent_profile=profile, event_cb=event_cb,
+            )
+        except Exception as exc:      # noqa: BLE001 — say it failed, do not answer instead
+            return f"The agent {profile['name']!r} failed: {exc}"
+        finally:
+            _at.AGENT_DEPTH.reset(depth_token)
+        trace.append((f"delegated to {profile['name']}", time.perf_counter() - ts, ""))
+        return f"[{profile['name']}]" + _NL + str(answer)
 
     async def _handle_schedule_direct(
         self, user_input: str, trace: list, user_id: str, user_role: str,

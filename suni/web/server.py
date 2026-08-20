@@ -2488,6 +2488,57 @@ def create_app() -> FastAPI:
             return JSONResponse({"error": "not found"}, status_code=404)
         return JSONResponse({"agent": _agents.get(slug)})
 
+    @app.patch("/api/agents/{slug}")
+    async def agents_update_api(slug: str, request: Request,
+                                user: dict = Depends(get_current_user)):
+        from .. import agents as _agents
+        body = await request.json()
+        rec = _agents.update(slug, user["id"], user.get("role", ""),
+                             **{k: v for k, v in body.items()
+                                if k in ("name", "description", "model", "mode",
+                                         "tools", "blocked", "mcp_servers",
+                                         "enabled", "system_prompt")})
+        if rec is None:
+            return JSONResponse({"error": "not found or not yours"}, status_code=403)
+        _audit.log_event(user["id"], user["username"], "agent.updated",
+                         detail=",".join(sorted(body.keys()))[:100],
+                         target_id=slug, agent_slug=slug)
+        return JSONResponse({"agent": rec})
+
+    @app.get("/api/agents/{slug}/members")
+    async def agents_members_api(slug: str, user: dict = Depends(get_current_user)):
+        from .. import agents as _agents
+        if slug not in {a["slug"] for a in _agents.list_for_user(user["id"], user.get("role", ""))}:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        return JSONResponse({"members": _agents.members(slug)})
+
+    @app.post("/api/agents/{slug}/share")
+    async def agents_share_api(slug: str, request: Request,
+                               user: dict = Depends(get_current_user)):
+        from .. import agents as _agents
+        body = await request.json()
+        target = str(body.get("user_id") or "").strip()
+        role = str(body.get("role") or "viewer").strip()
+        if not target:
+            return JSONResponse({"error": "user_id is required"}, status_code=400)
+        if not _agents.share(slug, target, role, user["id"], user.get("role", "")):
+            return JSONResponse({"error": "not permitted, or role must be viewer/editor"},
+                                status_code=403)
+        _audit.log_event(user["id"], user["username"], "agent.shared",
+                         detail=f"{target} as {role}", target_id=slug, agent_slug=slug)
+        return JSONResponse({"ok": True})
+
+    @app.delete("/api/agents/{slug}/share/{target_id}")
+    async def agents_unshare_api(slug: str, target_id: str,
+                                 user: dict = Depends(get_current_user)):
+        from .. import agents as _agents
+        if not _agents.unshare(slug, target_id, user["id"], user.get("role", "")):
+            return JSONResponse({"error": "not permitted (the owner cannot be removed)"},
+                                status_code=403)
+        _audit.log_event(user["id"], user["username"], "agent.unshared",
+                         detail=target_id, target_id=slug, agent_slug=slug)
+        return JSONResponse({"ok": True})
+
     @app.delete("/api/agents/{slug}")
     async def agents_delete_api(slug: str, user: dict = Depends(get_current_user)):
         from .. import agents as _agents

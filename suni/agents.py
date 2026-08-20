@@ -302,6 +302,80 @@ def can_edit(slug: str, user_id: str, user_role: str = "") -> bool:
     return bool(m and _ROLE_RANK.get(m["role"], 0) >= _ROLE_RANK["editor"])
 
 
+def update(slug: str, user_id: str, user_role: str = "", **fields) -> dict | None:
+    """Edit an agent in place, keeping its usage history.
+
+    Without this, changing a prompt meant delete-and-recreate, which threw away
+    used_count/last_used and broke every audit row that referenced the old slug.
+    The slug and owner are deliberately not editable: the slug is the identifier
+    schedules and audit rows point at.
+    """
+    if not can_edit(slug, user_id, user_role):
+        return None
+    cur = get(slug)
+    if not cur:
+        return None
+    allowed = {"name", "description", "model", "mode", "tools",
+               "blocked", "mcp_servers", "enabled", "system_prompt"}
+    for k, v in fields.items():
+        if k in allowed:
+            cur[k] = v
+    cur["updated_at"] = _now()
+    with _conn() as c:
+        c.execute(
+            """UPDATE agents SET name=?, description=?, model=?, mode=?, tools_json=?,
+               blocked_json=?, mcp_json=?, enabled=?, updated_at=? WHERE slug=?""",
+            (cur["name"], cur.get("description", ""), cur.get("model", ""),
+             cur.get("mode", "assistant"), json.dumps(cur.get("tools")),
+             json.dumps(cur.get("blocked") or []), json.dumps(cur.get("mcp_servers")),
+             1 if cur.get("enabled", True) else 0, cur["updated_at"], slug),
+        )
+    _write_md(cur)
+    return cur
+
+
+def share(slug: str, with_user_id: str, role: str, user_id: str,
+          user_role: str = "") -> bool:
+    """Give another user access. Only an owner/editor (or admin) may share.
+
+    The agent_members table existed from the start and was honoured by
+    can_edit(), but nothing ever wrote to it beyond the owner row — the sharing
+    model was real in the schema and unreachable in practice.
+    """
+    if role not in ("viewer", "editor"):
+        return False
+    if not can_edit(slug, user_id, user_role):
+        return False
+    with _conn() as c:
+        if not c.execute("SELECT 1 FROM agents WHERE slug=?", (slug,)).fetchone():
+            return False
+        c.execute(
+            "INSERT OR REPLACE INTO agent_members (slug,user_id,role,added_at) VALUES (?,?,?,?)",
+            (slug, with_user_id, role, _now()))
+    return True
+
+
+def unshare(slug: str, with_user_id: str, user_id: str, user_role: str = "") -> bool:
+    if not can_edit(slug, user_id, user_role):
+        return False
+    with _conn() as c:
+        # The owner row is not a share and must not be removable this way, or an
+        # editor could orphan someone else's agent.
+        owner = c.execute("SELECT owner_id FROM agents WHERE slug=?", (slug,)).fetchone()
+        if owner and owner["owner_id"] == with_user_id:
+            return False
+        c.execute("DELETE FROM agent_members WHERE slug=? AND user_id=?", (slug, with_user_id))
+    return True
+
+
+def members(slug: str) -> list[dict]:
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT user_id, role, added_at FROM agent_members WHERE slug=? ORDER BY added_at",
+            (slug,)).fetchall()
+    return [dict(r) for r in rows]
+
+
 def delete(slug: str, user_id: str, user_role: str = "") -> bool:
     if not can_edit(slug, user_id, user_role):
         return False
