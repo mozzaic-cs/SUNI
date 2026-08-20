@@ -449,6 +449,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
     <button class="tab" onclick="switchTab('mcp',this)"       data-i18n="admin.nav_mcp">MCP</button>
     <button class="tab" onclick="switchTab('skills',this)"    data-i18n="admin.nav_skills">Skills</button>
     <button class="tab" onclick="switchTab('agents',this)">Agents</button>
+    <button class="tab" onclick="switchTab('schedules',this)">Schedules</button>
     <button class="tab" onclick="switchTab('backup',this)"    data-i18n="admin.nav_backup">Backup</button>
     <button class="tab" onclick="switchTab('config',this)"    data-i18n="admin.nav_config">Configuration</button>
     <button class="tab" onclick="switchTab('benchmarks',this)">Benchmarks</button>
@@ -1210,6 +1211,33 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
 </div>
 
 <!-- ════════════════════ SKILLS ════════════════════ -->
+<div class="panel" id="panel-schedules">
+  <div class="card" style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div class="card-title" style="margin:0;border:none">Scheduled runs</div>
+      <span id="sched-count" style="font-size:10px;color:var(--muted)"></span>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5">
+      Each entry replays a prompt on a cadence, as its owner, with that owner's
+      permissions <em>as they are at the time it fires</em> — not as they were when
+      it was created. Ask SUNI for something recurring to add one; delivery goes
+      to the address fixed when it was set up, never one chosen at run time.
+    </div>
+  </div>
+  <div class="card">
+    <table class="tbl" id="sched-table">
+      <thead><tr>
+        <th>Name</th><th>Cadence</th><th>Agent</th><th>Delivery</th>
+        <th>Next run (UTC)</th><th>Last</th><th>Runs</th><th></th>
+      </tr></thead>
+      <tbody id="sched-tbody"></tbody>
+    </table>
+    <div id="sched-empty" style="display:none;padding:24px;text-align:center;color:var(--muted);font-size:12px">
+      Nothing scheduled.
+    </div>
+  </div>
+</div>
+
 <div class="panel" id="panel-agents">
   <div class="card" style="margin-bottom:16px">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
@@ -1557,6 +1585,7 @@ function switchTab(name, btn) {
   if (name === 'mcp')    loadMcp();
   if (name === 'skills') loadSkills();
   if (name === 'agents') loadAgents();
+  if (name === 'schedules') loadSchedules();
   if (name === 'backup') loadBackups();
   if (name === 'benchmarks') loadBenchmarks();
   if (name !== 'benchmarks') { clearInterval(_bmProgTimer); _bmProgTimer = null; }
@@ -2787,7 +2816,68 @@ async function testMcpFromModal(){
 // ═══════════════════════════════════════════
 let _allSkills = [];
 
-async /* ── Agents ─────────────────────────────────────────────────────────────────
+async /* ── Schedules ──────────────────────────────────────────────────────────────
+   Read-only plus enable/disable and delete. Creating one goes through the chat,
+   where the cadence is parsed and anything missing is asked for — a form here
+   would be a second, divergent way to build the same object. */
+async function loadSchedules() {
+  const tb = document.getElementById('sched-tbody');
+  const empty = document.getElementById('sched-empty');
+  const table = document.getElementById('sched-table');
+  try {
+    const r = await _apiFetch('/api/schedules');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const { schedules } = await r.json();
+    document.getElementById('sched-count').textContent =
+      schedules.length ? `${schedules.length} defined` : '';
+    tb.innerHTML = '';
+    table.style.display = schedules.length ? '' : 'none';
+    empty.style.display = schedules.length ? 'none' : '';
+    for (const s of schedules) {
+      const to = (s.delivery && s.delivery.to) ? esc(s.delivery.to) : '—';
+      const last = s.last_status
+        ? `<span title="${esc(s.last_run)}">${esc(s.last_status.slice(0, 28))}</span>`
+        : '—';
+      const tr = document.createElement('tr');
+      if (!s.enabled) tr.style.opacity = '.5';
+      tr.innerHTML =
+        `<td><strong>${esc(s.name)}</strong>` +
+        `<div style="font-size:10px;color:var(--muted)">${esc((s.prompt||'').slice(0,70))}</div></td>` +
+        `<td>${esc(s.cadence)}</td>` +
+        `<td>${s.agent_slug ? esc(s.agent_slug) : '—'}</td>` +
+        `<td>${to}</td>` +
+        `<td>${esc((s.next_run||'').slice(0,16).replace('T',' '))}</td>` +
+        `<td>${last}</td>` +
+        `<td>${s.run_count || 0}</td>` +
+        `<td style="text-align:right;white-space:nowrap">` +
+          `<button class="tbl-btn" onclick="toggleSchedule('${esc(s.id)}',${s.enabled ? 'false' : 'true'})">` +
+            `${s.enabled ? 'Disable' : 'Enable'}</button> ` +
+          `<button class="tbl-btn" onclick="deleteSchedule('${esc(s.id)}')">Delete</button>` +
+        `</td>`;
+      tb.appendChild(tr);
+    }
+  } catch (err) {
+    tb.innerHTML = `<tr><td colspan="8" style="color:var(--danger)">Could not load schedules: ${esc(String(err))}</td></tr>`;
+  }
+}
+
+async function toggleSchedule(id, enable) {
+  const r = await _apiFetch('/api/schedules/' + encodeURIComponent(id) + '/enabled', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled: enable }),
+  });
+  if (!r.ok) { alert('Could not change it: HTTP ' + r.status); return; }
+  loadSchedules();
+}
+
+async function deleteSchedule(id) {
+  if (!confirm('Delete this scheduled run? It will stop firing immediately.')) return;
+  const r = await _apiFetch('/api/schedules/' + encodeURIComponent(id), { method: 'DELETE' });
+  if (!r.ok) { alert('Could not delete: HTTP ' + r.status); return; }
+  loadSchedules();
+}
+
+/* ── Agents ─────────────────────────────────────────────────────────────────
    The list endpoint returns EFFECTIVE grants — what each agent can do for the
    person looking at it, which differs by role. Showing the file's declared
    grants instead would promise reach the agent will not actually get. */

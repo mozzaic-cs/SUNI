@@ -73,7 +73,7 @@
 <div class="wrap">
   <h1>Personal AI Assistant &amp; Agent Frameworks — Comparison</h1>
   <p class="sub">SUNI · OpenClaw · Hermes · Turnstone &nbsp;—&nbsp; features, technology &amp; capabilities<br>
-  <small>Last updated 20 August 2026 · written by SUNI's author · corrections welcome, see the foot of the page</small></p>
+  <small>Last updated 21 August 2026 · written by SUNI's author · corrections welcome, see the foot of the page</small></p>
 
   <div class="legend">
     <span><b>✓</b> yes / present</span>
@@ -114,6 +114,8 @@
         <tr><td class="lens">Built-in capability &amp; UX breadth</td><td class="first">SUNI</td><td>Hermes</td><td>OpenClaw</td><td>Turnstone</td></tr>
         <tr><td class="lens">Multi-model collaboration</td><td class="first">SUNI</td><td colspan="3" style="color:var(--dim)">— the others run one model per turn —</td></tr>
         <tr><td class="lens">EU AI Act Art 50 transparency</td><td class="first">SUNI</td><td colspan="3" style="color:var(--dim)">— no Art 50 marking found in the others —</td></tr>
+        <tr><td class="lens">Agent permission model</td><td class="first">SUNI</td><td colspan="3" style="color:var(--dim)">— the only one where an agent's grants are intersected with the caller's, so it cannot widen —</td></tr>
+        <tr><td class="lens">Unattended automation</td><td class="first">Hermes</td><td>SUNI</td><td colspan="2" style="color:var(--dim)">— Hermes' cron is more mature; SUNI's is newer but asks before guessing —</td></tr>
         <tr><td class="lens">Maturity, adoption &amp; ecosystem</td><td class="first">Hermes</td><td>OpenClaw</td><td>Turnstone</td><td>SUNI</td></tr>
         <tr><td class="lens">Channel / surface reach</td><td class="first">Hermes</td><td>SUNI</td><td>OpenClaw</td><td>Turnstone</td></tr>
         <tr><td class="lens">Scale-out (multi-node)</td><td class="first">Turnstone</td><td colspan="3" style="color:var(--dim)">— the others are single-node —</td></tr>
@@ -225,6 +227,20 @@
         <td>Session memory (fork documents a memory subsystem)</td>
       </tr>
       <tr>
+        <th>User-defined agents</th>
+        <td class="suni"><span class="y">✓</span> Named profiles (prompt + optional model + narrowed tools), invoked by name in conversation, by picker, or on a schedule. <strong>Grants can only NARROW</strong> — intersected with the caller's role at invocation, so an admin-authored agent gives its user nothing new. Shared owner/editor/viewer; every run recorded with the grants that applied</td>
+        <td>Agent config + <code>.agents/skills</code>; per-tool allow/deny, sandboxing optional <em class="t">~</em></td>
+        <td><span class="y">✓</span> <code>SOUL.md</code> personalities, per-agent model via <code>/model</code>, per-agent tool allowlists, isolated sub-agents for parallel work</td>
+        <td>MCP-scoped tools per agent <em class="t">~</em></td>
+      </tr>
+      <tr>
+        <th>Scheduled / unattended runs</th>
+        <td class="suni"><span class="y">✓</span> Cadence parsed deterministically from plain language (asks when a detail is missing rather than guessing). Runs as the owner with the role read <strong>at fire time</strong>, delivery address fixed by a human at setup, unknown cadence refused rather than rounded</td>
+        <td><span class="n">—</span> <em class="t">~</em></td>
+        <td><span class="y">✓</span> Built-in cron; scheduled automations in natural language, delivered to any platform</td>
+        <td>Headless orchestration; scheduling external <em class="t">~</em></td>
+      </tr>
+      <tr>
         <th>Self-improvement</th>
         <td class="suni"><span class="y">✓</span> Auto-generates reusable skills from experience; memory that consolidates &amp; deprecates superseded facts; auto-config detection</td>
         <td>User- / agent-authored skills <em class="t">~</em></td>
@@ -304,11 +320,13 @@
     <p><strong>Lineage note:</strong> <b>Hermes</b> is a public OpenClaw successor (it even ships automatic OpenClaw migration);
     <b>Turnstone</b> is a sibling in the self-hosted, local-first, MCP-tool-using space. All four are self-hostable and local-capable; they differ most in
     <em>surface</em> (SUNI's voice/3D persona vs. OpenClaw/Hermes chat platforms vs. Turnstone's headless CLI/cluster).</p>
-    <p><strong>Confidence:</strong> the <b>SUNI</b> column is direct project knowledge; the rest is verified against the
-    repos/sites below (2026). Cells still marked inferred (<em class="t">~</em>): Hermes voice, which appears in a
-    community desktop build rather than the core; and the three EU AI&nbsp;Act cells, where the claim is the narrow one
-    that <em>no Art&nbsp;50 marking was found</em> in each project's documentation or a code search — absence of evidence,
-    not evidence of absence. A project that implements it and says so will be corrected on request.</p>
+    <p><strong>Confidence:</strong> the <b>SUNI</b> column is direct project knowledge; the rest is
+    verified against the repos/sites below. Cells marked <em class="t">~</em> are inferred rather than
+    confirmed, and fall into two kinds: a capability that exists in a community build rather than the
+    core (Hermes voice), and claims of the form <em>no evidence of X was found</em> — the EU AI Act
+    rows, and the agent/scheduling rows where a project's docs did not describe the behaviour either
+    way. Absence of evidence, not evidence of absence. Counting them here would rot; the markers in
+    the table are the record.</p>
 
     <p><strong>Corrections welcome.</strong> This is a comparison written by SUNI's author, so the SUNI column has an
     obvious advantage in depth of knowledge — that asymmetry is why the ranking table above puts <b>Hermes</b> first on

@@ -22,13 +22,15 @@ collaborate on one answer**. Runs on your own hardware; your data stays yours.
 - **Pluggable models** — local Ollama/vLLM **plus** Claude, OpenAI, Gemini, and **no-key subscription CLIs** (Claude Code, Codex).
 - **Governance** — RBAC, intent judge, output guard, tool policies, approval previews, OIDC/SSO, rate limiting, audit log.
 - **EU AI Act transparency, implemented** — Article 50 disclosure in every UI, and synthetic output marked **machine-readably** (PDF `/Info`, RFC 3834 email headers), not just visibly. See [`docs/eu-ai-act.md`](docs/eu-ai-act.md).
+- **Named agents** — save a prompt, a model and a narrowed tool set as an agent, then ask SUNI to hand work to it. An agent can only ever *reduce* what the person running it could already do.
+- **Scheduled runs** — "email me a calendar digest every morning at 8" becomes a recurring job that replays through SUNI, as you, with your permissions **at the time it fires**.
 - **Batteries included** — **19 starter skills** and a **26-server MCP catalog** you can one-click add.
 
 ---
 
 ## How the distinctive parts actually work
 
-The list above names things; this is the mechanism behind the four that are hard
+The list above names things; this is the mechanism behind the ones that are hard
 to find elsewhere. The full picture — every module, route and background job — is
 the diagram at **`/architecture`** once you're running.
 
@@ -72,6 +74,25 @@ Recognising *what* it is looking at is a separate, explicit act: a snapshot
 button captures one still and sends it to a vision model you configure (or to
 Claude Code). That one does leave the machine, which is exactly why it is a
 button you press rather than something running continuously.
+
+**Agents can only narrow, never widen.** An agent profile is a system prompt, an
+optional model, and an optional restriction of the tools and MCP servers it may
+reach. When one is invoked, its declared grants are **intersected** with the
+role of whoever invoked it, and its blocks are added to theirs — so an
+admin-authored agent handed to a restricted user grants that user nothing new.
+The resolution happens at invocation, not at save time, because `AGENT.md` is a
+file on disk that can be edited outside the app. Agents may be invoked but may
+not invoke each other; the depth cap exists because A→B→A is a loop with a GPU
+attached.
+
+**Scheduled runs are unattended, and the design follows from that.** Each entry
+runs as its owner with the owner's role read *when it fires* — never a snapshot
+from when it was created, which would let a schedule preserve permissions its
+owner has since lost. A deactivated account's schedules stop. Delivery goes to
+an address a human fixed at setup, never one the model picks at run time, since
+there is nobody present to approve it. And an unrecognised cadence is refused
+rather than rounded to something else: silently turning "every hour" into "every
+day" is the kind of failure that looks like success.
 
 **Transparency is built in, not bolted on.** The EU AI Act's Article 50
 obligations became applicable on 2 August 2026, and SUNI implements them: a

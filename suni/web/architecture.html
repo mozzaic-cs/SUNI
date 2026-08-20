@@ -1386,6 +1386,78 @@ body.simple .section-gap{height:6px!important}
   </div>
 </div>
 
+<!-- ══ AGENTS & SCHEDULES ══ -->
+<div class="section-gap" style="height:10px"></div>
+<div class="lane" id="lane-agents">
+  <div class="lane-header" style="color:var(--purple)">
+    <span>Named Agents &amp; Scheduled Runs</span>
+    <span style="font-size:9px;color:var(--muted);font-weight:400;letter-spacing:.04em">a saved way to be &middot; and a way to run unattended</span>
+    <span class="new-badge" style="background:rgba(155,89,182,.15);color:var(--purple)">Phase 12</span>
+  </div>
+  <div class="lane-content" style="align-items:flex-start">
+
+    <div class="node" style="border-color:rgba(155,89,182,.4);min-width:250px">
+      <div class="node-tag" style="background:rgba(155,89,182,.06);color:var(--purple)">agents.py &middot; memory/agents/{slug}/AGENT.md</div>
+      <div class="node-title" style="color:var(--purple)">Agent Profiles</div>
+      <div class="node-detail">
+        <span>A prompt, an optional model, an optional narrowing of tools</span>
+        Stored as Markdown + YAML frontmatter beside a SQLite index, so a
+        definition stays readable and editable outside the app<br>
+        Sharing mirrors project_members: owner / editor / viewer<br>
+        <span style="color:var(--purple)">Model pinned by a profile suppresses tier escalation — otherwise the choice would be swapped out mid-run</span>
+      </div>
+    </div>
+
+    <div class="node" style="border-color:rgba(255,69,96,.45);min-width:250px">
+      <div class="node-tag" style="background:rgba(255,69,96,.07);color:var(--red)">effective_grants() &middot; resolved per invocation</div>
+      <div class="node-title" style="color:var(--red)">Narrowing, never widening</div>
+      <div class="node-detail">
+        <span>Tools &amp; MCP INTERSECT with the caller's role; blocks UNION</span>
+        Re-derived every run, never stored — AGENT.md is a file a user can edit<br>
+        A profile cannot grant a conversation mode the role lacks<br>
+        <span style="color:var(--red)">Without this an admin-authored agent in a dropdown would be privilege escalation for whoever picked it</span>
+      </div>
+    </div>
+
+    <div class="node" style="border-color:rgba(0,212,255,.35);min-width:250px">
+      <div class="node-tag" style="background:rgba(0,212,255,.06);color:var(--cyan)">schedule_intent.py &middot; _handle_schedule_direct</div>
+      <div class="node-title" style="color:var(--cyan)">Deterministic intent</div>
+      <div class="node-detail">
+        <span>Cadence, delivery and agent parsed by regex, not chosen by the model</span>
+        Measured: at the core tier the same prompt picked four different wrong
+        tools across four runs, with the right one registered and hinted<br>
+        Missing detail is ASKED for, never invented<br>
+        <span style="color:var(--cyan)">No capable local tier &rarr; automatic escalation to T5</span>
+      </div>
+    </div>
+
+    <div class="node" style="border-color:rgba(20,217,140,.4);min-width:250px">
+      <div class="node-tag" style="background:rgba(20,217,140,.06);color:var(--teal)">schedules.py &middot; _schedule_runner</div>
+      <div class="node-title" style="color:var(--teal)">Scheduled Invocations</div>
+      <div class="node-detail">
+        <span>Replays a PROMPT through the orchestrator, not an OS command</span>
+        Runs as the owner, role read AT FIRE TIME — not a snapshot, which would
+        preserve permissions the owner has since lost<br>
+        Delivery performed by the runner: unattended runs have no approver, so
+        the model never chooses a recipient<br>
+        <span style="color:var(--teal)">Unknown cadence refused, never rounded &middot; missed slots do not stack</span>
+      </div>
+    </div>
+
+    <div class="node c-gold" style="min-width:250px">
+      <div class="node-tag" style="background:rgba(201,162,39,.07);color:var(--gold)">audit_log.agent_slug &middot; agent.invoked</div>
+      <div class="node-title">Traceable by agent</div>
+      <div class="node-detail">
+        <span>Which agent answered, and what it was allowed to reach then</span>
+        Per-request row carries agent_slug; a governance event records the
+        RESOLVED grants — model, mode, tool count, MCP prefixes<br>
+        <span style="color:var(--gold)">Grants are re-derived each run, so the profile as it stands later is not evidence of what applied</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
 <!-- ══ DEPLOYMENT & PACKAGING ══ -->
 <div class="section-gap" style="height:10px"></div>
 <div class="lane" id="lane-deploy">
@@ -1462,6 +1534,7 @@ body.simple .section-gap{height:6px!important}
   <div class="legend-item"><span class="new-badge" style="background:rgba(155,89,182,.12);color:var(--purple)">new</span> Phase 6.4: web_url route (web_fetch hint) · memory SYSTEM dedup · _sanitize_response (DOC-EXCERPT) · file-serve JWT token auth · _inject_dl_token · configurable output directory (global + per-user)</div>
   <div class="legend-item"><span class="new-badge" style="background:rgba(0,212,255,.12);color:var(--cyan)">new</span> Phase 7: adaptive memory — LLM supersession · soft-deprecation (lifecycle) · weekly consolidation · conversation dedup · age-out</div>
   <div class="legend-item"><span class="new-badge" style="background:rgba(201,162,39,.14);color:var(--gold)">new</span> Phase 7: EU AI Act Art 50 — AI-interaction disclosure · AI-generated content marking (PDF/email) · risk classification · safeguard mapping</div>
+  <div class="legend-item"><span class="new-badge" style="background:rgba(155,89,182,.15);color:var(--purple)">new</span> Phase 12: named agents (narrow-only grants, model pinning, delegation with a depth cap) &middot; scheduled invocations &middot; deterministic cadence parsing &middot; per-agent audit</div>
   <div class="legend-item"><span class="new-badge" style="background:rgba(20,217,140,.15);color:var(--teal)">new</span> Phase 11: deployment — Docker + compose · TLS generated on first run · first-run wizard · pip wheel · systemd unit · cross-platform boot path · local image generation</div>
 </div>
 
