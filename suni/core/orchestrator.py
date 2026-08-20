@@ -215,6 +215,7 @@ class Orchestrator:
         user_id: str = "",      # for auto-config writes
         claude_api_key: str = "",  # per-user Anthropic key; '' = use global env var
         images: list[str] | None = None,  # paths of attached image files (vision path)
+        agent_profile: dict | None = None,  # named agent profile; see suni/agents.py
     ) -> str:
         """Process a user message through the full agent-tool loop."""
         # Set per-request ContextVars so tool handlers can read them.
@@ -230,6 +231,7 @@ class Orchestrator:
             return await self._run_inner(
                 user_input, context, user_role, conv_mode, response_language,
                 user_mcp_servers, event_cb, user_id, claude_api_key, images,
+                agent_profile,
             )
         finally:
             CLAUDE_API_KEY_CTX.reset(_key_token)
@@ -248,6 +250,7 @@ class Orchestrator:
         user_id: str,
         claude_api_key: str,
         images: list[str] | None = None,
+        agent_profile: dict | None = None,
     ) -> str:
         # Per-request memory: the task-local binding (set race-free by run() at
         # request start) — NOT self.memory, which _safe_run swaps and a concurrent
@@ -295,6 +298,14 @@ class Orchestrator:
         lang_hint = _lang_instruction(response_language)
         if lang_hint:
             context.add(Message(role=Role.SYSTEM, content=lang_hint, agent="lang"))
+
+        # Agent profile prompt. Added as a SYSTEM message rather than replacing
+        # the base prompt: the base carries the AI-disclosure instruction and the
+        # safety rules, and a profile must not be able to drop those.
+        if agent_profile and (agent_profile.get("system_prompt") or "").strip():
+            context.add(Message(role=Role.SYSTEM,
+                                content=agent_profile["system_prompt"].strip(),
+                                agent="agent-profile"))
 
         # ── skills Level-0 injection ───────────────────────────────────
         if self.skill_store:
@@ -454,6 +465,20 @@ class Orchestrator:
             # 1.5B nano) are too weak for reliable tool use — they hallucinate
             # instead of calling tools — so we never start below core; harder
             # queries still climb from there and escalate to Claude Code (T5).
+            # Agent profile: resolve its grants against THIS caller's role. The
+            # profile is a file a user can edit, so nothing in it is trusted —
+            # effective_grants() intersects, never unions. None keeps the plain
+            # role behaviour and costs nothing.
+            _agent_grants = None
+            if agent_profile:
+                from ..agents import effective_grants as _eff
+                _agent_grants = _eff(
+                    agent_profile, user_role,
+                    getattr(self.registry, "_mcp_prefixes", []),
+                )
+                if _agent_grants["mode"] != conv_mode and _agent_grants["mode"]:
+                    conv_mode = _agent_grants["mode"]
+
             _start_tier = min(max(complexity_score(user_input), DEFAULT_TIER), MAX_LOCAL_TIER)
             _log.info("[TIER]    start=%d  max_local=%d (floor=core)", _start_tier, MAX_LOCAL_TIER)
             ts = time.perf_counter()
@@ -464,7 +489,8 @@ class Orchestrator:
                                               starting_tier=_start_tier,
                                               user_id=user_id,
                                               user_input=user_input,
-                                              cc_rbac_ok=_cc_rbac_ok)
+                                              cc_rbac_ok=_cc_rbac_ok,
+                                              grants=_agent_grants)
             context.add(response)
 
         # ── memory store ──────────────────────────────────────────────
@@ -808,10 +834,17 @@ class Orchestrator:
         user_id: str = "",
         user_input: str = "",       # original user text; used for T5 fallback
         cc_rbac_ok: bool = True,    # whether T5 is permitted for this user/role
+        grants: dict | None = None, # resolved agent grants; None = plain role
     ) -> Message:
         # MCP prefix filtering based on route AND role (AND per-user restriction)
         registered_prefixes = getattr(self.registry, "_mcp_prefixes", [])
-        role_prefixes = _rbac.mcp_prefixes(user_role, registered_prefixes)
+        # An agent profile can only ever narrow these: suni.agents.effective_grants()
+        # has already intersected them with the role before we get here, so there is
+        # no path by which a profile widens what this user could otherwise reach.
+        if grants:
+            role_prefixes = grants["mcp_prefixes"]
+        else:
+            role_prefixes = _rbac.mcp_prefixes(user_role, registered_prefixes)
 
         # Per-user MCP restriction: intersect role prefixes with user's allowed list
         if user_mcp_servers is not None and role_prefixes is not None:
@@ -838,8 +871,8 @@ class Orchestrator:
 
         tools = self.registry.get_ollama_tools(
             include_prefixes=include,
-            allowed_tools=_rbac.allowed_tools(user_role),
-            blocked_tools=_rbac.blocked_tools(user_role),
+            allowed_tools=(grants["allowed_tools"] if grants else _rbac.allowed_tools(user_role)),
+            blocked_tools=(grants["blocked_tools"] if grants else _rbac.blocked_tools(user_role)),
         )
 
         # Tier setup: pick starting agent, allow escalation up through all local tiers then T5
