@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Personal AI Assistant Comparison — SUNI · OpenClaw · Hermes · Turnstone</title>
+<style>
+  :root{
+    --bg:#f7f8fb; --card:#ffffff; --ink:#1a1d29; --dim:#5a6072; --line:#e3e6ee;
+    --suni:#c9a227; --suni-bg:rgba(201,162,39,.08); --cyan:#0a7ea4;
+    --head:#121730; --head-ink:#eef1fb; --yes:#1a8f5a; --no:#b23; --tilde:#9096a8;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#0b0e1a; --card:#12162a; --ink:#e6e8f2; --dim:#9aa0b8; --line:#232a44;
+      --suni-bg:rgba(201,162,39,.12); --head:#0a0d1c; --head-ink:#eef1fb; --cyan:#37c6f0; }
+  }
+  :root[data-theme="dark"]{ --bg:#0b0e1a; --card:#12162a; --ink:#e6e8f2; --dim:#9aa0b8; --line:#232a44;
+    --suni-bg:rgba(201,162,39,.12); --head:#0a0d1c; --head-ink:#eef1fb; --cyan:#37c6f0; }
+  :root[data-theme="light"]{ --bg:#f7f8fb; --card:#ffffff; --ink:#1a1d29; --dim:#5a6072; --line:#e3e6ee;
+    --suni-bg:rgba(201,162,39,.08); --head:#121730; --head-ink:#eef1fb; --cyan:#0a7ea4; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.5;padding:32px 20px;}
+  .wrap{max-width:1180px;margin:0 auto}
+  h1{font-size:23px;margin:0 0 4px;letter-spacing:-.01em}
+  .sub{color:var(--dim);font-size:13.5px;margin:0 0 22px}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--dim);
+    margin:0 0 16px;padding:10px 14px;background:var(--card);border:1px solid var(--line);border-radius:10px}
+  .legend b{color:var(--ink)}
+  .scroll{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+  table{border-collapse:collapse;width:100%;min-width:860px;font-size:13px}
+  thead th{position:sticky;top:0;background:var(--head);color:var(--head-ink);
+    text-align:left;padding:13px 14px;font-size:13px;font-weight:600;white-space:nowrap}
+  thead th.dim-col{width:150px;min-width:150px}
+  th.suni,td.suni{background:var(--suni-bg)}
+  thead th.suni{color:var(--suni);border-bottom:2px solid var(--suni)}
+  tbody th{text-align:left;padding:11px 14px;font-weight:600;color:var(--ink);
+    vertical-align:top;background:var(--card);border-right:1px solid var(--line);white-space:nowrap}
+  tbody td{padding:11px 14px;vertical-align:top;color:var(--ink);border-top:1px solid var(--line)}
+  tbody th{border-top:1px solid var(--line)}
+  tr:hover td,tr:hover th{background:rgba(120,140,200,.05)}
+  tr:hover td.suni{background:var(--suni-bg)}
+  .grp td{background:transparent;border-top:2px solid var(--line);
+    font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);
+    font-weight:700;padding:14px 14px 6px}
+  .y{color:var(--yes);font-weight:700}
+  .n{color:var(--no);font-weight:700}
+  em.t{font-style:normal;color:var(--tilde)}
+  small{color:var(--dim)}
+  .foot{margin-top:20px;font-size:12.5px;color:var(--dim)}
+  .foot a{color:var(--cyan)}
+  .foot h3{font-size:13px;color:var(--ink);margin:18px 0 6px}
+  code{background:rgba(120,140,200,.12);padding:1px 5px;border-radius:4px;font-size:12px}
+  .analysis{margin-top:26px;padding:20px 22px;background:var(--card);border:1px solid var(--line);border-radius:12px}
+  .analysis h2{font-size:17px;margin:0 0 6px}
+  .analysis h3{font-size:13.5px;margin:18px 0 8px}
+  .analysis>p{font-size:13.5px;margin:0 0 12px;color:var(--ink)}
+  .verdicts{list-style:none;padding:0;margin:0;display:grid;gap:9px}
+  .verdicts li{font-size:13px;padding:10px 13px;border-left:3px solid var(--line);
+    background:rgba(120,140,200,.04);border-radius:0 8px 8px 0}
+  .verdicts li.suni-li{border-left-color:var(--suni);background:var(--suni-bg)}
+  .verdicts li b{color:var(--ink)}
+  .rank{border-collapse:collapse;width:100%;font-size:12.5px;margin:2px 0 10px;min-width:520px}
+  .rank th,.rank td{text-align:left;padding:7px 11px;border-top:1px solid var(--line);white-space:nowrap}
+  .rank thead th{color:var(--dim);font-weight:600;border-top:none;text-transform:uppercase;
+    font-size:11px;letter-spacing:.05em}
+  .rank td.first{color:var(--suni);font-weight:700}
+  .rank .lens{color:var(--ink);font-weight:600;white-space:normal}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Personal AI Assistant &amp; Agent Frameworks — Comparison</h1>
+  <p class="sub">SUNI · OpenClaw · Hermes · Turnstone &nbsp;—&nbsp; features, technology &amp; capabilities<br>
+  <small>Last updated 20 August 2026 · written by SUNI's author · corrections welcome, see the foot of the page</small></p>
+
+  <div class="legend">
+    <span><b>✓</b> yes / present</span>
+    <span><b>—</b> no / not applicable</span>
+    <span><b class="t">~</b> inferred or unconfirmed</span>
+    <span><b>SUNI</b> = direct project knowledge; others verified from GitHub / web (2026) + SUNI porting notes.</span>
+  </div>
+
+  <section class="analysis">
+    <h2>The short version</h2>
+    <p>All four are self-hostable and local-capable — they diverge on <b>surface</b> (how you talk to them)
+    and <b>scope</b> (personal assistant vs. cluster orchestrator). In one line each:</p>
+    <ul class="verdicts">
+      <li class="suni-li"><b>SUNI</b> — the most feature-complete for a single-node personal / small-business
+        deployment, and the only one that is voice-first with a 3D persona (Orb / Chat / Face + webcam vision),
+        backed by strong governance and built-in resiliency. Now reachable across <b>Telegram / Discord / Slack /
+        WhatsApp</b> as well as its web UIs, and the only one that can have <b>multiple frontier models collaborate</b>
+        on a single answer. Trade-off: private / bespoke and single-node.</li>
+      <li><b>Hermes</b> — the most mature and widely adopted: a production-grade open agent (MIT) with 20+ messaging
+        channels, six execution backends, and a formal self-improvement loop. The safest general-purpose choice.</li>
+      <li><b>OpenClaw</b> — the accessible on-ramp: it lives inside your existing chat apps (WhatsApp / Discord /
+        Telegram), speaks to any major LLM, and sandboxes tools well. The lineage both SUNI and Hermes grew from.</li>
+      <li><b>Turnstone</b> — the headless tool-agent orchestrator for hardware you control: provider-agnostic, MCP,
+        cluster-scalable. No voice or persona — built for engineering / DevOps agent workloads.</li>
+    </ul>
+
+    <h3>Ranking depends on the lens</h3>
+    <div style="overflow-x:auto">
+    <table class="rank">
+      <thead><tr><th>By this measure…</th><th>1st</th><th>2nd</th><th>3rd</th><th>4th</th></tr></thead>
+      <tbody>
+        <tr><td class="lens">Built-in capability &amp; UX breadth</td><td class="first">SUNI</td><td>Hermes</td><td>OpenClaw</td><td>Turnstone</td></tr>
+        <tr><td class="lens">Multi-model collaboration</td><td class="first">SUNI</td><td colspan="3" style="color:var(--dim)">— the others run one model per turn —</td></tr>
+        <tr><td class="lens">EU AI Act Art 50 transparency</td><td class="first">SUNI</td><td colspan="3" style="color:var(--dim)">— no Art 50 marking found in the others —</td></tr>
+        <tr><td class="lens">Maturity, adoption &amp; ecosystem</td><td class="first">Hermes</td><td>OpenClaw</td><td>Turnstone</td><td>SUNI</td></tr>
+        <tr><td class="lens">Channel / surface reach</td><td class="first">Hermes</td><td>SUNI</td><td>OpenClaw</td><td>Turnstone</td></tr>
+        <tr><td class="lens">Scale-out (multi-node)</td><td class="first">Turnstone</td><td colspan="3" style="color:var(--dim)">— the others are single-node —</td></tr>
+        <tr><td class="lens">Privacy / local-first</td><td colspan="4" style="color:var(--dim)">≈ tie — SUNI, Hermes &amp; Turnstone all strongly local-first; OpenClaw is local via LocalClaw</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <p><b>Overall:</b> for a general, ready-to-adopt agent, <b>Hermes</b> leads on maturity and reach; <b>SUNI</b>
+    is the richest and most differentiated <em>for its intended purpose</em> — a private, voice-forward personal /
+    small-business assistant; <b>OpenClaw</b> is the simplest entry point; and <b>Turnstone</b> wins where you need
+    cluster-scale tool orchestration. There is no single winner — the right pick follows the use case.</p>
+  </section>
+
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr>
+        <th class="dim-col">Dimension</th>
+        <th class="suni">SUNI</th>
+        <th>OpenClaw</th>
+        <th>Hermes</th>
+        <th>Turnstone</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="grp"><td colspan="5">Identity</td></tr>
+      <tr>
+        <th>Purpose</th>
+        <td class="suni">Persistent, self-hosted AI assistant for individuals and small-and-medium businesses, with a voice + visual persona</td>
+        <td>“Your own personal AI assistant — any OS, any platform” 🦞</td>
+        <td>Self-improving, always-on personal agent — “the agent that grows with you”; auto-migrates from OpenClaw</td>
+        <td>Self-hosted, local-first orchestration for tool-using AI agents (cluster-capable)</td>
+      </tr>
+      <tr>
+        <th>Maintainer</th>
+        <td class="suni">MOZZAIC (private project)</td>
+        <td>OpenClaw Foundation (non-profit)</td>
+        <td>Nous Research — <code>NousResearch/hermes-agent</code></td>
+        <td><code>turnstonelabs/turnstone</code> (SUNI notes reference the <code>sidbetatester</code> fork)</td>
+      </tr>
+      <tr>
+        <th>License</th>
+        <td class="suni">Proprietary / private <em class="t">~</em></td>
+        <td>MIT</td>
+        <td>MIT</td>
+        <td>Apache 2.0</td>
+      </tr>
+
+      <tr class="grp"><td colspan="5">Technology</td></tr>
+      <tr>
+        <th>Language / stack</th>
+        <td class="suni">Python · FastAPI · uvicorn · raw-WebGL UIs</td>
+        <td>TypeScript / Node.js</td>
+        <td>Python</td>
+        <td>Python 3.11+</td>
+      </tr>
+      <tr>
+        <th>Architecture</th>
+        <td class="suni">Single-node FastAPI server (HTTPS/TLS) + async background watchers</td>
+        <td>Single long-running Node.js service; local gateway = control plane for channels &amp; sessions</td>
+        <td>On-device agent with a closed learning loop; six execution backends (local, Docker, SSH, Singularity, Modal, Daytona); isolated profiles</td>
+        <td>Local-first orchestration, cluster-capable (direct HTTP routing); fork adds console + server + channel-gateway + CLI + Postgres</td>
+      </tr>
+      <tr>
+        <th>Deployment</th>
+        <td class="suni">Self-hosted, single box — resilience built in: a per-host <strong>circuit breaker</strong> (fast-fail + auto-recovery) guards every inference backend (chat / embed / STT / vision / TTS), plus atomic crash-safe state writes and tiered model fallback. Active–passive <strong>warm-standby HA</strong> is designed (RTO ≈ 5–30s, RPO seconds) — not yet implemented.</td>
+        <td>Self-hosted</td>
+        <td>Local / on-device</td>
+        <td>Self-hosted — single box scaling to a cluster you control</td>
+      </tr>
+
+      <tr class="grp"><td colspan="5">Models &amp; privacy</td></tr>
+      <tr>
+        <th>LLM support</th>
+        <td class="suni">Pluggable provider registry — local Ollama (qwen2.5:7b default) / vLLM + Anthropic, OpenAI, Gemini, <strong>plus no-key subscription CLIs (Claude Code, Codex)</strong>; tiered routing with automatic escalation</td>
+        <td>Any major LLM — Claude, GPT-4o, Gemini, DeepSeek; local via the LocalClaw fork</td>
+        <td>Model-agnostic; local runtimes (llama.cpp, LM&nbsp;Studio, Ollama); Qwen out of the box; per-agent provider routing</td>
+        <td>Provider-agnostic per role — OpenAI / vLLM / llama.cpp (OpenAI-compatible), Anthropic Messages, Google Gemini</td>
+      </tr>
+      <tr>
+        <th>Multi-model orchestration</th>
+        <td class="suni"><span class="y">✓</span> <strong>unique</strong> — an opt-in "collaborate" mode where decorrelated frontier models (Claude Code + Codex, extensible) <strong>draft → cross-critique → synthesise</strong> one best answer; live progress, fast/full dial, admin-editable pool</td>
+        <td>— model-agnostic, one model per turn</td>
+        <td>— model-agnostic, one model per turn</td>
+        <td>— per-role provider routing, but no cross-model collaboration</td>
+      </tr>
+      <tr>
+        <th>Local-first / privacy</th>
+        <td class="suni"><span class="y">✓</span> offline-first; optional cloud TTS (edge) or self-hosted; EU AI-Act disclosure</td>
+        <td>Cloud-capable; fully local via LocalClaw (Ollama/LM Studio/vLLM)</td>
+        <td><span class="y">✓</span> no API keys, no token billing, no cloud transmission</td>
+        <td><span class="y">✓</span> self-hosted, local-first — “real tools on hardware you control”</td>
+      </tr>
+
+      <tr class="grp"><td colspan="5">Capabilities</td></tr>
+      <tr>
+        <th>Channels &amp; integrations</th>
+        <td class="suni">Web (Orb / Chat / Face); <strong>Telegram, Discord &amp; Slack</strong> (connect-out — work from a local box with <strong>no public URL</strong>); WhatsApp (webhook); email ingestion; MCP bridge (24+ tools) — all inbound channels fail-closed allow-listed &amp; least-privilege</td>
+        <td>WhatsApp, Discord, Telegram</td>
+        <td>20+ messaging platforms; MCP integration; cron scheduling</td>
+        <td>MCP tool servers; interactive CLI + HTTP interfaces; Discord community</td>
+      </tr>
+      <tr>
+        <th>Memory</th>
+        <td class="suni">Episodic (nomic-embed 768-dim) + collective + doc KB; per-user, deduped; plus a learned-<strong>skills</strong> store (procedural memory — auto-generated, browse / edit / delete)</td>
+        <td>Sessions + skills (agent runtime)</td>
+        <td>Persistent memory + skill creation &amp; curation (closed self-improvement loop)</td>
+        <td>Session memory (fork documents a memory subsystem)</td>
+      </tr>
+      <tr>
+        <th>Self-improvement</th>
+        <td class="suni"><span class="y">✓</span> Auto-generates reusable skills from experience; memory that consolidates &amp; deprecates superseded facts; auto-config detection</td>
+        <td>User- / agent-authored skills <em class="t">~</em></td>
+        <td><span class="y">✓</span> Closed self-improvement loop (skill creation &amp; curation); separate self-evolution project (DSPy + GEPA) optimizes skills / prompts / code</td>
+        <td>— (planning tools, but no learning loop) <em class="t">~</em></td>
+      </tr>
+      <tr>
+        <th>Tools &amp; actions</th>
+        <td class="suni">Shell/Bash, files, web fetch/search, MCP (24+ tools), scheduler — RBAC-gated</td>
+        <td>Shell, web browser, local files; LocalClaw adds Jira/Confluence/Slack/Gmail</td>
+        <td>Reusable skill library + MCP; runs on six execution backends; cron scheduling</td>
+        <td>Real tools — shell, files, search, web, planning — plus external MCP tool servers</td>
+      </tr>
+      <tr>
+        <th>Voice</th>
+        <td class="suni">STT (Web Speech) + streaming TTS (edge-tts / self-hosted); language-aware voice selection</td>
+        <td>— (chat-platform native)</td>
+        <td>TTS in community desktop build <em class="t">~</em></td>
+        <td>— (headless agent orchestration)</td>
+      </tr>
+      <tr>
+        <th>Vision</th>
+        <td class="suni">Image understanding via an optional VLM (OpenAI-compatible); drag-drop image attachments + live <strong>webcam snapshot</strong> from the Face / Orb persona</td>
+        <td>Via multimodal LLMs (Claude / GPT-4o / Gemini) <em class="t">~</em></td>
+        <td>Via multimodal providers; ComfyUI image generation in community build <em class="t">~</em></td>
+        <td>Via multimodal providers (Anthropic / Gemini) <em class="t">~</em></td>
+      </tr>
+      <tr>
+        <th>Distinctive UI</th>
+        <td class="suni">Three web UIs — Orb (WebGL), Chat, Face (holographic 3D head); webcam head-tracking + vision snapshot</td>
+        <td>Runs inside chat apps (WhatsApp/Discord/Telegram)</td>
+        <td>Terminal + 20+ chat surfaces; community portable desktop GUI</td>
+        <td>Interactive CLI + HTTP interfaces (web console in the fork)</td>
+      </tr>
+
+      <tr class="grp"><td colspan="5">Governance &amp; scale</td></tr>
+      <tr>
+        <th>Security &amp; governance</th>
+        <td class="suni">RBAC, intent judge, output guard, tool policies, approval previews, OIDC/SSO, rate limiting</td>
+        <td>Sandboxing (Docker / SSH / OpenShell), per-tool allow/deny, DM pairing verification, exposure runbooks</td>
+        <td>Isolated profiles; sandboxed execution backends</td>
+        <td>MCP-scoped tools; fork adds OIDC/SSO + an intent judge</td>
+      </tr>
+      <tr>
+        <th>EU AI Act — Art 50 transparency</th>
+        <td class="suni"><span class="y">✓</span> <strong>Implemented</strong> — non-dismissible AI disclosure in every UI (Art 50(1)); synthetic output marked <strong>machine-readably</strong> as well as visibly (Art 50(2)): PDF <code>/Info</code> Creator metadata + visible footer; <strong>RFC 3834</strong> <code>Auto-Submitted</code> + <code>X-Generated-By</code> headers on both mail send paths + body disclosure. Documented per-file in <code>docs/eu-ai-act.md</code>, with risk posture and stated limits</td>
+        <td><span class="n">✗</span> <em class="t">~</em> no Art 50 marking found in docs or code search</td>
+        <td><span class="n">✗</span> <em class="t">~</em> no Art 50 marking found in docs or code search</td>
+        <td><span class="n">✗</span> <em class="t">~</em> no Art 50 marking found in docs or code search</td>
+      </tr>
+      <tr>
+        <th>Observability &amp; evaluation</th>
+        <td class="suni"><strong>Built-in</strong> admin dashboard — 33-metric live telemetry + <strong>on-demand benchmark suites</strong> + token/usage accounting (by-user &amp; by-mode); fully self-contained, no external tooling</td>
+        <td>Bundled gateway dashboard (hardware / token-cost cards / sessions) + popular 3rd-party <em>ClawMetry</em>; external <em>WildClawBench</em> agent eval</td>
+        <td>Deepest <em>model</em> eval — <code>lm-evaluation-harness</code> (60+ academic benchmarks: MMLU / GSM8K / HumanEval…); <em>Langfuse</em> tracing (plugin-based; unified telemetry in progress)</td>
+        <td>Prometheus-format metrics + web dashboard; 1000-node <strong>cluster simulator</strong> for scale testing</td>
+      </tr>
+      <tr>
+        <th>Multi-node / scaling</th>
+        <td class="suni">Single-node (HA-standby design on the roadmap)</td>
+        <td>Single service</td>
+        <td>Single on-device agent (multiple isolated profiles)</td>
+        <td><span class="y">✓</span> Cluster-wide agents; fork adds service registry (60s poll), capacity-based node selection, per-workstream affinity</td>
+      </tr>
+      <tr>
+        <th>Best-fit use case</th>
+        <td class="suni">Individuals and small-and-medium businesses wanting privacy-first, with a rich voice + visual persona</td>
+        <td>Personal assistant living inside everyday chat platforms</td>
+        <td>Privacy-first, always-on local agent across many surfaces</td>
+        <td>Self-hosted tool-using agent orchestration across your own cluster</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="foot">
+    <p><strong>Lineage note:</strong> <b>Hermes</b> is a public OpenClaw successor (it even ships automatic OpenClaw migration);
+    <b>Turnstone</b> is a sibling in the self-hosted, local-first, MCP-tool-using space. All four are self-hostable and local-capable; they differ most in
+    <em>surface</em> (SUNI's voice/3D persona vs. OpenClaw/Hermes chat platforms vs. Turnstone's headless CLI/cluster).</p>
+    <p><strong>Confidence:</strong> the <b>SUNI</b> column is direct project knowledge; the rest is verified against the
+    repos/sites below (2026). Cells still marked inferred (<em class="t">~</em>): Hermes voice, which appears in a
+    community desktop build rather than the core; and the three EU AI&nbsp;Act cells, where the claim is the narrow one
+    that <em>no Art&nbsp;50 marking was found</em> in each project's documentation or a code search — absence of evidence,
+    not evidence of absence. A project that implements it and says so will be corrected on request.</p>
+
+    <p><strong>Corrections welcome.</strong> This is a comparison written by SUNI's author, so the SUNI column has an
+    obvious advantage in depth of knowledge — that asymmetry is why the ranking table above puts <b>Hermes</b> first on
+    maturity, adoption and channel reach, and SUNI last on maturity. If you maintain or use one of these projects and a
+    row is wrong or out of date, <a href="https://github.com/mozzaic-cs/SUNI/issues">open an issue</a> and it will be
+    fixed. Comparisons rot; this one is dated for that reason.</p>
+    <h3>Sources</h3>
+    <ul>
+      <li>OpenClaw — <a href="https://github.com/openclaw/openclaw">github.com/openclaw/openclaw</a>,
+          LocalClaw fork <a href="https://github.com/sunkencity999/localclaw">github.com/sunkencity999/localclaw</a>,
+          <a href="https://openclaw.ai/">openclaw.ai</a></li>
+      <li>Hermes — <a href="https://github.com/nousresearch/hermes-agent">github.com/NousResearch/hermes-agent</a>,
+          <a href="https://github.com/mudrii/hermes-agent-docs">hermes-agent-docs</a>,
+          <a href="https://blogs.nvidia.com/blog/rtx-ai-garage-hermes-agent-dgx-spark/">NVIDIA overview</a></li>
+      <li>Turnstone — <a href="https://github.com/turnstonelabs/turnstone">github.com/turnstonelabs/turnstone</a>
+          (<a href="https://github.com/turnstonelabs/turnstone/blob/main/docs/architecture.md">architecture.md</a>),
+          <a href="https://arenaria.ai/">arenaria.ai</a>; SUNI porting notes reference the <code>sidbetatester/turnstone-fork</code></li>
+      <li>SUNI — internal project knowledge (MOZZAIC)</li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>

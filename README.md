@@ -144,6 +144,18 @@ three WebGL/HTML front-ends. A live architecture diagram is available in-app at
 - **Channels:** `suni/telegram/`, `suni/discord/`, `suni/slack/`
 - **Web & API:** `suni/web/` (server, Orb/Chat/Face/Admin UIs)
 
+### How it compares
+
+[`docs/comparison.html`](docs/comparison.html) is a feature-by-feature comparison
+against OpenClaw, Hermes and Turnstone — the projects SUNI grew from or was
+evaluated against. It is written by SUNI's author and says so, which is also why
+it ranks Hermes ahead of SUNI on maturity, adoption and channel reach. If a row
+about your project is wrong, please open an issue.
+
+It does **not** cover Open WebUI, LibreChat, AnythingLLM or Jan. Those are the
+better-known alternatives, and comparing against them honestly needs work that
+has not been done yet — an unverified table would be worse than none.
+
 ---
 
 ## Contributing
