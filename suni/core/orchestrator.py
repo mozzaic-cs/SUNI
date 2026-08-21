@@ -63,6 +63,11 @@ _NL = chr(10)      # newline as a constant, so hint-building needs no escapes
 # four runs. Below this, escalate rather than answer badly.
 _MIN_TIER_FOR_STRUCTURED = 3
 
+# An agent that declares tools needs a model that can call them rather than
+# describe them. Same threshold, different reason: one is about choosing a
+# tool, this is about emitting a well-formed call at all.
+_MIN_TIER_FOR_TOOL_USE = 3
+
 # Global activity ring-buffer — readable by the dashboard API
 activity_log: deque = deque(maxlen=20)
 
@@ -586,6 +591,22 @@ class Orchestrator:
                          _agent_grants)
                     _used(_slug)
                 _GR.set(_agent_grants)
+                # A profile can name a tool that is not registered — the
+                # intersection keeps the name, the registry returns nothing for
+                # it, and the model narrates instead of calling. Say so.
+                try:
+                    from ..agents import unknown_tools as _unk
+                    _missing = _unk(agent_profile, self.registry.names())
+                    if _missing:
+                        _log.warning("[AGENT] %r declares unregistered tool(s): %s — "
+                                     "they will not be available",
+                                     agent_profile.get("slug", "?"), ", ".join(_missing))
+                        if event_cb:
+                            event_cb({"type": "agent_warning",
+                                      "agent": agent_profile.get("slug", ""),
+                                      "unknown_tools": _missing})
+                except Exception:      # noqa: BLE001 — a warning is never worth the turn
+                    pass
 
             _start_tier = min(max(complexity_score(user_input), DEFAULT_TIER), MAX_LOCAL_TIER)
             # Delegation and scheduling are structured tool-selection tasks, and
@@ -609,6 +630,40 @@ class Orchestrator:
                         event_cb({"type": "tier_escalate", "from": MAX_LOCAL_TIER,
                                   "to": CLAUDE_CODE_TIER, "reason": "no_capable_local"})
                     _start_tier = CLAUDE_CODE_TIER
+            # An agent that declares tools needs a model that can actually call
+            # them. Measured: a delegated agent answered with the literal text
+            # ping_host("localhost") instead of invoking it — the profile was
+            # correct, the tool was permitted, and the model wrote a function
+            # call as prose. Declaring tools is the user saying "this agent uses
+            # these", so treat it as a capability requirement rather than making
+            # them know which local model does function-calling well.
+            #
+            # An explicitly pinned model is left alone: that is a deliberate
+            # choice, and silently overriding it would be the same class of bug
+            # as escalation swapping a pinned model out mid-run.
+            if agent_profile and (agent_profile.get("tools") is not None)                     and not (_agent_grants or {}).get("model"):
+                if MAX_LOCAL_TIER >= _MIN_TIER_FOR_TOOL_USE:
+                    if _start_tier < _MIN_TIER_FOR_TOOL_USE:
+                        _log.info("[TIER] agent %r declares tools — raising %d→%d",
+                                  agent_profile.get("slug", "?"), _start_tier,
+                                  _MIN_TIER_FOR_TOOL_USE)
+                        _start_tier = _MIN_TIER_FOR_TOOL_USE
+                elif _cc_rbac_ok and CLAUDE_CODE_TIER in self._tier_agents:
+                    _log.info("[TIER] agent %r declares tools and no local model "
+                              "reaches tier %d — escalating to T5",
+                              agent_profile.get("slug", "?"), _MIN_TIER_FOR_TOOL_USE)
+                    if event_cb:
+                        event_cb({"type": "tier_escalate", "from": MAX_LOCAL_TIER,
+                                  "to": CLAUDE_CODE_TIER, "reason": "agent_needs_tools"})
+                    _start_tier = CLAUDE_CODE_TIER
+                else:
+                    # Nothing capable and no handoff available. Say so rather
+                    # than let it fail quietly as prose-instead-of-tool-call.
+                    _log.warning("[TIER] agent %r declares tools but the best local "
+                                 "tier is %d and Claude Code is unavailable — tool "
+                                 "calls may not be reliable",
+                                 agent_profile.get("slug", "?"), MAX_LOCAL_TIER)
+
             _log.info("[TIER]    start=%d  max_local=%d (floor=core)", _start_tier, MAX_LOCAL_TIER)
             ts = time.perf_counter()
             response = await self._agent_loop(context, trace, route,

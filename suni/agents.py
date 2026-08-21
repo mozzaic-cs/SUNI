@@ -159,6 +159,26 @@ def effective_grants(
     }
 
 
+def unknown_tools(agent: dict[str, Any] | None, registered: list[str] | None) -> list[str]:
+    """Tools a profile declares that do not exist in the registry.
+
+    Silent failure otherwise, and it is a nasty one: the intersection produces
+    the declared name, the registry returns nothing for it, and the model is
+    handed an empty tool list. It then DESCRIBES what it would do — an observed
+    run answered with the literal text ping_host("localhost") — which reads as a
+    weak model rather than a missing registration. The tool in that case existed
+    in the codebase and was registered in the CLI but not in the web server.
+
+    Returns [] when the registry is unknown, so a caller that cannot enumerate
+    tools does not produce false warnings.
+    """
+    declared = (agent or {}).get("tools")
+    if not declared or registered is None:
+        return []
+    known = set(registered)
+    return [t for t in declared if t not in known]
+
+
 # ── AGENT.md read/write ──────────────────────────────────────────────────────
 def _agent_md(slug: str) -> Path:
     return AGENTS_DIR / slug / "AGENT.md"
