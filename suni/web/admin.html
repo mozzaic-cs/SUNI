@@ -430,27 +430,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
   <div class="logo">SUNI <span>Control</span></div>
   <div class="header-status">
     <div class="hs-line">
-      <!-- Update notice. Hidden unless there is something to say, and it says the
-     BLOCKING REASON as loudly as the good news — "3 updates available" that
-     hides "you have local changes stopping them" is worse than no banner. -->
-<div id="update-banner" style="display:none;margin:0 0 14px;padding:11px 14px;
-     border:1px solid var(--border);border-radius:8px;background:var(--card);
-     font-size:12px;line-height:1.55">
-  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-    <span id="update-headline" style="font-weight:600"></span>
-    <span id="update-detail" style="color:var(--muted)"></span>
-    <span style="margin-left:auto;display:flex;gap:8px">
-      <button class="tbl-btn" onclick="toggleUpdateLog()" id="update-log-btn"
-              style="display:none">What changed</button>
-      <button class="tbl-btn primary" onclick="applyUpdate()" id="update-apply-btn"
-              style="display:none">Update now</button>
-    </span>
-  </div>
-  <pre id="update-log" style="display:none;margin:10px 0 0;padding:9px;font-size:11px;
-       max-height:190px;overflow:auto;background:rgba(120,140,200,.06);border-radius:5px;
-       white-space:pre-wrap"></pre>
-</div>
-<div class="dot" id="hdr-dot"></div>
+      <div class="dot" id="hdr-dot"></div>
       <span class="status-txt" id="hdr-state">Online</span>
       <span class="uptime-txt" id="hdr-uptime"></span>
     </div>
@@ -479,6 +459,26 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
 </aside>
 
 <main>
+<!-- Update notice. Hidden unless there is something to say, and it says the
+     BLOCKING REASON as loudly as the good news — "3 updates available" that
+     hides "you have local changes stopping them" is worse than no banner. -->
+<div id="update-banner" style="display:none;margin:0 0 14px;padding:11px 14px;
+     border:1px solid var(--border);border-radius:8px;background:var(--card);
+     font-size:12px;line-height:1.55">
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span id="update-headline" style="font-weight:600"></span>
+    <span id="update-detail" style="color:var(--muted)"></span>
+    <span style="margin-left:auto;display:flex;gap:8px">
+      <button class="tbl-btn" onclick="toggleUpdateLog()" id="update-log-btn"
+              style="display:none">What changed</button>
+      <button class="tbl-btn primary" onclick="applyUpdate()" id="update-apply-btn"
+              style="display:none">Update now</button>
+    </span>
+  </div>
+  <pre id="update-log" style="display:none;margin:10px 0 0;padding:9px;font-size:11px;
+       max-height:190px;overflow:auto;background:rgba(120,140,200,.06);border-radius:5px;
+       white-space:pre-wrap"></pre>
+</div>
 
 <!-- ════════════════════ DASHBOARD ════════════════════ -->
 <div class="panel active" id="panel-dashboard">
