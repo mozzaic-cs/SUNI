@@ -89,6 +89,36 @@ def setup(log_dir: Path = _LOG_DIR) -> None:
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
+def start_shipping() -> dict:
+    """Attach remote log shipping from config, if enabled.
+
+    Called after config is available. Kept separate from setup() because setup()
+    runs before config loads, and because a remote target must never be a
+    precondition for local logging working.
+    """
+    try:
+        from . import config as _cfg, log_ship as _ship
+        block = {
+            "enabled":     _cfg.get("logship_enabled", False),
+            "type":        _cfg.get("logship_type", ""),
+            "level":       _cfg.get("logship_level", "INFO"),
+            "host":        _cfg.get("logship_host", ""),
+            "port":        _cfg.get("logship_port", 0),
+            "protocol":    _cfg.get("logship_protocol", "udp"),
+            "app_name":    _cfg.get("logship_app_name", "suni"),
+            "url":         _cfg.get("logship_url", ""),
+            "auth_header": _cfg.get("logship_auth_header", "Authorization"),
+            "auth_prefix": _cfg.get("logship_auth_prefix", "Bearer"),
+            "username":    _cfg.get("logship_username", ""),
+            "remote_dir":  _cfg.get("logship_remote_dir", "/"),
+            "token":       _cfg.get("logship_token", ""),
+            "password":    _cfg.get("logship_password", ""),
+        }
+        return _ship.start(block)
+    except Exception:      # noqa: BLE001 — logging must survive a bad target
+        return {"enabled": False, "type": "", "level": "", "detail": ""}
+
+
 def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(f"suni.{name}" if not name.startswith("suni") else name)
 

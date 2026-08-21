@@ -2449,6 +2449,59 @@ def create_app() -> FastAPI:
     # running; a non-admin able to trigger it would be the widest privilege
     # escalation in the codebase, wider than any tool.
 
+    @app.post("/api/logship/test", dependencies=[Depends(_check_token)])
+    async def logship_test_api(request: Request, user: dict = Depends(require_admin)):
+        """Send one line to the configured target and report what happened.
+
+        Admin-only: this reaches out to a network endpoint using stored
+        credentials. A blank secret in the body means "use the stored one", the
+        same rule the config form follows, so testing does not require retyping
+        a password that is deliberately never echoed back.
+        """
+        from .. import log_ship as _ship
+        body = await request.json()
+        stored = suni_config.load()
+        block = {
+            "enabled": True,
+            "type":        body.get("type")        or stored.get("logship_type", ""),
+            "host":        body.get("host")        or stored.get("logship_host", ""),
+            "port":        body.get("port")        or stored.get("logship_port", 0),
+            "protocol":    body.get("protocol")    or stored.get("logship_protocol", "udp"),
+            "app_name":    body.get("app_name")    or stored.get("logship_app_name", "suni"),
+            "url":         body.get("url")         or stored.get("logship_url", ""),
+            "auth_header": body.get("auth_header") or stored.get("logship_auth_header", "Authorization"),
+            "auth_prefix": body.get("auth_prefix") or stored.get("logship_auth_prefix", "Bearer"),
+            "username":    body.get("username")    or stored.get("logship_username", ""),
+            "remote_dir":  body.get("remote_dir")  or stored.get("logship_remote_dir", "/"),
+            "token":       (body.get("token")    or "").strip() or stored.get("logship_token", ""),
+            "password":    (body.get("password") or "").strip() or stored.get("logship_password", ""),
+        }
+        result = _ship.test(block)
+        _audit.log_event(user["id"], user["username"],
+                         "logship.test.ok" if result.get("ok") else "logship.test.failed",
+                         detail=_ship.describe(block)[:100])
+        return JSONResponse(result)
+
+    @app.get("/api/logship/status")
+    async def logship_status_api(user: dict = Depends(require_admin)):
+        from .. import log_ship as _ship
+        cfg = suni_config.load()
+        return JSONResponse({
+            "enabled": bool(cfg.get("logship_enabled", False)),
+            "type":    cfg.get("logship_type", ""),
+            "level":   cfg.get("logship_level", "INFO"),
+            # Never the credential — only whether one is stored.
+            "target":  _ship.describe({
+                "type":       cfg.get("logship_type", ""),
+                "host":       cfg.get("logship_host", ""),
+                "port":       cfg.get("logship_port", 0),
+                "protocol":   cfg.get("logship_protocol", "udp"),
+                "url":        cfg.get("logship_url", ""),
+                "username":   cfg.get("logship_username", ""),
+                "remote_dir": cfg.get("logship_remote_dir", "/"),
+            }),
+        })
+
     @app.get("/api/version")
     async def version_api(user: dict = Depends(get_current_user)):
         """What is running. Available to any signed-in user, unlike the update
@@ -3194,6 +3247,12 @@ def create_app() -> FastAPI:
         # The SMTP password is a secret on the same footing as the bot tokens.
         cfg["has_smtp_pass"] = bool(str(cfg.get("smtp_pass", "")).strip())
         cfg["smtp_pass"] = ""
+        # Log-shipping credentials. Same footing again: a collector token or an
+        # SFTP password is exactly as sensitive as the mail password, and this
+        # one guards a stream containing IPs, usernames and query previews.
+        for _sk in ("logship_token", "logship_password"):
+            cfg[f"has_{_sk}"] = bool(str(cfg.get(_sk, "")).strip())
+            cfg[_sk] = ""
         # Mask per-entry API keys in the model chain — never echo secrets. Expose
         # only a has_key flag so the admin UI can show "configured" without the key.
         for _lk in ("model_chain", "collaborate_pool"):
@@ -3221,7 +3280,8 @@ def create_app() -> FastAPI:
             del filtered["telegram_bot_token"]
         if "discord_bot_token" in filtered and not str(filtered["discord_bot_token"]).strip():
             del filtered["discord_bot_token"]
-        for _sk in ("slack_app_token", "slack_bot_token", "smtp_pass"):
+        for _sk in ("slack_app_token", "slack_bot_token", "smtp_pass",
+                    "logship_token", "logship_password"):
             if _sk in filtered and not str(filtered[_sk]).strip():
                 del filtered[_sk]
         # Model chain / collaboration pool: preserve each entry's stored api_key

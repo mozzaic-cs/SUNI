@@ -1045,7 +1045,103 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
         Some changes take effect on next restart.
       </span>
     </div>
-  </form>
+      <div class="card" style="margin-top:16px">
+      <div class="card-title" data-i18n="admin.ship_title">Remote log shipping</div>
+      <div class="field-hint" style="margin-bottom:12px;line-height:1.55">
+        <strong data-i18n="admin.ship_warn_t">Off by default, and worth reading before switching on.</strong>
+        <span data-i18n="admin.ship_warn">SUNI's logs name local file paths, and the audit trail records IP
+        addresses, usernames and message previews. Enabling this sends that stream to a
+        third party. Local logging always continues — shipping is additional, never a
+        replacement. DEBUG is never shipped.</span>
+      </div>
+      <div class="field">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="logship_enabled" style="width:auto;margin:0">
+          <span data-i18n="admin.ship_enable">Send logs to a remote collector</span>
+        </label>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
+        <div class="field">
+          <label data-i18n="admin.ship_type">Transport</label>
+          <select name="logship_type" id="logship_type">
+            <option value="">—</option>
+            <option value="syslog">Syslog (rsyslog, syslog-ng, SIEM)</option>
+            <option value="http">HTTP JSON (Splunk HEC, Loki, Elastic, Datadog)</option>
+            <option value="sftp">SFTP file drop</option>
+            <option value="ftps">FTPS file drop</option>
+            <option value="ftp">FTP file drop</option>
+          </select>
+        </div>
+        <div class="field">
+          <label data-i18n="admin.ship_level">Minimum level</label>
+          <select name="logship_level" id="logship_level">
+            <option value="INFO">INFO</option>
+            <option value="WARNING">WARNING</option>
+            <option value="ERROR">ERROR</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px">
+        <div class="field">
+          <label data-i18n="admin.ship_host">Host</label>
+          <input type="text" name="logship_host" id="logship_host" placeholder="logs.example.com">
+        </div>
+        <div class="field">
+          <label data-i18n="admin.ship_port">Port</label>
+          <input type="number" name="logship_port" id="logship_port" placeholder="514">
+        </div>
+        <div class="field">
+          <label data-i18n="admin.ship_proto">Syslog protocol</label>
+          <select name="logship_protocol" id="logship_protocol">
+            <option value="udp">UDP</option>
+            <option value="tcp">TCP</option>
+            <option value="tls">TCP + TLS</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label data-i18n="admin.ship_url">HTTP endpoint URL</label>
+        <input type="text" name="logship_url" id="logship_url"
+               placeholder="https://splunk.example.com:8088/services/collector/event">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="field">
+          <label data-i18n="admin.ship_auth_header">Auth header</label>
+          <input type="text" name="logship_auth_header" id="logship_auth_header" placeholder="Authorization">
+        </div>
+        <div class="field">
+          <label data-i18n="admin.ship_auth_prefix">Auth prefix</label>
+          <input type="text" name="logship_auth_prefix" id="logship_auth_prefix" placeholder="Bearer / Splunk">
+        </div>
+      </div>
+      <div class="field">
+        <label data-i18n="admin.ship_token">Token</label>
+        <input type="password" name="logship_token" id="logship_token" autocomplete="new-password">
+        <div class="field-hint"><span id="logship_token_state" data-i18n="admin.ship_keep">Leave blank to keep the stored value.</span></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="field">
+          <label data-i18n="admin.ship_user">Username (file drop)</label>
+          <input type="text" name="logship_username" id="logship_username" autocomplete="off">
+        </div>
+        <div class="field">
+          <label data-i18n="admin.ship_dir">Remote directory</label>
+          <input type="text" name="logship_remote_dir" id="logship_remote_dir" placeholder="/logs/suni">
+        </div>
+      </div>
+      <div class="field">
+        <label data-i18n="admin.ship_pass">Password (file drop)</label>
+        <input type="password" name="logship_password" id="logship_password" autocomplete="new-password">
+        <div class="field-hint"><span id="logship_password_state" data-i18n="admin.ship_keep">Leave blank to keep the stored value.</span></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+        <button type="button" class="tbl-btn" onclick="testLogShip()" id="logship-test-btn"
+                data-i18n="admin.ship_test">Send a test line</button>
+        <span id="logship-test-result" style="font-size:11px"></span>
+      </div>
+    </div>
+
+</form>
 </div><!-- /config -->
 
 <!-- ════════════════════ USERS ════════════════════ -->
@@ -2110,6 +2206,22 @@ function applyConfigToForm(cfg) {
   // Knowledge-base retrieval toggle (biggest latency lever on a large index)
   const dke = document.getElementById('doc_kb_enabled');
   if (dke) { dke.checked = cfg.doc_kb_enabled !== false; }
+  // Log shipping. The secrets come back blank with a has_* flag, so the hint
+  // tells the admin one is stored rather than leaving an empty box that looks
+  // unconfigured.
+  const _shipChk = document.getElementById('logship_enabled');
+  if (_shipChk) _shipChk.checked = !!cfg.logship_enabled;
+  for (const k of ['logship_type','logship_level','logship_host','logship_port',
+                   'logship_protocol','logship_url','logship_auth_header',
+                   'logship_auth_prefix','logship_username','logship_remote_dir']) {
+    const el = document.getElementById(k);
+    if (el && cfg[k] !== undefined && cfg[k] !== null) el.value = cfg[k];
+  }
+  for (const k of ['logship_token','logship_password']) {
+    const st = document.getElementById(k + '_state');
+    if (st && cfg['has_' + k]) st.textContent = t('admin.ship_stored');
+  }
+
   // SMTP password is masked by the API (has_smtp_pass flag) — show configured state.
   const smp = document.getElementById('smtp_pass');
   if (smp) { smp.value = ''; smp.placeholder = cfg.has_smtp_pass ? '•••• configured (leave blank to keep)' : 'app password'; }
@@ -2381,6 +2493,18 @@ document.getElementById('cfg-form').addEventListener('submit', async e => {
   data.email_poll_interval = parseInt(form.elements.email_poll_interval_min?.value) * 60;
   data.force_claude_code = !!(document.getElementById('force_claude_code')?.checked);
   data.claude_code_timeout = parseInt(form.elements.claude_code_timeout?.value) || 300;
+  // Log shipping. The two secrets follow the same rule as smtp_pass and the bot
+  // tokens: an empty field means "keep what is stored", so an unchanged form
+  // never wipes a configured credential.
+  data.logship_enabled = !!document.getElementById('logship_enabled')?.checked;
+  for (const k of ['logship_type','logship_level','logship_host','logship_protocol',
+                   'logship_url','logship_auth_header','logship_auth_prefix',
+                   'logship_username','logship_remote_dir']) {
+    data[k] = form.elements[k]?.value ?? '';
+  }
+  data.logship_port = parseInt(form.elements.logship_port?.value) || 0;
+  data.logship_token = form.elements.logship_token?.value ?? '';
+  data.logship_password = form.elements.logship_password?.value ?? '';
   data.model_chain = _collectModelChain();
   data.model_chain_routing = !!(document.getElementById('model_chain_routing')?.checked);
 
@@ -2868,6 +2992,44 @@ let _allSkills = [];
    Fetched once when the panel loads. Deliberately not polled: /api/update/status
    runs a git fetch, and hitting someone's remote on a timer is a surprise they
    did not ask for. */
+/* ── Remote log shipping ────────────────────────────────────────────────────
+   A test button exists because a remote collector that can only be validated by
+   waiting for silence is configuration nobody will trust. Blank credential
+   fields mean "use the stored one", so testing does not require retyping a
+   password the API deliberately never echoes back. */
+async function testLogShip() {
+  const btn = document.getElementById('logship-test-btn');
+  const out = document.getElementById('logship-test-result');
+  const f = document.getElementById('cfg-form');   // the real id, checked in the DOM
+  const val = n => (f?.elements?.[n]?.value ?? document.getElementById(n)?.value ?? '');
+  btn.disabled = true;
+  out.style.color = 'var(--muted)';
+  out.textContent = t('admin.ship_testing');
+  try {
+    const r = await _apiFetch('/api/logship/test', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: val('logship_type'), host: val('logship_host'),
+        port: parseInt(val('logship_port')) || 0,
+        protocol: val('logship_protocol'), url: val('logship_url'),
+        auth_header: val('logship_auth_header'), auth_prefix: val('logship_auth_prefix'),
+        username: val('logship_username'), remote_dir: val('logship_remote_dir'),
+        token: val('logship_token'), password: val('logship_password'),
+      }),
+    });
+    const res = await r.json();
+    out.style.color = res.ok ? 'var(--green)' : 'var(--danger)';
+    // The error is shown verbatim (credentials already scrubbed server-side):
+    // "it did not work" without the reason is what makes people give up.
+    out.textContent = res.ok ? (res.detail || t('admin.ship_ok')) : (res.error || 'failed');
+  } catch (e) {
+    out.style.color = 'var(--danger)';
+    out.textContent = String(e);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function loadVersion() {
   try {
     const r = await _apiFetch('/api/version');

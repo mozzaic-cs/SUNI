@@ -58,6 +58,26 @@ DEFAULTS: dict[str, Any] = {
     "smtp_port":              587,     # overrides SUNI_SMTP_PORT
     "smtp_user":              "",      # overrides SUNI_SMTP_USER
     "smtp_pass":              "",      # overrides SUNI_SMTP_PASS (secret — never echoed by /api/config)
+
+    # ── Remote log shipping (off by default) ──────────────────────────────
+    # Logs name local file paths and the audit trail holds IPs, usernames and
+    # query previews. Enabling this sends that to a third party, so it is opt-in
+    # and the UI says what leaves the box. The local file handler always stays:
+    # shipping is additive, or a collector outage becomes a logging outage.
+    "logship_enabled":        False,
+    "logship_type":           "",      # syslog | http | sftp | ftp | ftps
+    "logship_level":          "INFO",  # floored at INFO — DEBUG ships scan spam
+    "logship_host":           "",
+    "logship_port":           0,
+    "logship_protocol":       "udp",   # syslog only: udp | tcp | tls
+    "logship_app_name":       "suni",
+    "logship_url":            "",      # http only
+    "logship_auth_header":    "Authorization",
+    "logship_auth_prefix":    "Bearer",
+    "logship_username":       "",
+    "logship_remote_dir":     "/",
+    "logship_token":          "",      # secret — never echoed by /api/config
+    "logship_password":       "",      # secret — never echoed by /api/config
     "notify_to":              "",      # overrides SUNI_NOTIFY_TO; empty = send to smtp_user
     "imap_host":              "",      # overrides SUNI_IMAP_HOST (inbox watcher)
     "imap_port":              993,     # overrides SUNI_IMAP_PORT

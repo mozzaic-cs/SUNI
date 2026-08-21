@@ -36,6 +36,13 @@ from suni.system_profile import log_profile as _log_profile
 from suni.web.server import create_app
 
 _log_setup()      # must be first — before any suni module logs
+# Remote shipping is attached AFTER local logging exists, and separately, so a
+# misconfigured or unreachable collector can never stop SUNI from logging or
+# from starting. Off unless explicitly enabled.
+from suni.logger import start_shipping as _log_ship_start
+_ship_info = _log_ship_start()
+if _ship_info.get("enabled"):
+    print(f'  shipping logs to {_ship_info["detail"]} at {_ship_info["level"]} and above')
 _log_profile()    # log detected hardware + derived limits
 
 app = create_app()
