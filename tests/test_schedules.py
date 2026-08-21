@@ -93,6 +93,19 @@ def test_due_returns_only_enabled_entries_past_their_time():
 
 
 # ── the unattended rules, asserted against the runner ────────────────────────
+def _runner_body(src: str) -> str:
+    """The whole runner function, not a guessed number of characters.
+
+    These assertions used to slice a fixed 3500 chars; adding four lines to the
+    runner pushed the audit call past the window and failed a test about code
+    that was still correct. A test that breaks when unrelated lines are inserted
+    above what it checks is measuring the wrong thing.
+    """
+    i = src.index("async def _schedule_runner")
+    end = src.index('@app.on_event("startup")', i)
+    return src[i:end]
+
+
 @pytest.fixture(scope="module")
 def runner_src() -> str:
     # Anchored to this file, not the cwd: conftest chdirs into a tmpdir for
@@ -103,41 +116,41 @@ def runner_src() -> str:
 
 
 def test_runs_as_the_owner_with_a_freshly_read_role(runner_src):
-    i = runner_src.index("async def _schedule_runner")
-    body = runner_src[i:i + 3500]
+    body = _runner_body(runner_src)
+    
     assert "_auth.get_user(s[\"owner_id\"])" in body, "the owner is not looked up at fire time"
     assert 'owner.get("role"' in body, "the role is not read from the owner record"
     assert "user_role=role" in body, "the run does not use the owner's role"
 
 
 def test_a_deactivated_owner_stops_their_schedules(runner_src):
-    i = runner_src.index("async def _schedule_runner")
-    assert 'owner.get("active"' in runner_src[i:i + 3500], \
+    body = _runner_body(runner_src)
+    assert 'owner.get("active"' in body, \
         "a disabled account's schedules keep running"
 
 
 def test_the_agent_is_rechecked_against_the_owner_at_fire_time(runner_src):
-    i = runner_src.index("async def _schedule_runner")
-    body = runner_src[i:i + 3500]
+    body = _runner_body(runner_src)
+    
     assert "list_for_user(owner[\"id\"], role)" in body, \
         "the agent is not re-checked against the owner when it fires"
 
 
 def test_delivery_is_done_by_the_runner_not_the_model(runner_src):
     """No approver is present, so the model must not choose recipients."""
-    i = runner_src.index("async def _schedule_runner")
-    body = runner_src[i:i + 3500]
+    body = _runner_body(runner_src)
+    
     assert "_mail.send_email(d[\"to\"]" in body, "delivery is not performed by the runner"
     assert "delivery" in body
 
 
 def test_every_run_is_audited(runner_src):
-    i = runner_src.index("async def _schedule_runner")
-    assert '"schedule.ran"' in runner_src[i:i + 3500], "scheduled runs are not audited"
+    body = _runner_body(runner_src)
+    assert '"schedule.ran"' in body, "scheduled runs are not audited"
 
 
 def test_a_failing_run_still_advances_the_clock(runner_src):
     """Otherwise one bad run wedges the schedule forever, retrying every tick."""
-    i = runner_src.index("async def _schedule_runner")
-    body = runner_src[i:i + 3500]
+    body = _runner_body(runner_src)
+    
     assert "except Exception as exc:" in body and "mark_ran" in body

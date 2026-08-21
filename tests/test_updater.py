@@ -177,3 +177,88 @@ def test_updates_are_audited():
     i = srv.index('@app.post("/api/update/apply")')
     assert "update.applied" in srv[i:i + 1200]
     assert "update.refused" in srv[i:i + 1200], "only successes are recorded"
+
+
+# ── the hardening that came out of testing the failure modes ─────────────────
+def test_the_pre_update_commit_is_persisted():
+    """Rollback is needed exactly when something went wrong — after a restart,
+    in a new session, maybe by a different admin. A commit id that lives only in
+    an HTTP response nobody kept is a rollback that exists in principle."""
+    src = inspect.getsource(u.apply)
+    assert "_remember" in src, "the update is not recorded anywhere durable"
+    assert "memory" in str(u.HISTORY), "history must live under memory/ to survive updates"
+
+
+def test_rollback_finds_its_own_target():
+    src = inspect.getsource(u.rollback)
+    assert "rollback_target" in src, "rollback still requires a hash typed by hand"
+
+
+def test_refusals_are_recorded_too():
+    """'Why did nothing happen last night' is a real question."""
+    src = inspect.getsource(u.apply)
+    i = src.index('result["message"] = s["reason"]')
+    assert "_remember" in src[i:i + 220]
+
+
+def test_an_interrupted_pull_is_named_not_blamed_on_the_user():
+    """A half-finished pull leaves the ref moved and the tree stale, which git
+    reports as a dirty tree — so the plain reading tells an admin they have
+    'local changes' and offers to preserve edits they never made."""
+    src = inspect.getsource(u.status)
+    assert "interrupted(root)" in src
+    assert "not\n            edited by you" in src or "not " in src
+    assert "git reset --hard HEAD" in src, "no working recovery command is given"
+
+
+def test_the_recovery_command_is_the_one_that_works():
+    """`git checkout -- .` restores from an index left equally stale and appears
+    to do nothing — verified against a real interrupted checkout.
+
+    The check is on what is RECOMMENDED, not what is discussed: the comment
+    explaining why the obvious command fails is worth keeping, and an earlier
+    version of this test banned the string outright and failed on that comment.
+    """
+    src = inspect.getsource(u.status)
+    i = src.index('out["reason"] = (')
+    recommended = src[i:src.index("return out", i)]
+    assert "reset --hard HEAD" in recommended
+    assert "checkout -- ." not in recommended, \
+        "the recovery offered to the admin does not actually recover"
+
+
+def test_the_marker_brackets_the_pull():
+    src = inspect.getsource(u.apply)
+    start, pull, done = (src.index("_mark_start"), src.index('"pull"'), src.index("_mark_done"))
+    assert start < pull < done, "the marker does not bracket the pull it describes"
+
+
+def test_in_flight_work_blocks_an_update():
+    """A pull swaps .py files under a running process; the scheduler fires every
+    30s, so this window is real."""
+    src = inspect.getsource(u.apply)
+    assert "in_flight()" in src
+    assert "force" in src, "there is no escape hatch for a knowingly idle box"
+
+
+def test_scheduled_runs_are_counted_as_in_flight():
+    srv = (ROOT / "suni" / "web" / "server.py").read_text(encoding="utf-8-sig")
+    i = srv.index("async def _schedule_runner")
+    block = srv[i:i + 4000]
+    assert "mark_busy(+1)" in block and "mark_busy(-1)" in block
+
+
+def test_the_admin_banner_is_fetched_once_not_polled():
+    """status() runs a git fetch; polling it hits someone's remote on a timer."""
+    html = (ROOT / "suni" / "web" / "admin.html").read_text(encoding="utf-8")
+    assert "checkForUpdates();" in html, "the banner is never triggered on load"
+    assert "setInterval(checkForUpdates" not in html, "the update check is polled"
+
+
+def test_the_banner_shows_the_blocking_reason():
+    """'3 updates available' that hides 'you have local changes' is worse than
+    no banner at all."""
+    html = (ROOT / "suni" / "web" / "admin.html").read_text(encoding="utf-8")
+    i = html.index("async function checkForUpdates")
+    block = html[i:i + 2200]
+    assert "s.reason" in block and "s.interrupted" in block

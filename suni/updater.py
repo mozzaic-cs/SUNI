@@ -35,6 +35,92 @@ PROTECTED = ("memory", "logs", "files", "certs", "backups", ".env")
 _SELF_MIGRATING = ("auth", "audit", "agents")
 
 
+# Where the pre-update commit is remembered. Under memory/ on purpose: it is
+# untracked, so it survives the very update it describes. Held in a file rather
+# than only returned to the caller because rollback is needed exactly when
+# something went wrong — after a restart, in a new browser session, possibly by
+# a different admin. A commit id that lives only in an HTTP response nobody kept
+# is a rollback that exists in principle and not in practice.
+HISTORY = Path("memory") / "update_history.json"
+_HISTORY_KEEP = 20
+
+
+def history(root: Path | None = None) -> list[dict[str, Any]]:
+    """Past updates, newest first. Never raises: this is a convenience."""
+    import json
+    f = (root or ROOT) / HISTORY
+    try:
+        return json.loads(f.read_text(encoding="utf-8"))
+    except Exception:      # noqa: BLE001 — absent or corrupt is simply "no history"
+        return []
+
+
+def _remember(root: Path, entry: dict[str, Any]) -> None:
+    import json
+    from datetime import datetime, timezone
+    f = root / HISTORY
+    entry = {"ts": datetime.now(timezone.utc).isoformat(), **entry}
+    try:
+        f.parent.mkdir(parents=True, exist_ok=True)
+        rows = history(root)
+        rows.insert(0, entry)
+        f.write_text(json.dumps(rows[:_HISTORY_KEEP], indent=2), encoding="utf-8")
+    except Exception:      # noqa: BLE001 — an update must not fail over bookkeeping
+        pass
+
+
+MARKER = Path("memory") / "update_in_progress.json"
+
+
+def _mark_start(root: Path, frm: str, to: str) -> None:
+    """Record that a pull is about to happen.
+
+    An interrupted pull leaves the ref moved and the working tree stale. Git
+    reports that as a dirty tree, so without this marker the next status() call
+    tells the admin they have "local changes" and offers to preserve edits they
+    never made — and the obvious recovery, `git checkout -- .`, restores from an
+    index that is equally stale and appears to do nothing.
+    """
+    import json
+    from datetime import datetime, timezone
+    try:
+        f = root / MARKER
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(json.dumps({"from": frm, "to": to,
+                                 "started": datetime.now(timezone.utc).isoformat()}),
+                     encoding="utf-8")
+    except Exception:      # noqa: BLE001
+        pass
+
+
+def _mark_done(root: Path) -> None:
+    try:
+        (root / MARKER).unlink(missing_ok=True)
+    except Exception:      # noqa: BLE001
+        pass
+
+
+def interrupted(root: Path | None = None) -> dict[str, Any] | None:
+    """Details of a pull that started and never finished, if any."""
+    import json
+    try:
+        return json.loads((root or ROOT).joinpath(MARKER).read_text(encoding="utf-8"))
+    except Exception:      # noqa: BLE001
+        return None
+
+
+def rollback_target(root: Path | None = None) -> str:
+    """The commit the last successful update moved away from, or ''.
+
+    This is what makes rollback usable without the admin having written a hash
+    down before things went wrong.
+    """
+    for row in history(root):
+        if row.get("ok") and row.get("from"):
+            return str(row["from"])
+    return ""
+
+
 def _git(*args: str, cwd: Path | None = None) -> tuple[int, str]:
     try:
         p = subprocess.run(["git", *args], cwd=str(cwd or ROOT),
@@ -56,7 +142,7 @@ def status(root: Path | None = None) -> dict[str, Any]:
     out: dict[str, Any] = {
         "is_repo": False, "remote": "", "branch": "", "current": "",
         "behind": 0, "ahead": 0, "dirty": [], "can_update": False,
-        "reason": "", "changes": [],
+        "reason": "", "changes": [], "interrupted": None,
     }
     if not _is_repo(root):
         out["reason"] = "not a git checkout — update by replacing the files manually"
@@ -90,6 +176,19 @@ def status(root: Path | None = None) -> dict[str, Any]:
             cwd=root)[1].splitlines()[:30]
 
     out["can_update"], out["reason"] = _decide(out)
+
+    # An unfinished pull looks exactly like local edits. Say what it really is,
+    # and give the recovery that works: `git checkout -- .` restores from an
+    # index left just as stale, so it appears to do nothing at all.
+    unfinished = interrupted(root)
+    if unfinished and out["dirty"]:
+        out["interrupted"] = unfinished
+        out["can_update"] = False
+        out["reason"] = (
+            f"A previous update was interrupted (was moving {unfinished.get('from','?')} "
+            f"→ {unfinished.get('to','?')}). The working tree is mid-checkout, not "
+            f"edited by you. Finish it with: git reset --hard HEAD — then restart "
+            f"SUNI. Instance data is untouched either way.")
     return out
 
 
@@ -175,7 +274,22 @@ def schema_risk(root: Path | None = None) -> list[str]:
     return risky
 
 
-def apply(root: Path | None = None, backup: bool = True) -> dict[str, Any]:
+# Set by the server while a request or scheduled run is in flight, so an update
+# can decline to swap source files underneath one.
+_BUSY: dict[str, int] = {"n": 0}
+
+
+def mark_busy(delta: int) -> None:
+    """Count in-flight work. Called by the server around runs; safe to ignore."""
+    _BUSY["n"] = max(0, _BUSY["n"] + delta)
+
+
+def in_flight() -> int:
+    return _BUSY["n"]
+
+
+def apply(root: Path | None = None, backup: bool = True,
+          force: bool = False) -> dict[str, Any]:
     """Fast-forward to upstream, after taking a backup.
 
     Returns a result describing what happened and what the operator must still
@@ -190,6 +304,21 @@ def apply(root: Path | None = None, backup: bool = True) -> dict[str, Any]:
     s = status(root)
     if not s["can_update"]:
         result["message"] = s["reason"]
+        _remember(root, {"ok": False, "from": s.get("current", ""),
+                         "reason": s["reason"]})
+        return result
+
+    # A pull replaces .py files under a running process. Python has already read
+    # what it imported, so a finished turn is unaffected — but a turn still
+    # executing may import something new mid-flight and get the wrong half of an
+    # update. The scheduler fires every 30s here, so this is a real window, not
+    # a theoretical one. force=True is for an operator who knows the box is idle.
+    if not force and in_flight():
+        result["message"] = (
+            f"{in_flight()} request or scheduled run still in flight. Wait for it "
+            f"to finish, or apply with force=true if you know the box is idle.")
+        _remember(root, {"ok": False, "from": s.get("current", ""),
+                         "reason": result["message"]})
         return result
 
     leaked = _protected_are_untracked(root)
@@ -216,7 +345,10 @@ def apply(root: Path | None = None, backup: bool = True) -> dict[str, Any]:
             return result
 
     result["from"] = s["current"]
+    _target = _git("rev-parse", "--short", f"origin/{s['branch']}", cwd=root)[1]
+    _mark_start(root, s["current"], _target)
     rc, out = _git("pull", "--ff-only", "origin", s["branch"], cwd=root)
+    _mark_done(root)
     if rc != 0:
         result["message"] = (f"Pull failed and the checkout is unchanged: {out[:300]}")
         return result
@@ -235,6 +367,9 @@ def apply(root: Path | None = None, backup: bool = True) -> dict[str, Any]:
                     + ", ".join(risky))
     bits.append("Restart SUNI to load the new code.")
     result["message"] = " ".join(bits)
+    _remember(root, {"ok": True, "from": result["from"], "to": result["to"],
+                     "backup": result["backup"], "deps": deps,
+                     "schema_review": risky})
     return result
 
 
@@ -246,8 +381,10 @@ def rollback(to_commit: str, root: Path | None = None) -> dict[str, Any]:
     the operator's call, because guessing wrong there breaks more than it fixes.
     """
     root = root or ROOT
-    if not to_commit or not to_commit.strip():
-        return {"ok": False, "message": "no commit given"}
+    to_commit = (to_commit or "").strip() or rollback_target(root)
+    if not to_commit:
+        return {"ok": False,
+                "message": "no commit given, and no previous update is recorded"}
     rc, out = _git("cat-file", "-e", f"{to_commit}^{{commit}}", cwd=root)
     if rc != 0:
         return {"ok": False, "message": f"unknown commit {to_commit!r}"}

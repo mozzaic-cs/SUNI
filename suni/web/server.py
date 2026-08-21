@@ -681,6 +681,8 @@ def create_app() -> FastAPI:
                                             s["cadence"])
                             continue
                     status = "ok"
+                    from .. import updater as _upd
+                    _upd.mark_busy(+1)
                     try:
                         from ..core.context import Context as _Ctx
                         ctx = _Ctx()
@@ -698,6 +700,7 @@ def create_app() -> FastAPI:
                     except Exception as exc:
                         status = f"error: {exc}"
                         _log.error("[SCHEDULE] %s failed: %s", s["id"], exc, exc_info=True)
+                    _upd.mark_busy(-1)
                     _sched.mark_ran(s["id"], status, s["cadence"])
                     _audit.log_event(owner["id"], owner.get("username", ""),
                                      "schedule.ran",
@@ -2465,7 +2468,8 @@ def create_app() -> FastAPI:
             return JSONResponse(
                 {"error": "confirm=true is required — review /api/update/status first"},
                 status_code=400)
-        result = _up.apply(backup=bool(body.get("backup", True)))
+        result = _up.apply(backup=bool(body.get("backup", True)),
+                           force=bool(body.get("force", False)))
         _audit.log_event(user["id"], user["username"],
                          "update.applied" if result["ok"] else "update.refused",
                          detail=f"{result.get('from','')}->{result.get('to','')} "

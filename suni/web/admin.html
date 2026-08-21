@@ -430,7 +430,27 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
   <div class="logo">SUNI <span>Control</span></div>
   <div class="header-status">
     <div class="hs-line">
-      <div class="dot" id="hdr-dot"></div>
+      <!-- Update notice. Hidden unless there is something to say, and it says the
+     BLOCKING REASON as loudly as the good news — "3 updates available" that
+     hides "you have local changes stopping them" is worse than no banner. -->
+<div id="update-banner" style="display:none;margin:0 0 14px;padding:11px 14px;
+     border:1px solid var(--border);border-radius:8px;background:var(--card);
+     font-size:12px;line-height:1.55">
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span id="update-headline" style="font-weight:600"></span>
+    <span id="update-detail" style="color:var(--muted)"></span>
+    <span style="margin-left:auto;display:flex;gap:8px">
+      <button class="tbl-btn" onclick="toggleUpdateLog()" id="update-log-btn"
+              style="display:none">What changed</button>
+      <button class="tbl-btn primary" onclick="applyUpdate()" id="update-apply-btn"
+              style="display:none">Update now</button>
+    </span>
+  </div>
+  <pre id="update-log" style="display:none;margin:10px 0 0;padding:9px;font-size:11px;
+       max-height:190px;overflow:auto;background:rgba(120,140,200,.06);border-radius:5px;
+       white-space:pre-wrap"></pre>
+</div>
+<div class="dot" id="hdr-dot"></div>
       <span class="status-txt" id="hdr-state">Online</span>
       <span class="uptime-txt" id="hdr-uptime"></span>
     </div>
@@ -2843,7 +2863,79 @@ async function testMcpFromModal(){
 // ═══════════════════════════════════════════
 let _allSkills = [];
 
-async /* ── Schedules ──────────────────────────────────────────────────────────────
+async /* ── Update notice ──────────────────────────────────────────────────────────
+   Fetched once when the panel loads. Deliberately not polled: /api/update/status
+   runs a git fetch, and hitting someone's remote on a timer is a surprise they
+   did not ask for. */
+async function checkForUpdates() {
+  try {
+    const r = await _apiFetch('/api/update/status');
+    if (!r.ok) return;                       // non-admin or no updater — stay quiet
+    const s = (await r.json()).status || {};
+    const bar  = document.getElementById('update-banner');
+    const head = document.getElementById('update-headline');
+    const det  = document.getElementById('update-detail');
+    const btn  = document.getElementById('update-apply-btn');
+    const lbtn = document.getElementById('update-log-btn');
+    window._updateStatus = s;
+
+    if (s.interrupted) {
+      head.textContent = 'Update interrupted';
+      head.style.color = 'var(--danger)';
+      det.textContent = s.reason || '';
+      bar.style.display = ''; btn.style.display = 'none'; lbtn.style.display = 'none';
+      return;
+    }
+    if (!s.behind) { bar.style.display = 'none'; return; }
+
+    head.textContent = `${s.behind} update${s.behind === 1 ? '' : 's'} available`;
+    head.style.color = 'var(--text)';
+    lbtn.style.display = (s.changes && s.changes.length) ? '' : 'none';
+    document.getElementById('update-log').textContent = (s.changes || []).join('
+');
+    if (s.can_update) {
+      det.textContent = `${s.current} → latest. A backup is taken first; a restart is needed after.`;
+      btn.style.display = '';
+    } else {
+      // The reason is the whole point when an update is blocked.
+      det.textContent = s.reason || 'blocked';
+      det.style.color = 'var(--danger)';
+      btn.style.display = 'none';
+    }
+    bar.style.display = '';
+  } catch (e) { /* the banner is never worth breaking the panel over */ }
+}
+
+function toggleUpdateLog() {
+  const el = document.getElementById('update-log');
+  el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+
+async function applyUpdate() {
+  const s = window._updateStatus || {};
+  if (!confirm(`Update ${s.current} → latest?
+
+A backup is taken first. Your data, `
+             + `config and certificates are never touched. SUNI must be restarted `
+             + `afterwards — it will not restart itself.`)) return;
+  const btn = document.getElementById('update-apply-btn');
+  btn.disabled = true; btn.textContent = 'Updating…';
+  try {
+    const r = await _apiFetch('/api/update/apply', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm: true, backup: true }),
+    });
+    const res = (await r.json()).result || {};
+    alert(res.message || (res.ok ? 'Updated.' : 'Update did not run.'));
+  } catch (e) {
+    alert('Update failed: ' + e);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Update now';
+    checkForUpdates();
+  }
+}
+
+/* ── Schedules ──────────────────────────────────────────────────────────────
    Read-only plus enable/disable and delete. Creating one goes through the chat,
    where the cadence is parsed and anything missing is asked for — a form here
    would be a second, divergent way to build the same object. */
@@ -3380,6 +3472,10 @@ function toggleSidebar(){
 _checkAuth().then(()=>{
   fetchDashboard();
   fetchMetrics();
+  // Once, on load. NOT on an interval like the two above: /api/update/status
+  // runs a git fetch, and reaching out to someone's remote every few seconds is
+  // a surprise nobody asked for.
+  checkForUpdates();
   setInterval(fetchDashboard, 8000);
   setInterval(fetchMetrics, 30000);
 });
