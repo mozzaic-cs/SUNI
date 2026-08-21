@@ -44,12 +44,13 @@ async def _ask(agent, prompt: str) -> str:
         return ""
 
 
-def _build_pool():
-    """Construct the collaboration agents from config `collaborate_pool`
-    (default: Claude Code + Codex — the two no-key frontier providers)."""
+def _build_pool(pool: list | None = None):
+    """Construct the collaboration agents from `pool`, else config
+    `collaborate_pool` (default: Claude Code + Codex — the two no-key frontier
+    providers)."""
     from .. import config as _cfg
     from ..models import factory as _factory
-    pool = _cfg.get("collaborate_pool") or [
+    pool = pool or _cfg.get("collaborate_pool") or [
         {"provider": "claude-code", "model": ""},
         {"provider": "codex",       "model": ""},
     ]
@@ -68,10 +69,25 @@ def _build_pool():
 
 
 async def run_collaboration(task: str, event_cb=None, lang_hint: str = "",
-                            context_hint: str = "") -> str:
-    """Entry point: build the pool from config and run draft→(critique)→synthesize."""
+                            context_hint: str = "", pool: list | None = None,
+                            persona: str = "") -> str:
+    """Entry point: build the pool from config and run draft→(critique)→synthesize.
+
+    pool:    per-agent override of the global collaborate_pool, so one profile can
+             convene a different panel from another — a reviewer wanting two
+             frontier models is not the same panel as a summariser.
+    persona: the agent's own instructions, carried into the synthesis so the
+             answer sounds like that agent rather than like generic SUNI. The
+             draft and critique stages stay neutral on purpose: a persona applied
+             to every seat would correlate the models, and decorrelation is the
+             entire reason the panel is worth its cost.
+    """
     from .. import config as _cfg
-    agents = _build_pool()
+    agents = _build_pool(pool)
+    if persona:
+        _sep = chr(10) * 2
+        _head = "[Answer as this agent, in its voice and remit]" + chr(10)
+        context_hint = ((context_hint + _sep) if context_hint else "") + _head + persona.strip()
     skip_critique = bool(_cfg.get("collaborate_skip_critique", False))
     return await collaborate(task, agents, event_cb=event_cb, lang_hint=lang_hint,
                              context_hint=context_hint, skip_critique=skip_critique)

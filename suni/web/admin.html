@@ -1326,6 +1326,18 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
         with the role of whoever runs the agent.
       </div>
     </div>
+    <div class="field" style="margin-bottom:10px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="ag-panel" style="width:auto;margin:0">
+        Convene a panel instead of using one model
+      </label>
+      <div style="font-size:10px;color:var(--muted);margin-top:4px">
+        Several capable models answer independently, critique each other, and one
+        merges the result — the answer is spoken as this agent. Slower and more
+        thorough. <strong>These are cloud models: this sends the task off the
+        machine</strong>, unlike the single-model path.
+      </div>
+    </div>
     <div class="field" style="flex:1;display:flex;flex-direction:column">
       <label>System prompt — how should this agent behave?</label>
       <textarea id="ag-prompt" rows="8" placeholder="You research topics and always cite your sources."
@@ -2901,7 +2913,7 @@ async function loadAgents() {
         `<td><strong>${esc(a.name)}</strong><div style="font-size:10px;color:var(--muted)">${esc(a.slug)}</div></td>` +
         `<td style="max-width:280px">${esc(a.description || '')}</td>` +
         `<td>${esc(e.model || 'default')}</td>` +
-        `<td>${esc(e.mode || '')}</td>` +
+        `<td>${e.mode === 'collaborate' ? '<strong>panel</strong>' : esc(e.mode || '')}</td>` +
         `<td>${e.tools === 'all' ? 'all' : e.tools}</td>` +
         `<td>${a.used_count || 0}</td>` +
         `<td style="text-align:right"><button class="tbl-btn" onclick="deleteAgent('${esc(a.slug)}')">Delete</button></td>`;
@@ -2916,6 +2928,7 @@ function openNewAgent(){
   el('ag-name').value = ''; el('ag-desc').value = '';
   el('ag-model').value = ''; el('ag-tools').value = '';
   el('ag-prompt').value = '';
+  el('ag-panel').checked = false;
   el('ag-err').style.display = 'none';
   el('modal-agent').classList.add('open');
 }
@@ -2936,6 +2949,9 @@ async function saveAgent(){
       description: el('ag-desc').value.trim(),
       system_prompt: prompt_,
       model: el('ag-model').value.trim(),
+      // A panel agent is just mode=collaborate — the existing branch handles it,
+      // and effective_grants() still clamps the mode to what the role may use.
+      mode: el('ag-panel').checked ? 'collaborate' : 'assistant',
       // blank means "inherit whatever the person running it may use"
       tools: toolsRaw ? toolsRaw.split(',').map(s=>s.trim()).filter(Boolean) : null,
     }),

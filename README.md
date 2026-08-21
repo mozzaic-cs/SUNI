@@ -23,6 +23,7 @@ collaborate on one answer**. Runs on your own hardware; your data stays yours.
 - **Governance** — RBAC, intent judge, output guard, tool policies, approval previews, OIDC/SSO, rate limiting, audit log.
 - **EU AI Act transparency, implemented** — Article 50 disclosure in every UI, and synthetic output marked **machine-readably** (PDF `/Info`, RFC 3834 email headers), not just visibly. See [`docs/eu-ai-act.md`](docs/eu-ai-act.md).
 - **Named agents** — save a prompt, a model and a narrowed tool set as an agent, then ask SUNI to hand work to it. An agent can only ever *reduce* what the person running it could already do.
+- **Panel agents** *(nothing else has this)* — an agent whose "model" is a **panel**: several capable models answer independently, critique each other, and one merges the result, spoken in that agent's voice.
 - **Scheduled runs** — "email me a calendar digest every morning at 8" becomes a recurring job that replays through SUNI, as you, with your permissions **at the time it fires**.
 - **Batteries included** — **19 starter skills** and a **26-server MCP catalog** you can one-click add.
 
@@ -74,6 +75,16 @@ Recognising *what* it is looking at is a separate, explicit act: a snapshot
 button captures one still and sends it to a vision model you configure (or to
 Claude Code). That one does leave the machine, which is exactly why it is a
 button you press rather than something running continuously.
+
+**An agent's model can be a panel.** SUNI has draft → cross-critique →
+synthesise across decorrelated models, and it has agent profiles; a panel agent
+is the combination. Set one to convene a panel and invoking it runs the whole
+pool instead of a single model, returning the synthesis in that agent's voice.
+The agent's persona shapes **only the synthesis** — applying it to every seat
+would correlate the models, and decorrelation is the entire reason a panel earns
+its cost. Each agent may bring its own pool, because a reviewer's panel is not a
+summariser's. The same caveat as collaboration mode applies and is stated in the
+UI: **a panel is cloud models, so the task leaves the machine.**
 
 **Agents can only narrow, never widen.** An agent profile is a system prompt, an
 optional model, and an optional restriction of the tools and MCP servers it may

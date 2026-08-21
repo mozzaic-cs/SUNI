@@ -368,6 +368,54 @@ class Orchestrator:
                 context.add(Message(role=Role.SYSTEM, content=mem_context, agent="memory"))
         ts = _tick("memory retrieval", ts)
 
+        # Agent profile: resolve its grants against THIS caller's role. The
+        # profile is a file a user can edit, so nothing in it is trusted —
+        # effective_grants() intersects, never unions. None keeps the plain
+        # role behaviour and costs nothing.
+        #
+        # Resolved HERE, before the collaborate branch below, because a panel
+        # agent carries mode=collaborate in its profile. Resolving afterwards
+        # meant the branch had already been skipped and the profile's mode
+        # reached nothing — the defect this codebase keeps producing, in the
+        # code that exists to stop a profile reaching too far.
+        _agent_grants = None
+        if agent_profile:
+            from ..agents import effective_grants as _eff
+            from ..tools.agent_tool import CURRENT_GRANTS as _GR
+            _agent_grants = _eff(
+                agent_profile, user_role,
+                getattr(self.registry, "_mcp_prefixes", []),
+            )
+            if _agent_grants["mode"] != conv_mode and _agent_grants["mode"]:
+                conv_mode = _agent_grants["mode"]
+            # Traceability: record what this agent was permitted to reach on
+            # THIS invocation. Grants are re-derived each time from an
+            # editable file and a role that can change, so the profile as it
+            # stands later is not evidence of what applied here.
+            from ..agents import record_invocation as _rec, mark_used as _used
+            _slug = str(agent_profile.get("slug") or "")
+            if _slug:
+                _rec(_slug, user_id, str(agent_profile.get("_username") or ""),
+                     _agent_grants)
+                _used(_slug)
+            # A profile can name a tool that is not registered — the
+            # intersection keeps the name, the registry returns nothing for
+            # it, and the model narrates instead of calling. Say so.
+            try:
+                from ..agents import unknown_tools as _unk
+                _missing = _unk(agent_profile, self.registry.names())
+                if _missing:
+                    _log.warning("[AGENT] %r declares unregistered tool(s): %s — "
+                                 "they will not be available",
+                                 agent_profile.get("slug", "?"), ", ".join(_missing))
+                    if event_cb:
+                        event_cb({"type": "agent_warning",
+                                  "agent": agent_profile.get("slug", ""),
+                                  "unknown_tools": _missing})
+            except Exception:      # noqa: BLE001 — a warning is never worth the turn
+                pass
+            _GR.set(_agent_grants)
+
         # ── Mode 2: multi-model collaboration (explicit opt-in) ───────────
         # A separate, self-contained branch — the normal Mode-1 pipeline below is
         # left entirely untouched. Runs only when the user selects "collaborate"
@@ -378,10 +426,22 @@ class Orchestrator:
                      if m.role in (Role.USER, Role.ASSISTANT) and m.content][-4:]
             _ctx_hint = "\n".join(
                 f"{'User' if m.role == Role.USER else 'SUNI'}: {m.content[:300]}" for m in _hist)
+            # A panel agent: its profile carries mode=collaborate, so it lands
+            # here instead of a single-model turn. The pool may be per-agent —
+            # a reviewer's panel is not a summariser's — and the agent's own
+            # instructions shape only the SYNTHESIS. Applying a persona to every
+            # seat would correlate the models, and decorrelation is the whole
+            # reason a panel earns its cost.
+            _pool = (agent_profile or {}).get("pool") or None
+            _persona = (agent_profile or {}).get("system_prompt", "") if agent_profile else ""
             final = await _collab.run_collaboration(
                 user_input, event_cb=event_cb,
-                lang_hint=_lang_instruction(response_language), context_hint=_ctx_hint)
+                lang_hint=_lang_instruction(response_language), context_hint=_ctx_hint,
+                pool=_pool, persona=_persona)
             context.add(Message(role=Role.USER, content=user_input))
+            _who = (agent_profile or {}).get("name") if agent_profile else ""
+            if _who:
+                final = f"[{_who} · panel]" + _NL + str(final)
             context.add(Message(role=Role.ASSISTANT, content=final, agent="collaborate"))
             if _mem:
                 await _mem.add_exchange(user_input, final)
@@ -566,48 +626,6 @@ class Orchestrator:
             # 1.5B nano) are too weak for reliable tool use — they hallucinate
             # instead of calling tools — so we never start below core; harder
             # queries still climb from there and escalate to Claude Code (T5).
-            # Agent profile: resolve its grants against THIS caller's role. The
-            # profile is a file a user can edit, so nothing in it is trusted —
-            # effective_grants() intersects, never unions. None keeps the plain
-            # role behaviour and costs nothing.
-            _agent_grants = None
-            if agent_profile:
-                from ..agents import effective_grants as _eff
-                from ..tools.agent_tool import CURRENT_GRANTS as _GR
-                _agent_grants = _eff(
-                    agent_profile, user_role,
-                    getattr(self.registry, "_mcp_prefixes", []),
-                )
-                if _agent_grants["mode"] != conv_mode and _agent_grants["mode"]:
-                    conv_mode = _agent_grants["mode"]
-                # Traceability: record what this agent was permitted to reach on
-                # THIS invocation. Grants are re-derived each time from an
-                # editable file and a role that can change, so the profile as it
-                # stands later is not evidence of what applied here.
-                from ..agents import record_invocation as _rec, mark_used as _used
-                _slug = str(agent_profile.get("slug") or "")
-                if _slug:
-                    _rec(_slug, user_id, str(agent_profile.get("_username") or ""),
-                         _agent_grants)
-                    _used(_slug)
-                _GR.set(_agent_grants)
-                # A profile can name a tool that is not registered — the
-                # intersection keeps the name, the registry returns nothing for
-                # it, and the model narrates instead of calling. Say so.
-                try:
-                    from ..agents import unknown_tools as _unk
-                    _missing = _unk(agent_profile, self.registry.names())
-                    if _missing:
-                        _log.warning("[AGENT] %r declares unregistered tool(s): %s — "
-                                     "they will not be available",
-                                     agent_profile.get("slug", "?"), ", ".join(_missing))
-                        if event_cb:
-                            event_cb({"type": "agent_warning",
-                                      "agent": agent_profile.get("slug", ""),
-                                      "unknown_tools": _missing})
-                except Exception:      # noqa: BLE001 — a warning is never worth the turn
-                    pass
-
             _start_tier = min(max(complexity_score(user_input), DEFAULT_TIER), MAX_LOCAL_TIER)
             # Delegation and scheduling are structured tool-selection tasks, and
             # the core tier is measurably bad at them: with the right tool
