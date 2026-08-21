@@ -109,3 +109,61 @@ def test_report_deduplicates_identical_grants():
 def test_report_never_raises():
     src = inspect.getsource(agents.report)
     assert "except Exception" in src
+
+
+# ── the budget must survive the way it is actually set ───────────────────────
+def test_create_accepts_a_budget():
+    """It did not, and the admin form posted the fields anyway — so a limit typed
+    into the UI was silently dropped. The unreachable-control pattern, inside the
+    feature added to make agents controllable."""
+    rec = agents.create(name="Bounded", system_prompt="x", owner_id="u1",
+                        max_steps=3, max_runs_day=10)
+    assert rec["max_steps"] == 3 and rec["max_runs_day"] == 10
+    got = agents.get("bounded")
+    assert got["max_steps"] == 3 and got["max_runs_day"] == 10
+
+
+def test_the_create_endpoint_forwards_the_budget():
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parent.parent
+    srv = (root / "suni" / "web" / "server.py").read_text(encoding="utf-8-sig")
+    i = srv.index('@app.post("/api/agents")')
+    block = srv[i:srv.index('@app.get("/api/agents/{slug}")', i)]
+    assert "max_steps=" in block and "max_runs_day=" in block, \
+        "the endpoint drops the budget the form sends"
+
+
+def test_the_admin_form_and_the_endpoint_agree():
+    """Both halves must use the same field names or the value vanishes between
+    them — which is exactly how this was missed."""
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parent.parent
+    html = (root / "suni" / "web" / "admin.html").read_text(encoding="utf-8")
+    assert "max_steps: parseInt" in html and "max_runs_day: parseInt" in html
+
+
+def test_budget_columns_are_added_to_an_existing_database(tmp_path, monkeypatch):
+    """The upgrade path, which a fresh-database test cannot see.
+
+    CREATE TABLE IF NOT EXISTS leaves an existing table alone, so a column added
+    after release never appears on an upgraded install — create() failed with
+    "table agents has no column named max_steps" against a real deployment while
+    every test passed.
+    """
+    import sqlite3
+    db = tmp_path / "old.db"
+    # A pre-budget schema, as an older install would have.
+    with sqlite3.connect(db) as c:
+        c.execute("""CREATE TABLE agents (
+            slug TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
+            owner_id TEXT NOT NULL, model TEXT NOT NULL DEFAULT '',
+            mode TEXT NOT NULL DEFAULT 'assistant', tools_json TEXT NOT NULL DEFAULT 'null',
+            blocked_json TEXT NOT NULL DEFAULT '[]', mcp_json TEXT NOT NULL DEFAULT 'null',
+            enabled INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL, used_count INTEGER NOT NULL DEFAULT 0,
+            last_used TEXT NOT NULL DEFAULT '')""")
+    monkeypatch.setattr(agents, "AGENTS_DB", db)
+    monkeypatch.setattr(agents, "AGENTS_DIR", tmp_path / "agents")
+    rec = agents.create(name="Upgraded", system_prompt="x", owner_id="u1", max_runs_day=5)
+    assert rec["max_runs_day"] == 5
+    assert agents.get("upgraded")["max_runs_day"] == 5

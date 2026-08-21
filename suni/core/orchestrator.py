@@ -250,6 +250,7 @@ class Orchestrator:
         claude_api_key: str = "",  # per-user Anthropic key; '' = use global env var
         images: list[str] | None = None,  # paths of attached image files (vision path)
         agent_profile: dict | None = None,  # named agent profile; see suni/agents.py
+        dry_run: bool = False,   # show what it WOULD do; execute nothing
     ) -> str:
         """Process a user message through the full agent-tool loop."""
         # Set per-request ContextVars so tool handlers can read them.
@@ -270,7 +271,7 @@ class Orchestrator:
             return await self._run_inner(
                 user_input, context, user_role, conv_mode, response_language,
                 user_mcp_servers, event_cb, user_id, claude_api_key, images,
-                agent_profile,
+                agent_profile, dry_run,
             )
         finally:
             CLAUDE_API_KEY_CTX.reset(_key_token)
@@ -291,6 +292,7 @@ class Orchestrator:
         claude_api_key: str,
         images: list[str] | None = None,
         agent_profile: dict | None = None,
+        dry_run: bool = False,   # show what it WOULD do; execute nothing
     ) -> str:
         # Per-request memory: the task-local binding (set race-free by run() at
         # request start) — NOT self.memory, which _safe_run swaps and a concurrent
@@ -707,7 +709,7 @@ class Orchestrator:
                                               user_id=user_id,
                                               user_input=user_input,
                                               cc_rbac_ok=_cc_rbac_ok,
-                                              grants=_agent_grants)
+                                              grants=_agent_grants, dry_run=dry_run)
             context.add(response)
 
         # ── memory store ──────────────────────────────────────────────
@@ -1149,6 +1151,7 @@ class Orchestrator:
         claude_api_key: str = "",
         images: list[str] | None = None,
         agent_profile: dict | None = None,
+        dry_run: bool = False,   # show what it WOULD do; execute nothing
     ) -> str:
         """Wrapper that guarantees any unhandled exception is logged."""
         original_memory = self.memory
@@ -1161,7 +1164,8 @@ class Orchestrator:
                                   user_mcp_servers=user_mcp_servers,
                                   event_cb=event_cb, user_id=user_id,
                                   images=images,
-                                  claude_api_key=claude_api_key, agent_profile=agent_profile)
+                                  claude_api_key=claude_api_key, agent_profile=agent_profile,
+                                  dry_run=dry_run)
         except _bhealth.BackendUnavailableError as exc:
             # Breaker is open — the local model backend is down. Return a clean,
             # user-facing message. run() yields a STRING (_run_inner returns
@@ -1190,6 +1194,7 @@ class Orchestrator:
         user_input: str = "",       # original user text; used for T5 fallback
         cc_rbac_ok: bool = True,    # whether T5 is permitted for this user/role
         grants: dict | None = None, # resolved agent grants; None = plain role
+        dry_run: bool = False,      # stop before executing anything
     ) -> Message:
         # MCP prefix filtering based on route AND role (AND per-user restriction)
         registered_prefixes = getattr(self.registry, "_mcp_prefixes", [])
@@ -1304,6 +1309,38 @@ class Orchestrator:
                     return await self._handle_claude_code_direct(
                         user_input, context, trace, event_cb=event_cb
                     )
+
+            # Dry run: report the intended calls and the grants in force, then
+            # stop. Deliberately NOT stashed as a pending plan the way task mode
+            # does — there is nothing to approve, and leaving an executable plan
+            # behind would turn a preview into something one word could fire.
+            # Checked before task mode so the two together preview rather than
+            # arm a plan.
+            if dry_run and iteration == 0:
+                _steps = [
+                    f"{tc.name}({', '.join(f'{k}={repr(v)[:40]}' for k, v in tc.args.items())})"
+                    for tc in (response.tool_calls or [])
+                ]
+                _al = (grants or {}).get("allowed_tools")
+                _mc = (grants or {}).get("mcp_prefixes")
+                _lines = ["[DRY RUN — nothing was executed]", ""]
+                if _steps:
+                    _lines.append("It would call:")
+                    _lines += [f"  {i + 1}. {s}" for i, s in enumerate(_steps)]
+                else:
+                    _lines.append("It would answer directly, calling no tools:")
+                    _lines.append("  " + (response.content or "").strip()[:400])
+                _lines += [
+                    "",
+                    "Permitted at this moment:",
+                    f"  tools:   {'all' if _al is None else (', '.join(_al) or 'none')}",
+                    f"  mcp:     {'all' if _mc is None else (', '.join(_mc) or 'none')}",
+                    f"  blocked: {', '.join((grants or {}).get('blocked_tools') or []) or 'none'}",
+                    f"  model:   {(grants or {}).get('model') or 'tier selection'}",
+                ]
+                _log.info("[DRY-RUN] %d intended call(s)", len(_steps))
+                return Message(role=Role.ASSISTANT, content=_NL.join(_lines),
+                               agent="dry-run")
 
             if not response.has_tool_calls():
                 if response.content:

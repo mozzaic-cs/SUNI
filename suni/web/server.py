@@ -2484,6 +2484,8 @@ def create_app() -> FastAPI:
             tools=body.get("tools"),
             blocked=body.get("blocked") or [],
             mcp_servers=body.get("mcp_servers"),
+            max_steps=int(body.get("max_steps") or 0),
+            max_runs_day=int(body.get("max_runs_day") or 0),
         )
         _audit.log_event(user["id"], user["username"], "agent.created",
                          detail=f"name={name}", target_id=rec["slug"],
@@ -2514,6 +2516,30 @@ def create_app() -> FastAPI:
                          detail=",".join(sorted(body.keys()))[:100],
                          target_id=slug, agent_slug=slug)
         return JSONResponse({"agent": rec})
+
+    @app.post("/api/agents/{slug}/dry-run")
+    async def agents_dry_run_api(slug: str, request: Request,
+                                 user: dict = Depends(get_current_user)):
+        """What would this agent do with this task — without doing any of it."""
+        from .. import agents as _agents
+        from ..core.context import Context as _Ctx
+        body = await request.json()
+        task = str(body.get("task") or "").strip()
+        if not task:
+            return JSONResponse({"error": "task is required"}, status_code=400)
+        role = user.get("role", "standard")
+        if slug not in {a["slug"] for a in _agents.list_for_user(user["id"], role)}:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        profile = _agents.get(slug)
+        if not profile:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        profile["_username"] = user["username"]
+        preview = await orchestrator._safe_run(
+            task, _Ctx(), memory_override=_get_user_memory(user["id"]),
+            user_role=role, user_id=user["id"], agent_profile=profile, dry_run=True)
+        _audit.log_event(user["id"], user["username"], "agent.dry_run",
+                         detail=task[:100], target_id=slug, agent_slug=slug)
+        return JSONResponse({"preview": preview})
 
     @app.get("/api/agents/{slug}/report")
     async def agents_report_api(slug: str, days: int = 7,

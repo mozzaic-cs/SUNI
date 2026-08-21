@@ -76,6 +76,16 @@ def _conn() -> sqlite3.Connection:
     c = sqlite3.connect(AGENTS_DB)
     c.row_factory = sqlite3.Row
     c.executescript(_SCHEMA)
+    # CREATE TABLE IF NOT EXISTS does nothing to a table that already exists, so
+    # a column added after the first release never appears on an upgraded
+    # install. Adding budgets broke create() on exactly that path — and the
+    # tests missed it because they build a fresh database every run. Same
+    # ALTER-if-missing pattern as audit.py.
+    cols = {r["name"] for r in c.execute("PRAGMA table_info(agents)").fetchall()}
+    for col, ddl in (("max_steps", "INTEGER NOT NULL DEFAULT 0"),
+                     ("max_runs_day", "INTEGER NOT NULL DEFAULT 0")):
+        if col not in cols:
+            c.execute(f"ALTER TABLE agents ADD COLUMN {col} {ddl}")
     return c
 
 
@@ -308,6 +318,8 @@ def _write_md(rec: dict[str, Any]) -> None:
         "blocked": rec.get("blocked") or [],
         "mcp_servers": rec.get("mcp_servers"),
         "enabled": bool(rec.get("enabled", True)),
+        "max_steps": int(rec.get("max_steps") or 0),
+        "max_runs_day": int(rec.get("max_runs_day") or 0),
         "created_at": rec.get("created_at", _now()),
         "updated_at": rec.get("updated_at", _now()),
     }
@@ -355,6 +367,8 @@ def create(
     tools: list[str] | None = None,
     blocked: list[str] | None = None,
     mcp_servers: list[str] | None = None,
+    max_steps: int = 0,
+    max_runs_day: int = 0,
 ) -> dict[str, Any]:
     slug = slugify(name)
     ts = _now()
@@ -363,15 +377,17 @@ def create(
         "model": model, "mode": mode, "tools": tools, "blocked": blocked or [],
         "mcp_servers": mcp_servers, "enabled": True, "created_at": ts, "updated_at": ts,
         "system_prompt": system_prompt,
+        "max_steps": int(max_steps or 0), "max_runs_day": int(max_runs_day or 0),
     }
     with _conn() as c:
         c.execute(
             """INSERT OR REPLACE INTO agents
                (slug,name,description,owner_id,model,mode,tools_json,blocked_json,
-                mcp_json,enabled,created_at,updated_at)
-               VALUES (?,?,?,?,?,?,?,?,?,1,?,?)""",
+                mcp_json,enabled,max_steps,max_runs_day,created_at,updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,1,?,?,?,?)""",
             (slug, name, description, owner_id, model, mode,
-             json.dumps(tools), json.dumps(blocked or []), json.dumps(mcp_servers), ts, ts),
+             json.dumps(tools), json.dumps(blocked or []), json.dumps(mcp_servers),
+             int(max_steps or 0), int(max_runs_day or 0), ts, ts),
         )
         c.execute(
             "INSERT OR REPLACE INTO agent_members (slug,user_id,role,added_at) VALUES (?,?,'owner',?)",
