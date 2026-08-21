@@ -158,6 +158,31 @@ admin account** on the first-run screen. That's it.
 
 ---
 
+## Updating
+
+```bash
+git pull --ff-only        # or, from the admin API: POST /api/update/apply
+```
+
+SUNI can update itself from this repository without touching your instance.
+Nothing under `memory/`, `logs/`, `files/`, `certs/` or your `.env` is tracked
+by git, so a fast-forward pull cannot overwrite them — and the updater
+re-verifies that before every run rather than trusting it.
+
+It **refuses rather than rescues**. Local edits, local commits, or anything
+needing a merge stop the update with a message naming what to fix. Stashing or
+merging your changes to make an update succeed would hide your work and call it
+success.
+
+A backup is taken first. Dependency changes and modules whose database schema
+does not migrate itself are *reported*, not acted on. The server is never
+restarted for you — that is yours to time.
+
+`POST /api/update/rollback` returns the code to a previous commit; instance data
+is never involved either way.
+
+---
+
 ## Optional extras
 
 - **Document knowledge base** — semantic search over your own files. Install the heavy

@@ -2441,6 +2441,47 @@ def create_app() -> FastAPI:
         background_tasks.add_task(_run)
         return JSONResponse({"ok": True, "message": "Check started in background"})
 
+    # ── Updates ────────────────────────────────────────────────────────────
+    # Admin only, without exception. This replaces the code the server is
+    # running; a non-admin able to trigger it would be the widest privilege
+    # escalation in the codebase, wider than any tool.
+
+    @app.get("/api/update/status")
+    async def update_status_api(user: dict = Depends(require_admin)):
+        from .. import updater as _up
+        return JSONResponse({"status": _up.status()})
+
+    @app.post("/api/update/apply")
+    async def update_apply_api(request: Request, user: dict = Depends(require_admin)):
+        from .. import updater as _up
+        body = {}
+        try:
+            body = await request.json()
+        except Exception:      # noqa: BLE001 — an empty body is a valid request
+            pass
+        # Confirmation is required in the payload as well as by the admin check:
+        # this is not something to trigger by following a link.
+        if not bool(body.get("confirm")):
+            return JSONResponse(
+                {"error": "confirm=true is required — review /api/update/status first"},
+                status_code=400)
+        result = _up.apply(backup=bool(body.get("backup", True)))
+        _audit.log_event(user["id"], user["username"],
+                         "update.applied" if result["ok"] else "update.refused",
+                         detail=f"{result.get('from','')}->{result.get('to','')} "
+                                f"{result.get('message','')}"[:100])
+        return JSONResponse({"result": result})
+
+    @app.post("/api/update/rollback")
+    async def update_rollback_api(request: Request, user: dict = Depends(require_admin)):
+        from .. import updater as _up
+        body = await request.json()
+        commit = str(body.get("commit") or "").strip()
+        result = _up.rollback(commit)
+        _audit.log_event(user["id"], user["username"], "update.rollback",
+                         detail=f"{commit} {result.get('message','')}"[:100])
+        return JSONResponse({"result": result})
+
     # ── Agents ─────────────────────────────────────────────────────────────
     # Any authenticated user may author a profile. That is safe because a profile
     # can only ever NARROW what its invoker can reach (suni.agents.effective_grants)
