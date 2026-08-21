@@ -300,6 +300,7 @@ def apply(root: Path | None = None, backup: bool = True,
     result: dict[str, Any] = {
         "ok": False, "from": "", "to": "", "backup": "", "restart_required": False,
         "reinstall_deps": False, "schema_review": [], "message": "",
+        "backup_covers": "", "backup_excludes": "", "backup_mb": 0,
     }
     s = status(root)
     if not s["can_update"]:
@@ -336,10 +337,25 @@ def apply(root: Path | None = None, backup: bool = True,
     if backup:
         try:
             from . import backup as _backup
-            # Uploads and the FAISS index are excluded deliberately: both can be
-            # very large, neither is destroyed by a code update, and a backup so
-            # slow that people skip it protects nothing.
+            # Uploads and the FAISS index are excluded deliberately: the index is
+            # rebuildable, both can be enormous, and a backup slow enough that
+            # people start skipping it protects nothing. An update also cannot
+            # reach either of them — they are untracked, like all instance data.
+            #
+            # What it DOES cover is reported below rather than left to be
+            # assumed. A backup trusted for more than it holds is worse than no
+            # backup, because it is only discovered to be partial at the moment
+            # it is needed.
             result["backup"] = _backup.create()
+            result["backup_covers"] = ("databases, config, agents, schedules, "
+                                       "skills and secrets")
+            result["backup_excludes"] = ("uploaded documents and the FAISS index "
+                                         "(rebuildable; unaffected by a code update)")
+            try:
+                _bp = root / "backups" / result["backup"]
+                result["backup_mb"] = round(_bp.stat().st_size / 1048576, 1)
+            except OSError:
+                result["backup_mb"] = 0
         except Exception as exc:      # noqa: BLE001
             result["message"] = f"Backup failed, so nothing was changed: {exc}"
             return result
@@ -359,6 +375,10 @@ def apply(root: Path | None = None, backup: bool = True,
     result["reinstall_deps"] = deps
     result["schema_review"] = risky
     bits = [f"Updated {result['from']} → {result['to']}."]
+    if result.get("backup"):
+        bits.append(f"Backup {result['backup']} ({result.get('backup_mb', 0)} MB) "
+                    f"covers {result['backup_covers']}; it excludes "
+                    f"{result['backup_excludes']}.")
     if deps:
         bits.append("Dependencies changed — run: pip install -r requirements.txt")
     if risky:

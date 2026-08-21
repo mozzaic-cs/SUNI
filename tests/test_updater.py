@@ -262,3 +262,43 @@ def test_the_banner_shows_the_blocking_reason():
     i = html.index("async function checkForUpdates")
     block = html[i:i + 2200]
     assert "s.reason" in block and "s.interrupted" in block
+
+
+# ── the backup, and what it does not contain ─────────────────────────────────
+def test_backup_is_on_by_default_at_every_layer():
+    """Three places can turn it off; all three must default to on, or the
+    safety net depends on which caller you came through."""
+    assert inspect.signature(u.apply).parameters["backup"].default is True
+    srv = (ROOT / "suni" / "web" / "server.py").read_text(encoding="utf-8-sig")
+    assert 'body.get("backup", True)' in srv, "the endpoint defaults the backup off"
+    html = (ROOT / "suni" / "web" / "admin.html").read_text(encoding="utf-8")
+    assert "backup: true" in html, "the admin button skips the backup"
+
+
+def test_the_backup_happens_before_the_pull():
+    """A backup taken after the change protects nothing."""
+    src = inspect.getsource(u.apply)
+    assert src.index("_backup.create()") < src.index('"pull"')
+
+
+def test_the_backup_states_what_it_does_not_cover():
+    """It excludes uploads and the FAISS index. A backup trusted for more than
+    it holds is worse than none, because the gap is discovered at the moment it
+    is needed."""
+    src = inspect.getsource(u.apply)
+    assert "backup_excludes" in src
+    assert "uploaded documents" in src and "FAISS" in src
+    i = src.index('bits = [f"Updated')
+    assert "backup_excludes" in src[i:i + 600], \
+        "the exclusions are recorded but never shown to the operator"
+
+
+def test_the_reported_coverage_is_not_a_guess():
+    """The claim has to match backup.create()'s actual defaults — if those
+    change, this description silently becomes a lie."""
+    from suni import backup as b
+    sig = inspect.signature(b.create)
+    assert sig.parameters["include_uploads"].default is False
+    assert sig.parameters["include_faiss"].default is False
+    src = inspect.getsource(u.apply)
+    assert "rebuildable" in src
