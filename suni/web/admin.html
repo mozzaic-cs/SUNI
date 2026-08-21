@@ -630,12 +630,27 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
 <!-- ════════════════════ CONFIGURATION ════════════════════ -->
 <div class="panel" id="panel-config">
   <form id="cfg-form" autocomplete="off">
+<div class="cfg-nav" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+     margin:0 0 14px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+  <button type="button" class="tbl-btn cfg-tab" data-cfg-tab="general"  onclick="cfgTab('general',this)"  data-i18n="admin.cfgtab_general">General</button>
+  <button type="button" class="tbl-btn cfg-tab" data-cfg-tab="models"   onclick="cfgTab('models',this)"   data-i18n="admin.cfgtab_models">Models</button>
+  <button type="button" class="tbl-btn cfg-tab" data-cfg-tab="channels" onclick="cfgTab('channels',this)" data-i18n="admin.cfgtab_channels">Channels</button>
+  <button type="button" class="tbl-btn cfg-tab" data-cfg-tab="voice"    onclick="cfgTab('voice',this)"    data-i18n="admin.cfgtab_voice">Voice &amp; Vision</button>
+  <button type="button" class="tbl-btn cfg-tab" data-cfg-tab="memory"   onclick="cfgTab('memory',this)"   data-i18n="admin.cfgtab_memory">Memory</button>
+  <button type="button" class="tbl-btn cfg-tab" data-cfg-tab="advanced" onclick="cfgTab('advanced',this)" data-i18n="admin.cfgtab_advanced">Advanced</button>
+  <input type="text" id="cfg-filter" oninput="cfgFilter(this.value)" autocomplete="off"
+         data-i18n-placeholder="admin.cfg_find" placeholder="Find a setting…"
+         style="margin-left:auto;min-width:190px;background:rgba(255,255,255,.05);
+                border:1px solid var(--border);color:var(--text);padding:6px 10px;
+                border-radius:3px;font-family:'DM Mono',monospace;font-size:11px">
+  <span id="cfg-filter-count" style="font-size:10px;color:var(--muted)"></span>
+</div>
     <div class="cfg-sections">
 
       <!-- Left column -->
       <div class="cfg-section">
 
-        <div class="section-head" data-i18n="admin.cfg_identity">Identity</div>
+        <div data-cfg-group="general" class="section-head" data-i18n="admin.cfg_identity">Identity</div>
         <div class="field">
           <label data-i18n="admin.cfg_display_name">Display name</label>
           <input type="text" name="display_name" placeholder="SUNI">
@@ -645,7 +660,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
           <input type="text" name="tagline" placeholder="The world, as seen by SUNI.">
         </div>
 
-        <div class="section-head" style="margin-top:8px" data-i18n="admin.cfg_model">Model</div>
+        <div data-cfg-group="models" class="section-head" style="margin-top:8px" data-i18n="admin.cfg_model">Model</div>
         <div class="field">
           <label data-i18n="admin.cfg_ollama_model">Ollama model</label>
           <select name="model" id="cfg-model"></select>
@@ -660,7 +675,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
           <div class="field-hint" data-i18n="admin.cfg_num_ctx_hint">Higher = more context, more VRAM. 8192 is safe for 8 GB VRAM.</div>
         </div>
 
-        <div class="section-head" style="margin-top:8px" data-i18n="admin.cfg_tiers">Model Tiers</div>
+        <div data-cfg-group="models" class="section-head" style="margin-top:8px" data-i18n="admin.cfg_tiers">Model Tiers</div>
         <div class="field">
           <div id="tier-inventory-wrap" style="font-size:11px;color:var(--muted)">
             <div id="tier-inventory-rows" data-i18n="common.loading">Loading…</div>
@@ -686,7 +701,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
           </div>
         </div>
 
-        <div class="section-head" style="margin-top:8px">Model Preferences <span style="font-weight:400;color:var(--muted);font-size:10px">· pluggable</span></div>
+        <div data-cfg-group="models" class="section-head" style="margin-top:8px">Model Preferences <span style="font-weight:400;color:var(--muted);font-size:10px">· pluggable</span></div>
         <div class="field">
           <div class="field-hint" style="margin-bottom:8px">
             Pre-loaded with your current <b>tier ladder</b> (T1–T5) — reorder by dragging, edit a model, or add
@@ -710,7 +725,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
           </div>
         </div>
 
-        <div class="section-head" style="margin-top:8px">Collaboration — Mode 2 (multi-model)</div>
+        <div data-cfg-group="models" class="section-head" style="margin-top:8px">Collaboration — Mode 2 (multi-model)</div>
         <div class="field">
           <div class="field-hint" style="margin-bottom:8px">Opt-in per message via the <b>✦ collaborate</b> mode toggle in the chat/face UI. Capable models <b>draft → cross-critique → synthesize</b> the best answer. Mode 1 (the tier pipeline) is untouched. <b>Privacy:</b> these are cloud frontier models — Mode-2 data leaves this machine. Default pool = <b>Claude Code + Codex</b> (both no-key/subscription).</div>
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:2px 0">
@@ -728,7 +743,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
           </div>
         </div>
 
-        <div class="section-head" style="margin-top:8px">Backend — vLLM (optional)</div>
+        <div data-cfg-group="models" class="section-head" style="margin-top:8px">Backend — vLLM (optional)</div>
         <div class="field">
           <label>vLLM base URL</label>
           <input type="text" name="vllm_base_url" id="cfg-vllm-url" placeholder="http://gpu-1:8000/v1">
@@ -743,7 +758,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
           <input type="password" name="vllm_api_key" placeholder="only if server started with --api-key">
         </div>
 
-        <div class="section-head" style="margin-top:8px">Channels — Telegram</div>
+        <div data-cfg-group="channels" class="section-head" style="margin-top:8px">Channels — Telegram</div>
         <div class="field">
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
             <input type="checkbox" id="telegram_enabled" name="telegram_enabled">
@@ -761,7 +776,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
           <div class="field-hint"><b>Security gate (fails closed):</b> only these chat ids may talk to SUNI. Leave empty and message the bot once — it replies with your chat id, which you paste here. Messages run at role <b>standard</b> (no shell / code-exec).</div>
         </div>
 
-        <div class="section-head" style="margin-top:8px">Channels — Discord</div>
+        <div data-cfg-group="channels" class="section-head" style="margin-top:8px">Channels — Discord</div>
         <div class="field">
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
             <input type="checkbox" id="discord_enabled" name="discord_enabled">
@@ -779,7 +794,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
           <div class="field-hint"><b>Security gate (fails closed):</b> SUNI only answers in these channels. Enable Discord <b>Developer Mode</b> (User Settings → Advanced), then right-click a channel → <b>Copy Channel ID</b>. In a DM the bot also replies with the channel id. Messages run at role <b>standard</b> (no shell / code-exec).</div>
         </div>
 
-        <div class="section-head" style="margin-top:8px">Channels — Slack</div>
+        <div data-cfg-group="channels" class="section-head" style="margin-top:8px">Channels — Slack</div>
         <div class="field">
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
             <input type="checkbox" id="slack_enabled" name="slack_enabled">
@@ -801,7 +816,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
           <div class="field-hint"><b>Security gate (fails closed):</b> SUNI only answers in these channels. Get a channel id from its URL (…/archives/<b>C0XXXX</b>) or the channel details. In a DM the bot also replies with the channel id. Messages run at role <b>standard</b> (no shell / code-exec).</div>
         </div>
 
-        <div class="section-head" style="margin-top:8px">Embeddings (memory)</div>
+        <div data-cfg-group="memory" class="section-head" style="margin-top:8px">Embeddings (memory)</div>
         <div class="field">
           <label>Embedding backend</label>
           <select name="embed_backend">
@@ -823,7 +838,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
           <input type="password" name="embed_api_key" placeholder="only for endpoints that require a key">
         </div>
 
-        <div class="section-head" style="margin-top:8px" data-i18n="admin.cfg_voice_lang">Voice &amp; Language</div>
+        <div data-cfg-group="voice" class="section-head" style="margin-top:8px" data-i18n="admin.cfg_voice_lang">Voice &amp; Language</div>
         <div class="field">
           <label data-i18n="admin.cfg_tts">TTS voice</label>
           <select name="tts_voice" id="cfg-voice"></select>
@@ -879,7 +894,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
           <input type="password" name="stt_api_key" placeholder="only if the server requires it">
         </div>
 
-        <div class="section-head" style="margin-top:8px">Vision (image understanding)</div>
+        <div data-cfg-group="voice" class="section-head" style="margin-top:8px">Vision (image understanding)</div>
         <div class="field">
           <label>Vision (VLM) base URL</label>
           <input type="text" name="vision_base_url" placeholder="http://gpu-2:8000/v1 (OpenAI-compatible VLM)">
@@ -912,7 +927,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
       <!-- Right column -->
       <div class="cfg-section">
 
-        <div class="section-head" data-i18n="admin.cfg_behaviour">Behaviour</div>
+        <div data-cfg-group="general" class="section-head" data-i18n="admin.cfg_behaviour">Behaviour</div>
         <div class="field">
           <label data-i18n="admin.cfg_stt_silence">STT silence threshold (ms)</label>
           <div class="range-wrap">
@@ -939,7 +954,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
           </div>
         </div>
 
-        <div class="section-head" style="margin-top:8px" data-i18n="admin.cfg_memory">Memory</div>
+        <div data-cfg-group="memory" class="section-head" style="margin-top:8px" data-i18n="admin.cfg_memory">Memory</div>
         <div class="field">
           <label data-i18n="admin.cfg_mem_topk">Memory top-k (injected per turn)</label>
           <div class="range-wrap">
@@ -949,7 +964,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
           </div>
         </div>
 
-        <div class="section-head" style="margin-top:8px" data-i18n="admin.cfg_kb">Knowledge Base</div>
+        <div data-cfg-group="memory" class="section-head" style="margin-top:8px" data-i18n="admin.cfg_kb">Knowledge Base</div>
         <div class="field">
           <label data-i18n="admin.cfg_doc_paths">Document paths to index</label>
           <textarea name="doc_paths_raw" rows="4"
@@ -977,7 +992,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
           <div class="field-hint" data-i18n="admin.cfg_doc_top_k_hint">How many document chunks to inject. Higher means more context but a larger, slower prompt.</div>
         </div>
 
-        <div class="section-head" style="margin-top:8px" data-i18n="admin.cfg_email">Email</div>
+        <div data-cfg-group="channels" class="section-head" style="margin-top:8px" data-i18n="admin.cfg_email">Email</div>
         <div class="field">
           <div class="field-hint" data-i18n="admin.cfg_email_hint">Outbound mail (notifications and the send-email tool) and the inbox watcher. This is the system account: users may set their own in their personal settings, and anything left empty here falls back to the environment.</div>
         </div>
@@ -1011,14 +1026,14 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
           <input type="number" name="imap_port" id="imap_port" min="1" max="65535" step="1" style="max-width:120px" placeholder="993">
         </div>
 
-        <div class="section-head" style="margin-top:8px" data-i18n="admin.cfg_files">Files &amp; Output</div>
+        <div data-cfg-group="general" class="section-head" style="margin-top:8px" data-i18n="admin.cfg_files">Files &amp; Output</div>
         <div class="field">
           <label data-i18n="admin.cfg_output_dir">Global output directory</label>
           <input type="text" name="global_output_dir" placeholder="e.g. the SUNI directory\files or \\server\share\output">
           <div class="field-hint" data-i18n="admin.cfg_output_dir_hint">Base directory for all generated files (PDFs, reports, etc.). Users may set their own subdirectory within this path. Leave empty to use the Desktop as a fallback.</div>
         </div>
 
-        <div class="section-head" style="margin-top:8px" data-i18n="admin.cfg_ollama_ep">Ollama Endpoints</div>
+        <div data-cfg-group="models" class="section-head" style="margin-top:8px" data-i18n="admin.cfg_ollama_ep">Ollama Endpoints</div>
         <div class="field">
           <label data-i18n="admin.cfg_ollama_hosts">Ollama hosts (one URL per line)</label>
           <textarea name="ollama_endpoints_raw" rows="3"
@@ -1026,7 +1041,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
           <div class="field-hint" data-i18n="admin.cfg_ollama_hosts_hint">SUNI will scan all listed endpoints for available models and assign them to tiers automatically.</div>
         </div>
 
-        <div class="section-head" style="margin-top:8px" data-i18n="admin.cfg_advanced">Advanced</div>
+        <div data-cfg-group="advanced" class="section-head" style="margin-top:8px" data-i18n="admin.cfg_advanced">Advanced</div>
         <div class="field">
           <label data-i18n="admin.cfg_sys_addendum">System prompt addendum</label>
           <textarea name="system_prompt_addendum"
@@ -1045,7 +1060,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
         Some changes take effect on next restart.
       </span>
     </div>
-      <div class="card" style="margin-top:16px">
+      <div class="card" data-cfg-group="advanced" data-cfg-card="1" style="margin-top:16px">
       <div class="card-title" data-i18n="admin.ship_title">Remote log shipping</div>
       <div class="field-hint" style="margin-bottom:12px;line-height:1.55">
         <strong data-i18n="admin.ship_warn_t">Off by default, and worth reading before switching on.</strong>
@@ -1721,7 +1736,15 @@ function switchTab(name, btn) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById('panel-' + name).classList.add('active');
-  if (name === 'config') loadConfig();
+  if (name === 'config') {
+    loadConfig();
+    // Restore the last sub-tab, the way the sidebar remembers its collapse state.
+    let saved = 'general';
+    try { saved = localStorage.getItem('suni_cfg_tab') || 'general'; } catch (e) {}
+    const btn = document.querySelector(`.cfg-tab[data-cfg-tab="${saved}"]`)
+             || document.querySelector('.cfg-tab');
+    if (btn) cfgTab(btn.getAttribute('data-cfg-tab'), btn);
+  }
   if (name === 'users') loadUsers();
   if (name === 'audit') { loadUsers(); loadAudit(); }
   if (name === 'usage') loadUsage();
@@ -2997,6 +3020,74 @@ let _allSkills = [];
    waiting for silence is configuration nobody will trust. Blank credential
    fields mean "use the stored one", so testing does not require retyping a
    password the API deliberately never echoes back. */
+/* ── Configuration sub-tabs and filter ──────────────────────────────────────
+   Nineteen sections and seventy-one fields on one page is the problem being
+   solved. Sections are SHOWN AND HIDDEN, never moved: the two columns interleave
+   them in DOM order, so regrouping by reordering would mean cutting and
+   re-inserting nineteen blocks, and hidden inputs are still in the form — so
+   saveConfig() keeps working untouched and a hidden tab's values still save. */
+let _cfgTab = 'general';
+
+function _cfgSections() {
+  // A section is a tagged head plus every sibling up to the next head.
+  const out = [];
+  document.querySelectorAll('#panel-config [data-cfg-group]').forEach(head => {
+    const group = head.getAttribute('data-cfg-group');
+    const nodes = [head];
+    if (!head.hasAttribute('data-cfg-card')) {
+      let n = head.nextElementSibling;
+      while (n && !n.hasAttribute('data-cfg-group')) { nodes.push(n); n = n.nextElementSibling; }
+    }
+    out.push({ group, nodes });
+  });
+  return out;
+}
+
+function cfgTab(name, btn) {
+  _cfgTab = name;
+  document.querySelectorAll('.cfg-tab').forEach(b =>
+    b.classList.toggle('primary', b.getAttribute('data-cfg-tab') === name));
+  const f = document.getElementById('cfg-filter');
+  if (f && f.value) { f.value = ''; cfgFilter(''); }
+  _cfgSections().forEach(s =>
+    s.nodes.forEach(n => { n.style.display = (s.group === name) ? '' : 'none'; }));
+  try { localStorage.setItem('suni_cfg_tab', name); } catch (e) {}
+}
+
+function cfgFilter(term) {
+  const q = (term || '').trim().toLowerCase();
+  const count = document.getElementById('cfg-filter-count');
+  if (!q) {                       // empty box returns to the selected tab
+    _cfgSections().forEach(s =>
+      s.nodes.forEach(n => { n.style.display = (s.group === _cfgTab) ? '' : 'none'; }));
+    if (count) count.textContent = '';
+    return;
+  }
+  // Searching looks across ALL tabs on purpose: "where is the setting for X" is
+  // the actual question, and answering it only within the current tab would
+  // give a confident "no matches" while the setting sits one tab away.
+  let hits = 0;
+  _cfgSections().forEach(s => {
+    let anyInSection = false;
+    s.nodes.forEach(n => {
+      if (n === s.nodes[0]) return;                 // decide the head last
+      const text = (n.textContent || '') + ' ' +
+        [...n.querySelectorAll('[name],[id]')].map(e => e.name || e.id).join(' ');
+      const match = text.toLowerCase().includes(q);
+      n.style.display = match ? '' : 'none';
+      if (match) { anyInSection = true; hits++; }
+    });
+    const headText = (s.nodes[0].textContent || '').toLowerCase();
+    const headMatch = headText.includes(q);
+    if (headMatch) {                                 // section name matches: show it whole
+      s.nodes.forEach(n => { n.style.display = ''; });
+      anyInSection = true;
+    }
+    s.nodes[0].style.display = anyInSection ? '' : 'none';
+  });
+  if (count) count.textContent = hits ? String(hits) : t('admin.cfg_nomatch');
+}
+
 async function testLogShip() {
   const btn = document.getElementById('logship-test-btn');
   const out = document.getElementById('logship-test-result');
