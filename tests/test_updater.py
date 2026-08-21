@@ -103,9 +103,9 @@ def test_the_updater_does_not_restart_the_server():
 
 # ── what the operator still has to do ────────────────────────────────────────
 def test_dependency_changes_are_reported_not_installed():
-    src = inspect.getsource(u.apply)
-    assert "pip install -r requirements.txt" in src
-    assert "pip" not in inspect.getsource(u.requirements_changed) or True
+    assert "pip install -r requirements.txt" in u._MSG_EN["deps_changed"]
+    assert "deps_changed" in inspect.getsource(u.apply), \
+        "the message exists but apply() never emits it"
     assert "subprocess.run([\"pip" not in inspect.getsource(u)
 
 
@@ -120,8 +120,9 @@ def test_modules_that_cannot_migrate_themselves_are_named():
 
 def test_a_failed_backup_aborts_the_update():
     src = inspect.getsource(u.apply)
-    i = src.index("Backup failed")
+    i = src.index('"backup_failed"')
     assert "return result" in src[i:i + 200], "the update proceeds after a failed backup"
+    assert "nothing was changed" in u._MSG_EN["backup_failed"]
 
 
 # ── rollback ─────────────────────────────────────────────────────────────────
@@ -148,8 +149,8 @@ def test_rollback_touches_code_only():
 
 
 def test_rollback_admits_it_cannot_undo_dependencies():
-    src = inspect.getsource(u.rollback)
-    assert "reinstall dependencies" in src
+    assert "reinstall dependencies" in u._MSG_EN["rb_ok"]
+    assert "rb_ok" in inspect.getsource(u.rollback)
 
 
 # ── the endpoint ─────────────────────────────────────────────────────────────
@@ -205,10 +206,10 @@ def test_an_interrupted_pull_is_named_not_blamed_on_the_user():
     """A half-finished pull leaves the ref moved and the tree stale, which git
     reports as a dirty tree — so the plain reading tells an admin they have
     'local changes' and offers to preserve edits they never made."""
-    src = inspect.getsource(u.status)
-    assert "interrupted(root)" in src
-    assert "not\n            edited by you" in src or "not " in src
-    assert "git reset --hard HEAD" in src, "no working recovery command is given"
+    assert "interrupted(root)" in inspect.getsource(u.status)
+    msg = u._REASON_EN["interrupted"]
+    assert "edited by you" in msg
+    assert "git reset --hard HEAD" in msg, "no working recovery command is given"
 
 
 def test_the_recovery_command_is_the_one_that_works():
@@ -219,12 +220,127 @@ def test_the_recovery_command_is_the_one_that_works():
     explaining why the obvious command fails is worth keeping, and an earlier
     version of this test banned the string outright and failed on that comment.
     """
-    src = inspect.getsource(u.status)
-    i = src.index('out["reason"] = (')
-    recommended = src[i:src.index("return out", i)]
+    recommended = u._REASON_EN["interrupted"]
     assert "reset --hard HEAD" in recommended
     assert "checkout -- ." not in recommended, \
         "the recovery offered to the admin does not actually recover"
+
+
+# ── the refusals are translatable, not just readable ─────────────────────────
+def test_every_refusal_carries_a_code_the_panel_can_translate():
+    """These strings are composed in Python and rendered in the admin panel, so
+    without a code the panel can only echo English — which is what a Portuguese
+    admin saw on the update banner."""
+    for s, expected in (
+        ({"is_repo": True, "remote": "x", "dirty": ["web.py"], "ahead": 0, "behind": 1}, "dirty"),
+        ({"is_repo": True, "remote": "x", "dirty": [], "ahead": 2, "behind": 3}, "ahead"),
+        ({"is_repo": True, "remote": "x", "dirty": [], "ahead": 0, "behind": 0}, "uptodate"),
+        ({"is_repo": True, "remote": "", "dirty": [], "ahead": 0, "behind": 1}, "no_remote"),
+        ({"is_repo": False, "remote": "", "dirty": [], "ahead": 0, "behind": 0}, "not_a_repo"),
+    ):
+        code, _ = u._reason_meta(s)
+        assert code == expected
+
+
+def test_the_code_and_the_english_cannot_drift():
+    """One branch ladder decides both, so a new refusal cannot arrive with prose
+    but no code."""
+    assert "_reason_meta" in inspect.getsource(u._decide)
+    for code in u._REASON_EN:
+        assert code
+
+
+def test_the_params_are_named_so_a_translation_can_reorder_them():
+    s = {"is_repo": True, "remote": "x", "dirty": ["web.py", "a.py", "b.py", "c.py"],
+         "ahead": 0, "behind": 1}
+    code, params = u._reason_meta(s)
+    assert params == {"n": 4, "files": "web.py, a.py, b.py"}
+    # and the English still renders from exactly those
+    assert u._REASON_EN[code].format(**params) == u._decide(s)[1]
+
+
+def test_status_reports_the_code_alongside_the_prose(tmp_path):
+    s = u.status(tmp_path)
+    assert s["reason_code"] == "not_a_repo_manual"
+    assert s["reason"] == u._REASON_EN["not_a_repo_manual"]
+
+
+def test_the_code_survives_the_endpoint_boundary():
+    """status() carrying the code proves nothing if the route rebuilds the dict
+    with an explicit field list — the 'setting that reaches nothing' shape this
+    codebase keeps producing. The route must pass status() through whole."""
+    srv = (ROOT / "suni" / "web" / "server.py").read_text(encoding="utf-8-sig")
+    i = srv.index('@app.get("/api/update/status")')
+    block = srv[i:i + 400]
+    assert "_up.status()" in block
+    assert "reason_code" not in block, \
+        "the route enumerates fields — add reason_code/reason_params or pass status() whole"
+
+
+def test_every_code_has_a_translation_in_both_languages():
+    """A code with no key renders as the raw key; a key whose placeholders were
+    renamed renders a literal {frm}. Neither shows up as a crash."""
+    import re as _re
+    js = (ROOT / "suni" / "web" / "i18n.js").read_text(encoding="utf-8")
+    for code in u._REASON_EN:
+        key = '"admin.upd_r_%s"' % code
+        assert js.count(key + ":") == 2, f"{code} is missing from en or pt"
+    # every placeholder used in the English exists in the Portuguese, and vice versa
+    for code, en in u._REASON_EN.items():
+        names = set(_re.findall(r"\{([a-z]+)\}", en))
+        i = js.index('"admin.upd_r_%s":' % code)          # en block comes first
+        j = js.index('"admin.upd_r_%s":' % code, i + 1)   # pt block
+        pt = js[j:js.index("\n", j)]
+        pt_names = set(_re.findall(r"\{([a-z]+)\}", pt))
+        assert names == pt_names, f"{code}: en uses {names}, pt uses {pt_names}"
+
+
+def test_every_outcome_part_has_a_translation_in_both_languages():
+    """apply()/rollback() compose their prose in Python too — the same defect the
+    banner had, one layer down."""
+    import re as _re
+    js = (ROOT / "suni" / "web" / "i18n.js").read_text(encoding="utf-8")
+    for code, en in u._MSG_EN.items():
+        key = '"admin.upd_m_%s"' % code
+        assert js.count(key + ":") == 2, f"{code} is missing from en or pt"
+        i = js.index(key + ":")
+        j = js.index(key + ":", i + 1)
+        pt = js[j:js.index("\n", j)]
+        assert (set(_re.findall(r"\{([a-z]+)\}", en))
+                == set(_re.findall(r"\{([a-z]+)\}", pt))), \
+            f"{code}: placeholders differ between en and pt"
+
+
+def test_the_outcome_renders_to_the_same_english_it_always_did():
+    """The parts are a transport detail; the English sentence must not change."""
+    parts = [u._msg("updated", frm="aaa", to="bbb"), u._msg("restart")]
+    assert u._render(parts) == "Updated aaa → bbb. Restart SUNI to load the new code."
+
+
+def test_a_refusal_from_apply_carries_the_same_code_as_the_banner():
+    """apply() refusing and status() refusing are the same refusal — one
+    vocabulary, not two."""
+    src = inspect.getsource(u.apply)
+    i = src.index('if not s["can_update"]')
+    assert "reason_code" in src[i:i + 400]
+
+
+def test_the_panel_falls_back_to_english_rather_than_half_translating():
+    html = (ROOT / "suni" / "web" / "admin.html").read_text(encoding="utf-8")
+    i = html.index("function _updOutcome")
+    block = html[i:i + 900]
+    assert "message_parts" in block
+    assert "res.message" in block, "no fallback to the server's English"
+
+
+def test_the_panel_translates_the_code_and_falls_back_to_the_prose():
+    """A code with no translation must still show the English sentence rather
+    than a raw key — the failure mode this codebase has shipped before."""
+    html = (ROOT / "suni" / "web" / "admin.html").read_text(encoding="utf-8")
+    i = html.index("async function checkForUpdates")
+    block = html[i:i + 2600]
+    assert "reason_code" in block, "the panel ignores the code and echoes English"
+    assert "s.reason" in block, "no fallback to the English prose"
 
 
 def test_the_marker_brackets_the_pull():
@@ -288,9 +404,13 @@ def test_the_backup_states_what_it_does_not_cover():
     src = inspect.getsource(u.apply)
     assert "backup_excludes" in src
     assert "uploaded documents" in src and "FAISS" in src
-    i = src.index('bits = [f"Updated')
-    assert "backup_excludes" in src[i:i + 600], \
+    # and the operator is actually told: the sentence apply() emits after a
+    # successful backup must name the exclusions, not just record them in a field
+    shown = u._MSG_EN["backup_made"]
+    assert "uploaded documents" in shown and "FAISS" in shown, \
         "the exclusions are recorded but never shown to the operator"
+    i = src.index('_msg("updated"')
+    assert "backup_made" in src[i:i + 400], "the backup is never mentioned in the outcome"
 
 
 def test_the_reported_coverage_is_not_a_guess():

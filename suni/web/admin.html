@@ -444,7 +444,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
     <button class="tab active" onclick="switchTab('dashboard',this)" data-i18n="admin.nav_dashboard">Dashboard</button>
     <button class="tab" onclick="switchTab('users',this)"     data-i18n="admin.nav_users">Users</button>
     <button class="tab" onclick="switchTab('audit',this)"     data-i18n="admin.nav_audit">Audit</button>
-    <button class="tab" onclick="switchTab('usage',this)">Usage</button>
+    <button class="tab" onclick="switchTab('usage',this)" data-i18n="admin.btn_usage">Usage</button>
     <button class="tab" onclick="switchTab('roles',this)"     data-i18n="admin.nav_roles">Roles</button>
     <button class="tab" onclick="switchTab('mcp',this)"       data-i18n="admin.nav_mcp">MCP</button>
     <button class="tab" onclick="switchTab('skills',this)"    data-i18n="admin.nav_skills">Skills</button>
@@ -452,7 +452,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
     <button class="tab" onclick="switchTab('schedules',this)" data-i18n="admin.nav_schedules">Schedules</button>
     <button class="tab" onclick="switchTab('backup',this)"    data-i18n="admin.nav_backup">Backup</button>
     <button class="tab" onclick="switchTab('config',this)"    data-i18n="admin.nav_config">Configuration</button>
-    <button class="tab" onclick="switchTab('benchmarks',this)">Benchmarks</button>
+    <button class="tab" onclick="switchTab('benchmarks',this)" data-i18n="admin.btn_benchmarks">Benchmarks</button>
     <button class="tab" onclick="switchTab('logs',this)"      data-i18n="admin.nav_logs">Logs</button>
     <a href="/architecture" target="_blank" class="tab" data-i18n="admin.nav_arch" style="text-decoration:none;display:block">Architecture ↗</a>
   </nav>
@@ -563,7 +563,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
     <div class="card">
       <div class="card-title" data-i18n="admin.dash_inbox">Inbox Monitor</div>
       <div class="kv-grid">
-        <div class="kv"><div class="kv-k">Account</div><div class="kv-v">noreply@example.com</div></div>
+        <div class="kv"><div class="kv-k" data-i18n="admin.sp_account">Account</div><div class="kv-v">noreply@example.com</div></div>
         <div class="kv"><div class="kv-k" data-i18n="admin.dash_poll">Poll interval</div><div class="kv-v" id="d-poll">—</div></div>
         <div class="kv"><div class="kv-k" data-i18n="common.status">Status</div><div class="kv-v"><span class="badge ok" data-i18n="admin.dash_active">Active</span></div></div>
         <div class="kv"><div class="kv-k" data-i18n="admin.dash_auto_reply">Auto-reply</div><div class="kv-v"><span class="badge err" data-i18n="admin.dash_disabled">Disabled</span></div></div>
@@ -577,13 +577,13 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px" id="sys-profile">
       <div class="kv"><div class="kv-k">RAM</div><div class="kv-v" id="sp-ram">—</div></div>
       <div class="kv"><div class="kv-k">VRAM</div><div class="kv-v" id="sp-vram">—</div></div>
-      <div class="kv"><div class="kv-k">CPU cores</div><div class="kv-v" id="sp-cpu">—</div></div>
-      <div class="kv"><div class="kv-k">Max doc size</div><div class="kv-v" id="sp-doc">—</div></div>
-      <div class="kv"><div class="kv-k">Embed batch</div><div class="kv-v" id="sp-batch">—</div></div>
-      <div class="kv"><div class="kv-k">Ingest parallel</div><div class="kv-v" id="sp-conc">—</div></div>
+      <div class="kv"><div class="kv-k" data-i18n="admin.sp_cpu">CPU cores</div><div class="kv-v" id="sp-cpu">—</div></div>
+      <div class="kv"><div class="kv-k" data-i18n="admin.sp_maxdoc">Max doc size</div><div class="kv-v" id="sp-doc">—</div></div>
+      <div class="kv"><div class="kv-k" data-i18n="admin.sp_embed_batch">Embed batch</div><div class="kv-v" id="sp-batch">—</div></div>
+      <div class="kv"><div class="kv-k" data-i18n="admin.sp_ingest">Ingest parallel</div><div class="kv-v" id="sp-conc">—</div></div>
       <div class="kv"><div class="kv-k">num_ctx</div><div class="kv-v" id="sp-ctx">—</div></div>
-      <div class="kv"><div class="kv-k">History limit</div><div class="kv-v" id="sp-hist">—</div></div>
-      <div class="kv"><div class="kv-k">Compress at</div><div class="kv-v" id="sp-comp">—</div></div>
+      <div class="kv"><div class="kv-k" data-i18n="admin.sp_hist">History limit</div><div class="kv-v" id="sp-hist">—</div></div>
+      <div class="kv"><div class="kv-k" data-i18n="admin.sp_compress">Compress at</div><div class="kv-v" id="sp-comp">—</div></div>
     </div>
   </div>
 
@@ -611,15 +611,15 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
     </div>
     <div class="charts-grid">
       <div>
-        <div style="font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--label);margin-bottom:8px">VRAM Usage (MB)</div>
+        <div style="font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--label);margin-bottom:8px" data-i18n="admin.chart_vram">VRAM Usage (MB)</div>
         <canvas id="chart-vram" height="120"></canvas>
       </div>
       <div>
-        <div style="font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--label);margin-bottom:8px">GPU Utilisation (%)</div>
+        <div style="font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--label);margin-bottom:8px" data-i18n="admin.chart_gpu">GPU Utilisation (%)</div>
         <canvas id="chart-util" height="120"></canvas>
       </div>
       <div>
-        <div style="font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--label);margin-bottom:8px">Temperature (°C)</div>
+        <div style="font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--label);margin-bottom:8px" data-i18n="admin.chart_temp">Temperature (°C)</div>
         <canvas id="chart-temp" height="120"></canvas>
       </div>
     </div>
@@ -657,7 +657,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
         </div>
         <div class="field">
           <label data-i18n="admin.cfg_tagline">Tagline</label>
-          <input type="text" name="tagline" placeholder="The world, as seen by SUNI.">
+          <input type="text" name="tagline" data-i18n-placeholder="admin.ph_tagline" placeholder="The world, as seen by SUNI.">
         </div>
 
         <div data-cfg-group="models" class="section-head" style="margin-top:8px" data-i18n="admin.cfg_model">Model</div>
@@ -695,147 +695,141 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
             </div>
           </label>
           <div style="margin-top:12px">
-            <label>Claude Code timeout (seconds)</label>
+            <label data-i18n="admin.lbl_cc_timeout">Claude Code timeout (seconds)</label>
             <input type="number" name="claude_code_timeout" min="30" max="3600" step="30">
-            <div class="field-hint">How long a Claude Code (T5) request may run before it is aborted. Raise it for long file-analysis or multi-step tasks (default 300 = 5 min).</div>
+            <div class="field-hint" data-i18n-html="admin.hint_cc_timeout">How long a Claude Code (T5) request may run before it is aborted. Raise it for long file-analysis or multi-step tasks (default 300 = 5 min).</div>
           </div>
         </div>
 
-        <div data-cfg-group="models" class="section-head" style="margin-top:8px">Model Preferences <span style="font-weight:400;color:var(--muted);font-size:10px">· pluggable</span></div>
+        <div data-cfg-group="models" class="section-head" style="margin-top:8px" data-i18n-html="admin.sec_model_prefs">Model Preferences <span style="font-weight:400;color:var(--muted);font-size:10px">· pluggable</span></div>
         <div class="field">
-          <div class="field-hint" style="margin-bottom:8px">
-            Pre-loaded with your current <b>tier ladder</b> (T1–T5) — reorder by dragging, edit a model, or add
-            more (local or external: Ollama, vLLM, OpenAI, Anthropic&nbsp;/&nbsp;Claude, Gemini, Claude&nbsp;Code).
-            Top = first choice. Keys are stored masked (leave blank to keep the saved one). <b>Stored only for
-            now</b> — this list is <b>not yet wired into request routing</b> (SUNI still uses the automatic tier
-            ladder); wiring it in is the next step.
-          </div>
+          <div class="field-hint" style="margin-bottom:8px" data-i18n-html="admin.hint_tier_ladder">Pre-loaded with your current <b>tier ladder</b> (T1–T5) — reorder by dragging, edit a model, or add more (local or external: Ollama, vLLM, OpenAI, Anthropic&nbsp;/&nbsp;Claude, Gemini, Claude&nbsp;Code). Top = first choice. Keys are stored masked (leave blank to keep the saved one). <b>Stored only for now</b> — this list is <b>not yet wired into request routing</b> (SUNI still uses the automatic tier ladder); wiring it in is the next step.</div>
           <label style="display:flex;align-items:center;gap:9px;cursor:pointer;margin:2px 0 12px;
             padding:9px 11px;border:1px solid rgba(0,212,255,.25);border-radius:5px;background:rgba(0,212,255,.04)">
             <input type="checkbox" id="model_chain_routing" name="model_chain_routing"
               style="accent-color:var(--cyan);width:15px;height:15px;flex-shrink:0">
             <div>
-              <div style="font-size:12px;font-weight:600;color:var(--cyan)">Use this list for routing</div>
-              <div style="font-size:10px;color:var(--muted);margin-top:2px">When on, the <b>top enabled entry</b> becomes SUNI's primary model (escalation to Claude Code unchanged). Off = automatic tier ladder. Requires <b>Force Claude Code = OFF</b> to take effect.</div>
+              <div style="font-size:12px;font-weight:600;color:var(--cyan)" data-i18n="admin.chain_routing">Use this list for routing</div>
+              <div style="font-size:10px;color:var(--muted);margin-top:2px" data-i18n-html="admin.chain_routing_note">When on, the <b>top enabled entry</b> becomes SUNI's primary model (escalation to Claude Code unchanged). Off = automatic tier ladder. Requires <b>Force Claude Code = OFF</b> to take effect.</div>
             </div>
           </label>
           <div id="model-chain-list"></div>
           <div style="margin-top:8px;display:flex;gap:8px">
-            <button type="button" class="tbl-btn" onclick="_addModelChainEntry()">+ Add model</button>
+            <button type="button" class="tbl-btn" onclick="_addModelChainEntry()" data-i18n="admin.btn_add_model">+ Add model</button>
           </div>
         </div>
 
-        <div data-cfg-group="models" class="section-head" style="margin-top:8px">Collaboration — Mode 2 (multi-model)</div>
+        <div data-cfg-group="models" class="section-head" style="margin-top:8px" data-i18n="admin.sec_collab">Collaboration — Mode 2 (multi-model)</div>
         <div class="field">
-          <div class="field-hint" style="margin-bottom:8px">Opt-in per message via the <b>✦ collaborate</b> mode toggle in the chat/face UI. Capable models <b>draft → cross-critique → synthesize</b> the best answer. Mode 1 (the tier pipeline) is untouched. <b>Privacy:</b> these are cloud frontier models — Mode-2 data leaves this machine. Default pool = <b>Claude Code + Codex</b> (both no-key/subscription).</div>
+          <div class="field-hint" style="margin-bottom:8px" data-i18n-html="admin.hint_collab">Opt-in per message via the <b>✦ collaborate</b> mode toggle in the chat/face UI. Capable models <b>draft → cross-critique → synthesize</b> the best answer. Mode 1 (the tier pipeline) is untouched. <b>Privacy:</b> these are cloud frontier models — Mode-2 data leaves this machine. Default pool = <b>Claude Code + Codex</b> (both no-key/subscription).</div>
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:2px 0">
             <input type="checkbox" id="collaborate_enabled" name="collaborate_enabled" style="accent-color:var(--gold)">
-            <span>Enable collaboration mode</span>
+            <span data-i18n="admin.chk_collab">Enable collaboration mode</span>
           </label>
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:6px 0">
             <input type="checkbox" id="collaborate_skip_critique" name="collaborate_skip_critique" style="accent-color:var(--gold)">
-            <span>Fast mode — skip the cross-critique round (~40% fewer calls, less thorough)</span>
+            <span data-i18n="admin.chk_fastmode">Fast mode — skip the cross-critique round (~40% fewer calls, less thorough)</span>
           </label>
-          <div style="font-size:11px;color:var(--muted);margin:10px 0 4px">Collaboration pool (empty = default Claude Code + Codex). First entry synthesizes.</div>
+          <div style="font-size:11px;color:var(--muted);margin:10px 0 4px" data-i18n="admin.collab_pool">Collaboration pool (empty = default Claude Code + Codex). First entry synthesizes.</div>
           <div id="collab-pool-list"></div>
           <div style="margin-top:8px;display:flex;gap:8px">
-            <button type="button" class="tbl-btn" onclick="_addCollabPool()">+ Add model</button>
+            <button type="button" class="tbl-btn" onclick="_addCollabPool()" data-i18n="admin.btn_add_model">+ Add model</button>
           </div>
         </div>
 
-        <div data-cfg-group="models" class="section-head" style="margin-top:8px">Backend — vLLM (optional)</div>
+        <div data-cfg-group="models" class="section-head" style="margin-top:8px" data-i18n="admin.sec_vllm">Backend — vLLM (optional)</div>
         <div class="field">
-          <label>vLLM base URL</label>
+          <label data-i18n="admin.lbl_vllm_url">vLLM base URL</label>
           <input type="text" name="vllm_base_url" id="cfg-vllm-url" placeholder="http://gpu-1:8000/v1">
-          <div class="field-hint">Set to switch chat/generation to <b>vLLM</b> (OpenAI-compatible). Empty = use Ollama (default, unchanged). When set, Ollama is <b>bypassed for chat</b>; memory embeddings still use nomic-embed-text. Applies immediately — no restart. Launch vLLM with <code>--enable-auto-tool-choice --tool-call-parser &lt;model-family&gt;</code> or tool calling won't work.</div>
+          <div class="field-hint" data-i18n-html="admin.hint_vllm">Set to switch chat/generation to <b>vLLM</b> (OpenAI-compatible). Empty = use Ollama (default, unchanged). When set, Ollama is <b>bypassed for chat</b>; memory embeddings still use nomic-embed-text. Applies immediately — no restart. Launch vLLM with <code>--enable-auto-tool-choice --tool-call-parser &lt;model-family&gt;</code> or tool calling won't work.</div>
         </div>
         <div class="field">
-          <label>vLLM model</label>
+          <label data-i18n="admin.lbl_vllm_model">vLLM model</label>
           <input type="text" name="vllm_model" placeholder="Qwen2.5-7B-Instruct">
         </div>
         <div class="field">
-          <label>vLLM API key (optional)</label>
-          <input type="password" name="vllm_api_key" placeholder="only if server started with --api-key">
+          <label data-i18n="admin.lbl_vllm_key">vLLM API key (optional)</label>
+          <input type="password" name="vllm_api_key" data-i18n-placeholder="admin.ph_key_apikey" placeholder="only if server started with --api-key">
         </div>
 
-        <div data-cfg-group="channels" class="section-head" style="margin-top:8px">Channels — Telegram</div>
+        <div data-cfg-group="channels" class="section-head" style="margin-top:8px" data-i18n="admin.sec_telegram">Channels — Telegram</div>
         <div class="field">
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
             <input type="checkbox" id="telegram_enabled" name="telegram_enabled">
-            <span>Enable Telegram gateway (long-poll)</span>
+            <span data-i18n="admin.chk_telegram">Enable Telegram gateway (long-poll)</span>
           </label>
-          <div class="field-hint">Reach SUNI from Telegram with <b>no public URL</b> — the server long-polls Telegram, so it works from this machine behind NAT. Create a bot with <b>@BotFather</b>, paste its token below, add your chat id to the allow-list, then <b>Save — it starts immediately (no restart)</b>. Mutually exclusive with the Telegram webhook.</div>
+          <div class="field-hint" data-i18n-html="admin.hint_tg">Reach SUNI from Telegram with <b>no public URL</b> — the server long-polls Telegram, so it works from this machine behind NAT. Create a bot with <b>@BotFather</b>, paste its token below, add your chat id to the allow-list, then <b>Save — it starts immediately (no restart)</b>. Mutually exclusive with the Telegram webhook.</div>
         </div>
         <div class="field">
-          <label>Bot token</label>
-          <input type="password" name="telegram_bot_token" id="telegram_bot_token" autocomplete="off" placeholder="from @BotFather">
+          <label data-i18n="admin.lbl_bot_token">Bot token</label>
+          <input type="password" name="telegram_bot_token" id="telegram_bot_token" autocomplete="off" data-i18n-placeholder="admin.ph_botfather" placeholder="from @BotFather">
         </div>
         <div class="field">
-          <label>Allowed chat ids</label>
-          <textarea name="telegram_allowed_chats_raw" id="telegram_allowed_chats_raw" rows="2" placeholder="one chat id per line"></textarea>
-          <div class="field-hint"><b>Security gate (fails closed):</b> only these chat ids may talk to SUNI. Leave empty and message the bot once — it replies with your chat id, which you paste here. Messages run at role <b>standard</b> (no shell / code-exec).</div>
+          <label data-i18n="admin.lbl_chat_ids">Allowed chat ids</label>
+          <textarea name="telegram_allowed_chats_raw" id="telegram_allowed_chats_raw" rows="2" data-i18n-placeholder="admin.ph_one_chat" placeholder="one chat id per line"></textarea>
+          <div class="field-hint" data-i18n-html="admin.hint_tg_gate"><b>Security gate (fails closed):</b> only these chat ids may talk to SUNI. Leave empty and message the bot once — it replies with your chat id, which you paste here. Messages run at role <b>standard</b> (no shell / code-exec).</div>
         </div>
 
-        <div data-cfg-group="channels" class="section-head" style="margin-top:8px">Channels — Discord</div>
+        <div data-cfg-group="channels" class="section-head" style="margin-top:8px" data-i18n="admin.sec_discord">Channels — Discord</div>
         <div class="field">
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
             <input type="checkbox" id="discord_enabled" name="discord_enabled">
-            <span>Enable Discord gateway</span>
+            <span data-i18n="admin.chk_discord">Enable Discord gateway</span>
           </label>
-          <div class="field-hint">Reach SUNI from Discord with <b>no public URL</b> — the server connects out to Discord's Gateway. Create an app + bot at <b>discord.com/developers</b>, and <b>you MUST toggle the "Message Content Intent" ON</b> (Bot → Privileged Gateway Intents) or the bot can't read messages. Paste the bot token, add your channel id to the allow-list, then <b>Save — it starts immediately (no restart)</b>.</div>
+          <div class="field-hint" data-i18n-html="admin.hint_dc">Reach SUNI from Discord with <b>no public URL</b> — the server connects out to Discord's Gateway. Create an app + bot at <b>discord.com/developers</b>, and <b>you MUST toggle the "Message Content Intent" ON</b> (Bot → Privileged Gateway Intents) or the bot can't read messages. Paste the bot token, add your channel id to the allow-list, then <b>Save — it starts immediately (no restart)</b>.</div>
         </div>
         <div class="field">
-          <label>Bot token</label>
-          <input type="password" name="discord_bot_token" id="discord_bot_token" autocomplete="off" placeholder="Developer Portal → Bot → Token">
+          <label data-i18n="admin.lbl_bot_token">Bot token</label>
+          <input type="password" name="discord_bot_token" id="discord_bot_token" autocomplete="off" data-i18n-placeholder="admin.ph_discord_token" placeholder="Developer Portal → Bot → Token">
         </div>
         <div class="field">
-          <label>Allowed channel ids</label>
-          <textarea name="discord_allowed_channels_raw" id="discord_allowed_channels_raw" rows="2" placeholder="one channel id per line"></textarea>
-          <div class="field-hint"><b>Security gate (fails closed):</b> SUNI only answers in these channels. Enable Discord <b>Developer Mode</b> (User Settings → Advanced), then right-click a channel → <b>Copy Channel ID</b>. In a DM the bot also replies with the channel id. Messages run at role <b>standard</b> (no shell / code-exec).</div>
+          <label data-i18n="admin.lbl_chan_ids">Allowed channel ids</label>
+          <textarea name="discord_allowed_channels_raw" id="discord_allowed_channels_raw" rows="2" data-i18n-placeholder="admin.ph_one_channel" placeholder="one channel id per line"></textarea>
+          <div class="field-hint" data-i18n-html="admin.hint_dc_gate"><b>Security gate (fails closed):</b> SUNI only answers in these channels. Enable Discord <b>Developer Mode</b> (User Settings → Advanced), then right-click a channel → <b>Copy Channel ID</b>. In a DM the bot also replies with the channel id. Messages run at role <b>standard</b> (no shell / code-exec).</div>
         </div>
 
-        <div data-cfg-group="channels" class="section-head" style="margin-top:8px">Channels — Slack</div>
+        <div data-cfg-group="channels" class="section-head" style="margin-top:8px" data-i18n="admin.sec_slack">Channels — Slack</div>
         <div class="field">
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
             <input type="checkbox" id="slack_enabled" name="slack_enabled">
-            <span>Enable Slack (Socket Mode)</span>
+            <span data-i18n="admin.chk_slack">Enable Slack (Socket Mode)</span>
           </label>
-          <div class="field-hint">Reach SUNI from Slack with <b>no public URL</b> — Socket Mode connects out to Slack. At <b>api.slack.com/apps</b>: create an app, enable <b>Socket Mode</b>, add an <b>App-Level token</b> with <code>connections:write</code> (xapp-…), give the bot <code>chat:write</code> + message-history scopes, subscribe to <code>message.channels</code>/<code>message.im</code> events, install to the workspace. Paste both tokens, add a channel id to the allow-list, then <b>Save — it starts immediately (no restart)</b>.</div>
+          <div class="field-hint" data-i18n-html="admin.hint_sk">Reach SUNI from Slack with <b>no public URL</b> — Socket Mode connects out to Slack. At <b>api.slack.com/apps</b>: create an app, enable <b>Socket Mode</b>, add an <b>App-Level token</b> with <code>connections:write</code> (xapp-…), give the bot <code>chat:write</code> + message-history scopes, subscribe to <code>message.channels</code>/<code>message.im</code> events, install to the workspace. Paste both tokens, add a channel id to the allow-list, then <b>Save — it starts immediately (no restart)</b>.</div>
         </div>
         <div class="field">
-          <label>App-level token (xapp-…)</label>
+          <label data-i18n="admin.lbl_xapp">App-level token (xapp-…)</label>
           <input type="password" name="slack_app_token" id="slack_app_token" autocomplete="off" placeholder="connections:write">
         </div>
         <div class="field">
-          <label>Bot token (xoxb-…)</label>
+          <label data-i18n="admin.lbl_xoxb">Bot token (xoxb-…)</label>
           <input type="password" name="slack_bot_token" id="slack_bot_token" autocomplete="off" placeholder="chat:write">
         </div>
         <div class="field">
-          <label>Allowed channel ids</label>
-          <textarea name="slack_allowed_channels_raw" id="slack_allowed_channels_raw" rows="2" placeholder="one channel id per line"></textarea>
-          <div class="field-hint"><b>Security gate (fails closed):</b> SUNI only answers in these channels. Get a channel id from its URL (…/archives/<b>C0XXXX</b>) or the channel details. In a DM the bot also replies with the channel id. Messages run at role <b>standard</b> (no shell / code-exec).</div>
+          <label data-i18n="admin.lbl_chan_ids">Allowed channel ids</label>
+          <textarea name="slack_allowed_channels_raw" id="slack_allowed_channels_raw" rows="2" data-i18n-placeholder="admin.ph_one_channel" placeholder="one channel id per line"></textarea>
+          <div class="field-hint" data-i18n-html="admin.hint_sk_gate"><b>Security gate (fails closed):</b> SUNI only answers in these channels. Get a channel id from its URL (…/archives/<b>C0XXXX</b>) or the channel details. In a DM the bot also replies with the channel id. Messages run at role <b>standard</b> (no shell / code-exec).</div>
         </div>
 
-        <div data-cfg-group="memory" class="section-head" style="margin-top:8px">Embeddings (memory)</div>
+        <div data-cfg-group="memory" class="section-head" style="margin-top:8px" data-i18n="admin.sec_embeddings">Embeddings (memory)</div>
         <div class="field">
-          <label>Embedding backend</label>
+          <label data-i18n="admin.lbl_emb_backend">Embedding backend</label>
           <select name="embed_backend">
             <option value="ollama">Ollama (/api/embed)</option>
             <option value="openai">OpenAI-compatible (/v1/embeddings)</option>
           </select>
-          <div class="field-hint">Episodic-memory embeddings run <b>independently</b> of the chat backend. <b>Host-swap is safe; changing the model is not</b> — a different embedding model requires re-embedding existing memory (<code>reembed_memory.py</code>), or memory writes are refused on a dimension mismatch.</div>
+          <div class="field-hint" data-i18n-html="admin.hint_emb">Episodic-memory embeddings run <b>independently</b> of the chat backend. <b>Host-swap is safe; changing the model is not</b> — a different embedding model requires re-embedding existing memory (<code>reembed_memory.py</code>), or memory writes are refused on a dimension mismatch.</div>
         </div>
         <div class="field">
-          <label>Embedding base URL</label>
+          <label data-i18n="admin.lbl_emb_url">Embedding base URL</label>
           <input type="text" name="embed_base_url" placeholder="http://localhost:11434 (or an OpenAI-compatible base incl. /v1)">
         </div>
         <div class="field">
-          <label>Embedding model</label>
+          <label data-i18n="admin.lbl_emb_model">Embedding model</label>
           <input type="text" name="embed_model" placeholder="nomic-embed-text">
         </div>
         <div class="field">
-          <label>Embedding API key (optional)</label>
-          <input type="password" name="embed_api_key" placeholder="only for endpoints that require a key">
+          <label data-i18n="admin.lbl_emb_key">Embedding API key (optional)</label>
+          <input type="password" name="embed_api_key" data-i18n-placeholder="admin.ph_key_optional" placeholder="only for endpoints that require a key">
         </div>
 
         <div data-cfg-group="voice" class="section-head" style="margin-top:8px" data-i18n="admin.cfg_voice_lang">Voice &amp; Language</div>
@@ -844,80 +838,80 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
           <select name="tts_voice" id="cfg-voice"></select>
         </div>
         <div class="field">
-          <label>Text-to-speech backend</label>
+          <label data-i18n="admin.lbl_tts_backend">Text-to-speech backend</label>
           <select name="tts_backend">
-            <option value="edge">edge-tts (Microsoft cloud)</option>
-            <option value="server">Self-hosted (audio stays in your infra)</option>
+            <option value="edge" data-i18n="admin.opt_tts_edge">edge-tts (Microsoft cloud)</option>
+            <option value="server" data-i18n="admin.opt_tts_self">Self-hosted (audio stays in your infra)</option>
           </select>
-          <div class="field-hint">Self-hosted TTS keeps the spoken reply text inside your infrastructure (privacy/enterprise) and works offline. Uses an OpenAI-compatible <code>/v1/audio/speech</code> server; the voice above is passed through (set it to a voice the server knows). On failure it returns no audio — it does <b>not</b> fall back to the cloud. <b>Needs a running TTS server to validate.</b></div>
+          <div class="field-hint" data-i18n-html="admin.hint_tts">Self-hosted TTS keeps the spoken reply text inside your infrastructure (privacy/enterprise) and works offline. Uses an OpenAI-compatible <code>/v1/audio/speech</code> server; the voice above is passed through (set it to a voice the server knows). On failure it returns no audio — it does <b>not</b> fall back to the cloud. <b>Needs a running TTS server to validate.</b></div>
         </div>
         <div class="field">
-          <label>TTS base URL</label>
+          <label data-i18n="admin.lbl_tts_url">TTS base URL</label>
           <input type="text" name="tts_base_url" placeholder="http://gpu-5:8080/v1 (OpenAI-compatible speech endpoint)">
         </div>
         <div class="field">
-          <label>TTS model</label>
+          <label data-i18n="admin.lbl_tts_model">TTS model</label>
           <input type="text" name="tts_model" placeholder="tts-1">
         </div>
         <div class="field">
-          <label>TTS API key (optional)</label>
-          <input type="password" name="tts_api_key" placeholder="only if the server requires it">
+          <label data-i18n="admin.lbl_tts_key">TTS API key (optional)</label>
+          <input type="password" name="tts_api_key" data-i18n-placeholder="admin.ph_key_ifreq" placeholder="only if the server requires it">
         </div>
         <div class="field">
           <label data-i18n="admin.cfg_stt_lang">Speech recognition language (microphone)</label>
           <select name="stt_language">
-            <option value="en-GB">English — British (en-GB)</option>
-            <option value="en-US">English — American (en-US)</option>
-            <option value="en-AU">English — Australian (en-AU)</option>
-            <option value="pt-PT">Portuguese — European (pt-PT)</option>
-            <option value="pt-BR">Portuguese — Brazilian (pt-BR)</option>
+            <option value="en-GB" data-i18n="admin.opt_lang_engb_v">English — British (en-GB)</option>
+            <option value="en-US" data-i18n="admin.opt_lang_enus">English — American (en-US)</option>
+            <option value="en-AU" data-i18n="admin.opt_lang_enau">English — Australian (en-AU)</option>
+            <option value="pt-PT" data-i18n="admin.opt_lang_ptpt_v">Portuguese — European (pt-PT)</option>
+            <option value="pt-BR" data-i18n="admin.opt_lang_ptbr_v">Portuguese — Brazilian (pt-BR)</option>
           </select>
         </div>
         <div class="field">
-          <label>Speech-to-text backend</label>
+          <label data-i18n="admin.lbl_stt_backend">Speech-to-text backend</label>
           <select name="stt_backend">
-            <option value="browser">Browser (Web Speech API — audio → Google)</option>
-            <option value="whisper">Server-side Whisper (audio stays in your infra)</option>
+            <option value="browser" data-i18n="admin.opt_tts_browser">Browser (Web Speech API — audio → Google)</option>
+            <option value="whisper" data-i18n="admin.opt_stt_whisper">Server-side Whisper (audio stays in your infra)</option>
           </select>
-          <div class="field-hint">Server-side Whisper keeps microphone audio inside your infrastructure (privacy/enterprise) and works offline. Push-to-talk (click to start/stop); transcript fills the box for review before sending. <b>Needs a running whisper server; audio format compatibility should be validated against it.</b></div>
+          <div class="field-hint" data-i18n-html="admin.hint_stt">Server-side Whisper keeps microphone audio inside your infrastructure (privacy/enterprise) and works offline. Push-to-talk (click to start/stop); transcript fills the box for review before sending. <b>Needs a running whisper server; audio format compatibility should be validated against it.</b></div>
         </div>
         <div class="field">
-          <label>Whisper base URL</label>
+          <label data-i18n="admin.lbl_stt_url">Whisper base URL</label>
           <input type="text" name="stt_base_url" placeholder="http://gpu-3:9000/v1 (OpenAI-compatible audio endpoint)">
         </div>
         <div class="field">
-          <label>Whisper model</label>
+          <label data-i18n="admin.lbl_stt_model">Whisper model</label>
           <input type="text" name="stt_model" placeholder="whisper-1">
         </div>
         <div class="field">
-          <label>Whisper API key (optional)</label>
-          <input type="password" name="stt_api_key" placeholder="only if the server requires it">
+          <label data-i18n="admin.lbl_stt_key">Whisper API key (optional)</label>
+          <input type="password" name="stt_api_key" data-i18n-placeholder="admin.ph_key_ifreq" placeholder="only if the server requires it">
         </div>
 
-        <div data-cfg-group="voice" class="section-head" style="margin-top:8px">Vision (image understanding)</div>
+        <div data-cfg-group="voice" class="section-head" style="margin-top:8px" data-i18n="admin.sec_vision">Vision (image understanding)</div>
         <div class="field">
-          <label>Vision (VLM) base URL</label>
+          <label data-i18n="admin.lbl_vlm_url">Vision (VLM) base URL</label>
           <input type="text" name="vision_base_url" placeholder="http://gpu-2:8000/v1 (OpenAI-compatible VLM)">
-          <div class="field-hint">When set, an attached image is sent to this vision model and answered directly. Empty = off (images noted as attachments only). <b>OpenAI-compatible VLM endpoints only</b> (vLLM serving a vision model, etc.) — Ollama-native vision is not supported by this path. Single-turn: the image is used for that turn; follow-ups work off the description. <b>Needs a running VLM to validate.</b></div>
+          <div class="field-hint" data-i18n-html="admin.hint_vlm">When set, an attached image is sent to this vision model and answered directly. Empty = off (images noted as attachments only). <b>OpenAI-compatible VLM endpoints only</b> (vLLM serving a vision model, etc.) — Ollama-native vision is not supported by this path. Single-turn: the image is used for that turn; follow-ups work off the description. <b>Needs a running VLM to validate.</b></div>
         </div>
         <div class="field">
-          <label>Vision model</label>
+          <label data-i18n="admin.lbl_vlm_model">Vision model</label>
           <input type="text" name="vision_model" placeholder="Qwen2.5-VL-7B-Instruct">
         </div>
         <div class="field">
-          <label>Vision API key (optional)</label>
-          <input type="password" name="vision_api_key" placeholder="only if the server requires it">
+          <label data-i18n="admin.lbl_vlm_key">Vision API key (optional)</label>
+          <input type="password" name="vision_api_key" data-i18n-placeholder="admin.ph_key_ifreq" placeholder="only if the server requires it">
         </div>
         <div class="field">
           <label data-i18n="admin.cfg_resp_lang">Response language (SUNI replies in)</label>
           <select name="response_language">
             <option value="" data-i18n="admin.cfg_follow_stt">Follow speech recognition language</option>
-            <option value="en-GB">English — British</option>
-            <option value="pt-PT">Portuguese — European</option>
-            <option value="pt-BR">Portuguese — Brazilian</option>
-            <option value="es-ES">Spanish</option>
-            <option value="fr-FR">French</option>
-            <option value="de-DE">German</option>
+            <option value="en-GB" data-i18n="admin.opt_lang_engb">English — British</option>
+            <option value="pt-PT" data-i18n="admin.opt_lang_ptpt">Portuguese — European</option>
+            <option value="pt-BR" data-i18n="admin.opt_lang_ptbr">Portuguese — Brazilian</option>
+            <option value="es-ES" data-i18n="admin.opt_lang_es">Spanish</option>
+            <option value="fr-FR" data-i18n="admin.opt_lang_fr">French</option>
+            <option value="de-DE" data-i18n="admin.opt_lang_de">German</option>
           </select>
           <div class="field-hint" data-i18n="admin.cfg_resp_lang_hint">Overrides the default British English. Takes effect immediately — no restart needed.</div>
         </div>
@@ -968,7 +962,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
         <div class="field">
           <label data-i18n="admin.cfg_doc_paths">Document paths to index</label>
           <textarea name="doc_paths_raw" rows="4"
-            placeholder="One path per line e.g.&#10;\\\\server\\share\\docs&#10;C:\Company\Projects"></textarea>
+            data-i18n-placeholder="admin.ph_doc_paths" placeholder="One path per line e.g.&#10;\\server\share\docs&#10;C:\Company\Projects"></textarea>
           <div class="field-hint" data-i18n="admin.cfg_doc_paths_hint">Network shares (UNC) and local folders. Scanned recursively for PDF, DOCX, XLSX, CSV, TXT, email.</div>
         </div>
         <div class="field">
@@ -1010,12 +1004,12 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
         </div>
         <div class="field">
           <label data-i18n="admin.cfg_smtp_pass">SMTP password</label>
-          <input type="password" name="smtp_pass" id="smtp_pass" autocomplete="new-password" placeholder="app password">
+          <input type="password" name="smtp_pass" id="smtp_pass" autocomplete="new-password" data-i18n-placeholder="admin.ph_app_password" placeholder="app password">
           <div class="field-hint"><span id="smtp_pass_state" data-i18n="admin.cfg_smtp_pass_hint">Leave blank to keep the stored password.</span></div>
         </div>
         <div class="field">
           <label data-i18n="admin.cfg_notify_to">Notification recipient</label>
-          <input type="text" name="notify_to" id="notify_to" placeholder="defaults to the SMTP username">
+          <input type="text" name="notify_to" id="notify_to" data-i18n-placeholder="admin.ph_notify_to" placeholder="defaults to the SMTP username">
         </div>
         <div class="field">
           <label data-i18n="admin.cfg_imap_host">IMAP host (inbox watcher)</label>
@@ -1029,7 +1023,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
         <div data-cfg-group="general" class="section-head" style="margin-top:8px" data-i18n="admin.cfg_files">Files &amp; Output</div>
         <div class="field">
           <label data-i18n="admin.cfg_output_dir">Global output directory</label>
-          <input type="text" name="global_output_dir" placeholder="e.g. the SUNI directory\files or \\server\share\output">
+          <input type="text" name="global_output_dir" data-i18n-placeholder="admin.ph_outdir" placeholder="e.g. the SUNI directory\files or \\server\share\output">
           <div class="field-hint" data-i18n="admin.cfg_output_dir_hint">Base directory for all generated files (PDFs, reports, etc.). Users may set their own subdirectory within this path. Leave empty to use the Desktop as a fallback.</div>
         </div>
 
@@ -1045,7 +1039,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
         <div class="field">
           <label data-i18n="admin.cfg_sys_addendum">System prompt addendum</label>
           <textarea name="system_prompt_addendum"
-            placeholder="Additional instructions appended to SUNI's system prompt. Applied on next restart."></textarea>
+            data-i18n-placeholder="admin.ph_sysprompt" placeholder="Additional instructions appended to SUNI's system prompt. Applied on next restart."></textarea>
           <div class="field-hint" data-i18n="admin.cfg_sys_addendum_hint">Appended to the base prompt. Takes effect on next restart.</div>
         </div>
 
@@ -1082,9 +1076,9 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
             <option value="">—</option>
             <option value="syslog">Syslog (rsyslog, syslog-ng, SIEM)</option>
             <option value="http">HTTP JSON (Splunk HEC, Loki, Elastic, Datadog)</option>
-            <option value="sftp">SFTP file drop</option>
-            <option value="ftps">FTPS file drop</option>
-            <option value="ftp">FTP file drop</option>
+            <option value="sftp" data-i18n="admin.opt_sftp">SFTP file drop</option>
+            <option value="ftps" data-i18n="admin.opt_ftps">FTPS file drop</option>
+            <option value="ftp" data-i18n="admin.opt_ftp">FTP file drop</option>
           </select>
         </div>
         <div class="field">
@@ -1233,7 +1227,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
       <div style="display:flex;gap:6px">
         <input type="password" id="modal-apikey" autocomplete="off"
                data-i18n-placeholder="admin.users_api_key_ph"
-               placeholder="sk-ant-… — leave blank to use global account"
+               data-i18n-placeholder="admin.ph_skant" placeholder="sk-ant-… — leave blank to use global account"
                style="flex:1">
         <button type="button" class="tbl-btn" id="modal-apikey-toggle"
                 onclick="toggleApiKeyVis()"
@@ -1255,26 +1249,26 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
       <h2 style="margin:0">Usage &amp; cost</h2>
       <select id="usage-days" onchange="loadUsage()" style="margin-left:auto">
-        <option value="7">last 7 days</option>
-        <option value="30" selected>last 30 days</option>
-        <option value="90">last 90 days</option>
+        <option value="7" data-i18n="admin.opt_last7">last 7 days</option>
+        <option value="30" selected data-i18n="admin.opt_last30">last 30 days</option>
+        <option value="90" data-i18n="admin.opt_last90">last 90 days</option>
       </select>
     </div>
     <div id="usage-totals" style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:6px"></div>
-    <div class="field-hint">Token counts come from the local model backend. <b>Subscription CLI models (Claude Code · Codex) don't report tokens</b>, so for the <b>collaborate</b> mode the <b>request count</b> is the cost proxy — each run ≈ several frontier calls.</div>
+    <div class="field-hint" data-i18n-html="admin.hint_tokens">Token counts come from the local model backend. <b>Subscription CLI models (Claude Code · Codex) don't report tokens</b>, so for the <b>collaborate</b> mode the <b>request count</b> is the cost proxy — each run ≈ several frontier calls.</div>
   </div>
   <div class="card" style="margin-bottom:16px">
     <h3 style="margin:0 0 10px">By mode</h3>
     <table style="width:100%;border-collapse:collapse"><thead><tr>
-      <th style="text-align:left">Mode</th><th style="text-align:right">Requests</th>
-      <th style="text-align:right">Prompt tok</th><th style="text-align:right">Gen tok</th><th style="text-align:right">Total tok</th>
+      <th style="text-align:left" data-i18n="admin.col_mode">Mode</th><th style="text-align:right" data-i18n="admin.col_requests">Requests</th>
+      <th style="text-align:right" data-i18n="admin.col_prompt_tok">Prompt tok</th><th style="text-align:right" data-i18n="admin.col_gen_tok">Gen tok</th><th style="text-align:right" data-i18n="admin.col_total_tok">Total tok</th>
     </tr></thead><tbody id="usage-by-mode"></tbody></table>
   </div>
   <div class="card">
     <h3 style="margin:0 0 10px">By user</h3>
     <table style="width:100%;border-collapse:collapse"><thead><tr>
-      <th style="text-align:left">User</th><th style="text-align:right">Requests</th>
-      <th style="text-align:right">Prompt tok</th><th style="text-align:right">Gen tok</th><th style="text-align:right">Total tok</th>
+      <th style="text-align:left" data-i18n="admin.col_user">User</th><th style="text-align:right" data-i18n="admin.col_requests">Requests</th>
+      <th style="text-align:right" data-i18n="admin.col_prompt_tok">Prompt tok</th><th style="text-align:right" data-i18n="admin.col_gen_tok">Gen tok</th><th style="text-align:right" data-i18n="admin.col_total_tok">Total tok</th>
     </tr></thead><tbody id="usage-by-user"></tbody></table>
   </div>
 </div>
@@ -1346,10 +1340,10 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
 <div class="panel" id="panel-schedules">
   <div class="card" style="margin-bottom:16px">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-      <div class="card-title" style="margin:0;border:none">Scheduled runs</div>
+      <div class="card-title" style="margin:0;border:none" data-i18n="admin.card_sched">Scheduled runs</div>
       <span id="sched-count" style="font-size:10px;color:var(--muted)"></span>
     </div>
-    <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5">
+    <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5" data-i18n-html="admin.sched_intro">
       Each entry replays a prompt on a cadence, as its owner, with that owner's
       permissions <em>as they are at the time it fires</em> — not as they were when
       it was created. Ask SUNI for something recurring to add one; delivery goes
@@ -1359,12 +1353,12 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
   <div class="card">
     <table class="tbl" id="sched-table">
       <thead><tr>
-        <th>Name</th><th>Cadence</th><th>Agent</th><th>Delivery</th>
-        <th>Next run (UTC)</th><th>Last</th><th>Runs</th><th></th>
+        <th data-i18n="admin.col_name">Name</th><th data-i18n="admin.col_cadence">Cadence</th><th data-i18n="admin.col_agent">Agent</th><th data-i18n="admin.col_delivery">Delivery</th>
+        <th data-i18n="admin.col_next_run">Next run (UTC)</th><th data-i18n="admin.col_last">Last</th><th data-i18n="admin.col_runs">Runs</th><th></th>
       </tr></thead>
       <tbody id="sched-tbody"></tbody>
     </table>
-    <div id="sched-empty" style="display:none;padding:24px;text-align:center;color:var(--muted);font-size:12px">
+    <div id="sched-empty" style="display:none;padding:24px;text-align:center;color:var(--muted);font-size:12px" data-i18n="admin.sched_empty">
       Nothing scheduled.
     </div>
   </div>
@@ -1373,11 +1367,11 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
 <div class="panel" id="panel-agents">
   <div class="card" style="margin-bottom:16px">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-      <div class="card-title" style="margin:0;border:none">Agents</div>
+      <div class="card-title" style="margin:0;border:none" data-i18n="admin.card_agents">Agents</div>
       <span id="agents-count" style="font-size:10px;color:var(--muted)"></span>
-      <button class="tbl-btn primary" onclick="openNewAgent()" style="margin-left:auto">+ New agent</button>
+      <button class="tbl-btn primary" onclick="openNewAgent()" style="margin-left:auto" data-i18n="admin.btn_new_agent">+ New agent</button>
     </div>
-    <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5">
+    <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5" data-i18n-html="admin.agents_intro">
       A named prompt, an optional model, and an optional narrowing of the tools an
       agent may use. An agent can only ever <strong>reduce</strong> what the person
       running it could already do — the grants shown below are the effective ones
@@ -1387,12 +1381,12 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
   <div class="card">
     <table class="tbl" id="agents-table">
       <thead><tr>
-        <th>Name</th><th>Description</th><th>Model</th><th>Mode</th>
-        <th>Tools</th><th>Limit</th><th>Used</th><th></th>
+        <th data-i18n="admin.col_name">Name</th><th data-i18n="admin.col_desc">Description</th><th data-i18n="admin.col_model">Model</th><th data-i18n="admin.col_mode">Mode</th>
+        <th data-i18n="admin.col_tools">Tools</th><th data-i18n="admin.col_limit">Limit</th><th data-i18n="admin.col_used">Used</th><th></th>
       </tr></thead>
       <tbody id="agents-tbody"></tbody>
     </table>
-    <div id="agents-empty" style="display:none;padding:24px;text-align:center;color:var(--muted);font-size:12px">
+    <div id="agents-empty" style="display:none;padding:24px;text-align:center;color:var(--muted);font-size:12px" data-i18n="admin.agents_empty">
       No agents yet. SUNI answers as itself.
     </div>
   </div>
@@ -1433,42 +1427,42 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
 <div class="modal-overlay" id="modal-agent">
   <div class="modal" style="width:min(680px,96vw);max-height:85vh;overflow:hidden;display:flex;flex-direction:column">
     <div class="modal-title">
-      <span>New agent</span>
+      <span data-i18n="admin.modal_new_agent">New agent</span>
       <button class="modal-x" onclick="closeModal('modal-agent')">✕</button>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
       <div class="field">
-        <label>Name</label>
-        <input type="text" id="ag-name" placeholder="Research Assistant" style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
+        <label data-i18n="admin.lbl_name">Name</label>
+        <input type="text" id="ag-name" data-i18n-placeholder="admin.ph_agent_name" placeholder="Research Assistant" style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
       </div>
       <div class="field">
-        <label>Model — blank uses the normal tier selection</label>
+        <label data-i18n="admin.lbl_ag_model">Model — blank uses the normal tier selection</label>
         <input type="text" id="ag-model" placeholder="qwen2.5:7b" style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
       </div>
     </div>
     <div class="field" style="margin-bottom:10px">
-      <label>Description (one sentence — shown in the agent list)</label>
-      <input type="text" id="ag-desc" placeholder="Reads and summarises; never sends anything." style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
+      <label data-i18n="admin.lbl_ag_desc">Description (one sentence — shown in the agent list)</label>
+      <input type="text" id="ag-desc" data-i18n-placeholder="admin.ph_agent_desc" placeholder="Reads and summarises; never sends anything." style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
     </div>
     <div class="field" style="margin-bottom:10px">
-      <label>Allowed tools, comma-separated — blank inherits whatever the person running it may use</label>
+      <label data-i18n="admin.lbl_ag_tools">Allowed tools, comma-separated — blank inherits whatever the person running it may use</label>
       <input type="text" id="ag-tools" placeholder="web_search, web_fetch" style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
-      <div style="font-size:10px;color:var(--muted);margin-top:4px">
+      <div style="font-size:10px;color:var(--muted);margin-top:4px" data-i18n-html="admin.agents_tools_note">
         Listing a tool here cannot grant it: the final set is this list intersected
         with the role of whoever runs the agent.
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
       <div class="field">
-        <label>Max steps per run — blank uses the instance limit</label>
+        <label data-i18n="admin.lbl_ag_steps">Max steps per run — blank uses the instance limit</label>
         <input type="number" id="ag-steps" min="1" placeholder="8" style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
       </div>
       <div class="field">
-        <label>Max runs per day — blank means unlimited</label>
+        <label data-i18n="admin.lbl_ag_runs">Max runs per day — blank means unlimited</label>
         <input type="number" id="ag-runs" min="1" placeholder="unlimited" style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
       </div>
     </div>
-    <div style="font-size:10px;color:var(--muted);margin:-4px 0 10px">
+    <div style="font-size:10px;color:var(--muted);margin:-4px 0 10px" data-i18n-html="admin.agents_budget_note">
       The instance limit bounds one turn. These bound a day of them, which is what
       an agent left on a schedule actually needs. A step budget can only tighten
       the instance limit, never raise it.
@@ -1476,9 +1470,9 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
     <div class="field" style="margin-bottom:10px">
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
         <input type="checkbox" id="ag-panel" style="width:auto;margin:0">
-        Convene a panel instead of using one model
+        <span data-i18n="admin.ag_panel_lbl">Convene a panel instead of using one model</span>
       </label>
-      <div style="font-size:10px;color:var(--muted);margin-top:4px">
+      <div style="font-size:10px;color:var(--muted);margin-top:4px" data-i18n-html="admin.agents_panel_note">
         Several capable models answer independently, critique each other, and one
         merges the result — the answer is spoken as this agent. Slower and more
         thorough. <strong>These are cloud models: this sends the task off the
@@ -1486,14 +1480,14 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
       </div>
     </div>
     <div class="field" style="flex:1;display:flex;flex-direction:column">
-      <label>System prompt — how should this agent behave?</label>
-      <textarea id="ag-prompt" rows="8" placeholder="You research topics and always cite your sources."
+      <label data-i18n="admin.lbl_ag_prompt">System prompt — how should this agent behave?</label>
+      <textarea id="ag-prompt" rows="8" data-i18n-placeholder="admin.ph_agent_prompt" placeholder="You research topics and always cite your sources."
         style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%;flex:1;resize:vertical;line-height:1.5"></textarea>
     </div>
     <div id="ag-err" style="display:none;color:var(--danger);font-size:11px;margin-top:8px"></div>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
-      <button class="tbl-btn" onclick="closeModal('modal-agent')">Cancel</button>
-      <button class="tbl-btn primary" onclick="saveAgent()">Create agent</button>
+      <button class="tbl-btn" onclick="closeModal('modal-agent')" data-i18n="admin.btn_cancel">Cancel</button>
+      <button class="tbl-btn primary" onclick="saveAgent()" data-i18n="admin.btn_create_agent">Create agent</button>
     </div>
   </div>
 </div>
@@ -1507,7 +1501,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
       <div class="field">
         <label data-i18n="admin.skills_name">Name</label>
-        <input type="text" id="sk-name" placeholder="Generate your organization Weekly Report"
+        <input type="text" id="sk-name" data-i18n-placeholder="admin.ph_skill_name" placeholder="Generate your organization Weekly Report"
           style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);
                  padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
       </div>
@@ -1520,7 +1514,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
     </div>
     <div class="field" style="margin-bottom:10px">
       <label data-i18n="admin.skills_desc_lbl">Description (one sentence — shown in skill list)</label>
-      <input type="text" id="sk-desc" placeholder="Fetches your organization project status and generates a PDF report."
+      <input type="text" id="sk-desc" data-i18n-placeholder="admin.ph_skill_desc" placeholder="Fetches your organization project status and generates a PDF report."
         style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);
                padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
     </div>
@@ -1661,24 +1655,24 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
 <!-- ════════════════════ BENCHMARKS ════════════════════ -->
 <div class="panel" id="panel-benchmarks">
   <div class="card" style="margin-bottom:18px">
-    <div class="card-title">LLM Metrics — 33-point benchmark</div>
+    <div class="card-title" data-i18n="admin.card_bm">LLM Metrics — 33-point benchmark</div>
     <div class="bm-toolbar">
       <div class="bm-summary" id="bm-summary"></div>
       <div style="flex:1"></div>
       <select id="bm-suite-sel" class="bm-sel" title="Which suites to run">
-        <option value="">All suites</option>
+        <option value="" data-i18n="admin.opt_all_suites">All suites</option>
       </select>
       <label style="font-size:10px;color:var(--label);display:flex;align-items:center;gap:5px;cursor:pointer">
-        <input type="checkbox" id="bm-quick" checked> quick (2 items/suite)
+        <input type="checkbox" id="bm-quick" checked> <span data-i18n="admin.bm_quick">quick (2 items/suite)</span>
       </label>
-      <button class="btn btn-primary" id="bm-run-btn" onclick="runBenchmark()">Run benchmark</button>
+      <button class="btn btn-primary" id="bm-run-btn" onclick="runBenchmark()" data-i18n="admin.btn_run_bench">Run benchmark</button>
     </div>
     <div class="bm-progress" id="bm-progress" style="display:none">
       <div class="bm-prog-track"><div class="bm-prog-fill" id="bm-prog-fill"></div></div>
       <div class="bm-prog-label" id="bm-prog-label"></div>
     </div>
     <div style="font-size:10px;color:var(--muted);font-style:italic;margin-top:10px" id="bm-lastrun"></div>
-    <div style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.5">
+    <div style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.5" data-i18n-html="admin.bm_legend">
       <b style="color:var(--green)">Live</b> metrics accrue from real usage ·
       <b style="color:var(--gold)">Estimated</b> from model &amp; hardware ·
       <b style="color:var(--cyan)">Measured</b> from an on-demand run over small
@@ -1835,7 +1829,7 @@ async function refreshBenchmarks() {
     const d = await _apiFetch('/api/benchmarks/metrics').then(r=>r.json());
     renderBenchmarks(d);
   } catch(e) {
-    el('bm-body').innerHTML = '<div class="act-empty">Failed to load metrics.</div>';
+    el('bm-body').innerHTML = `<div class="act-empty">${t('admin.bm_failed')}</div>`;
   }
 }
 
@@ -1894,7 +1888,7 @@ function renderBenchmarks(d) {
     });
     html += `</div></div>`;
   });
-  el('bm-body').innerHTML = html || '<div class="act-empty">No metrics.</div>';
+  el('bm-body').innerHTML = html || `<div class="act-empty">${t('admin.bm_none')}</div>`;
 }
 
 async function runBenchmark() {
@@ -2318,14 +2312,14 @@ function _renderModelChain(){
     <div class="mc-row" draggable="true" data-id="${esc(e.id)}"
       style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px;margin-bottom:6px;
              border:1px solid rgba(255,255,255,.12);border-radius:5px;background:rgba(255,255,255,.02)">
-      <span title="Drag to reorder" style="cursor:grab;color:var(--muted);font-size:15px;padding:0 3px">≡</span>
+      <span title="${t('admin.drag_reorder')}" style="cursor:grab;color:var(--muted);font-size:15px;padding:0 3px">≡</span>
       <span style="font-size:10px;color:var(--muted);width:14px;text-align:right">${i+1}</span>
       <input class="mc-label" placeholder="Label" value="${esc(e.label||'')}" style="flex:1;min-width:84px">
       <select class="mc-provider" style="min-width:104px">
         ${_MC_PROVIDERS.map(p=>`<option value="${p}"${p===e.provider?' selected':''}>${p}</option>`).join('')}
       </select>
-      <input class="mc-model" placeholder="model id" value="${esc(e.model||'')}" style="flex:1;min-width:108px">
-      <input class="mc-base" placeholder="base URL (opt.)" value="${esc(e.base_url||'')}" style="flex:1;min-width:118px">
+      <input class="mc-model" placeholder="${t('admin.ph_model_id')}" value="${esc(e.model||'')}" style="flex:1;min-width:108px">
+      <input class="mc-base" placeholder="${t('admin.ph_base_url')}" value="${esc(e.base_url||'')}" style="flex:1;min-width:118px">
       <input class="mc-key" type="password" autocomplete="off" placeholder="${e.has_key?'•••• configured':'API key (opt.)'}" style="min-width:118px">
       <label style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted);cursor:pointer">
         <input class="mc-enabled" type="checkbox"${e.enabled!==false?' checked':''} style="accent-color:var(--gold)"> on
@@ -3135,6 +3129,42 @@ async function loadVersion() {
   } catch (e) { /* the version line is never worth breaking the panel over */ }
 }
 
+// The refusal sentence is composed server-side, in Python, so it arrives in
+// English no matter what the panel is set to — which is exactly what a
+// Portuguese admin saw on this banner. updater.py also sends a stable
+// reason_code and named params; translate from those instead.
+//
+// The fallback is deliberate: if a future refusal arrives with a code this
+// panel has no translation for, t() returns the key itself, and showing
+// "admin.upd_r_something" is worse than showing the server's English sentence.
+function _updReason(s) {
+  if (!s || !s.reason_code) return (s && s.reason) || '';
+  const key = 'admin.upd_r_' + s.reason_code;
+  const out = t(key, s.reason_params || {});
+  return out === key ? (s.reason || '') : out;
+}
+
+// The outcome of an apply/rollback is a composite — what moved, what was
+// backed up, what still has to be done — so updater.py sends it as a list of
+// coded parts. Translate each and join.
+//
+// All-or-nothing on purpose: if any part has no translation, show the server's
+// English whole. Half a sentence in each language reads as a bug.
+function _updOutcome(res) {
+  if (!res) return '';
+  if (res.reason_code) return _updReason(res);      // a refusal, already coded
+  const parts = Array.isArray(res.message_parts) ? res.message_parts : [];
+  if (!parts.length) return res.message || '';
+  const out = [];
+  for (const p of parts) {
+    const key = 'admin.upd_m_' + p.code;
+    const s = t(key, p.params || {});
+    if (s === key) return res.message || '';        // untranslated part — fall back
+    out.push(s);
+  }
+  return out.join(' ');
+}
+
 async function checkForUpdates() {
   try {
     const r = await _apiFetch('/api/update/status');
@@ -3150,17 +3180,22 @@ async function checkForUpdates() {
     if (s.interrupted) {
       head.textContent = t('admin.upd_interrupted');
       head.style.color = 'var(--danger)';
-      det.textContent = s.reason || '';
+      det.textContent = _updReason(s);
       bar.style.display = ''; btn.style.display = 'none'; lbtn.style.display = 'none';
       return;
     }
     if (!s.behind) {
       // Up to date, but the checkout may still be in a state that would block
       // the NEXT update. Saying so now beats discovering it at the worst moment.
-      if (!s.can_update && s.reason && s.reason !== 'already up to date') {
+      // Both conditions, deliberately: reason_code is the robust test, but a
+      // server still running pre-update code sends no code at all, and
+      // `undefined !== 'uptodate'` would raise a "blocked" banner reading
+      // "already up to date" on a perfectly clean checkout.
+      if (!s.can_update && s.reason && s.reason_code !== 'uptodate'
+          && s.reason !== 'already up to date') {
         head.textContent = t('admin.upd_blocked');
         head.style.color = 'var(--gold)';
-        det.textContent = s.reason;
+        det.textContent = _updReason(s);
         det.style.color = 'var(--muted)';
         btn.style.display = 'none'; lbtn.style.display = 'none';
         bar.style.display = '';
@@ -3181,7 +3216,7 @@ async function checkForUpdates() {
       btn.style.display = '';
     } else {
       // The reason is the whole point when an update is blocked.
-      det.textContent = s.reason || 'blocked';
+      det.textContent = _updReason(s) || t('admin.upd_blocked');
       det.style.color = 'var(--danger)';
       btn.style.display = 'none';
     }
@@ -3207,7 +3242,7 @@ async function applyUpdate() {
       body: JSON.stringify({ confirm: true, backup: true }),
     });
     const res = (await r.json()).result || {};
-    alert(res.message || t(res.ok ? 'admin.upd_done' : 'admin.upd_noop'));
+    alert(_updOutcome(res) || t(res.ok ? 'admin.upd_done' : 'admin.upd_noop'));
   } catch (e) {
     alert(t('admin.upd_failed') + e);
   } finally {
@@ -3252,7 +3287,7 @@ async function loadSchedules() {
         `<td style="text-align:right;white-space:nowrap">` +
           `<button class="tbl-btn" onclick="toggleSchedule('${esc(s.id)}',${s.enabled ? 'false' : 'true'})">` +
             `${s.enabled ? 'Disable' : 'Enable'}</button> ` +
-          `<button class="tbl-btn" onclick="deleteSchedule('${esc(s.id)}')">Delete</button>` +
+          `<button class="tbl-btn" onclick="deleteSchedule('${esc(s.id)}')" data-i18n="admin.btn_delete">Delete</button>` +
         `</td>`;
       tb.appendChild(tr);
     }
@@ -3305,7 +3340,7 @@ async function loadAgents() {
         `<td>${e.tools === 'all' ? 'all' : e.tools}</td>` +
         `<td>${a.max_runs_day ? esc(String(a.max_runs_day)) + '/day' : '—'}</td>` +
         `<td>${a.used_count || 0}</td>` +
-        `<td style="text-align:right"><button class="tbl-btn" onclick="deleteAgent('${esc(a.slug)}')">Delete</button></td>`;
+        `<td style="text-align:right"><button class="tbl-btn" onclick="deleteAgent('${esc(a.slug)}')" data-i18n="admin.btn_delete">Delete</button></td>`;
       tb.appendChild(tr);
     }
   } catch (err) {
@@ -3452,7 +3487,7 @@ async function deleteSkill(slug){
   if(!confirm(`Delete skill "${slug}"?\nThis cannot be undone.`)) return;
   const r = await _apiFetch('/api/skills/'+encodeURIComponent(slug), {method:'DELETE'});
   if(r.ok) loadSkills();
-  else alert((await r.json().catch(()=>({}))).detail || 'Delete failed');
+  else alert((await r.json().catch(()=>({}))).detail || t('admin.delete_failed'));
 }
 
 // ═══════════════════════════════════════════
