@@ -2863,7 +2863,7 @@ async function testMcpFromModal(){
 // ═══════════════════════════════════════════
 let _allSkills = [];
 
-async /* ── Update notice ──────────────────────────────────────────────────────────
+/* ── Update notice ──────────────────────────────────────────────────────────
    Fetched once when the panel loads. Deliberately not polled: /api/update/status
    runs a git fetch, and hitting someone's remote on a timer is a surprise they
    did not ask for. */
@@ -2891,8 +2891,8 @@ async function checkForUpdates() {
     head.textContent = `${s.behind} update${s.behind === 1 ? '' : 's'} available`;
     head.style.color = 'var(--text)';
     lbtn.style.display = (s.changes && s.changes.length) ? '' : 'none';
-    document.getElementById('update-log').textContent = (s.changes || []).join('
-');
+    document.getElementById('update-log').textContent =
+          (s.changes || []).join(String.fromCharCode(10));
     if (s.can_update) {
       det.textContent = `${s.current} → latest. A backup is taken first; a restart is needed after.`;
       btn.style.display = '';
@@ -3082,7 +3082,7 @@ async function deleteAgent(slug) {
   loadAgents();
 }
 
-function loadSkills(){
+async function loadSkills(){
   const data = await _apiFetch('/api/skills').then(r=>r.json()).catch(()=>[]);
   _allSkills = Array.isArray(data) ? data : [];
   el('skills-count').textContent = '(' + _allSkills.length + ')';
