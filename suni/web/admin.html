@@ -448,8 +448,8 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
     <button class="tab" onclick="switchTab('roles',this)"     data-i18n="admin.nav_roles">Roles</button>
     <button class="tab" onclick="switchTab('mcp',this)"       data-i18n="admin.nav_mcp">MCP</button>
     <button class="tab" onclick="switchTab('skills',this)"    data-i18n="admin.nav_skills">Skills</button>
-    <button class="tab" onclick="switchTab('agents',this)">Agents</button>
-    <button class="tab" onclick="switchTab('schedules',this)">Schedules</button>
+    <button class="tab" onclick="switchTab('agents',this)" data-i18n="admin.nav_agents">Agents</button>
+    <button class="tab" onclick="switchTab('schedules',this)" data-i18n="admin.nav_schedules">Schedules</button>
     <button class="tab" onclick="switchTab('backup',this)"    data-i18n="admin.nav_backup">Backup</button>
     <button class="tab" onclick="switchTab('config',this)"    data-i18n="admin.nav_config">Configuration</button>
     <button class="tab" onclick="switchTab('benchmarks',this)">Benchmarks</button>
@@ -470,9 +470,9 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
     <span id="update-detail" style="color:var(--muted)"></span>
     <span style="margin-left:auto;display:flex;gap:8px">
       <button class="tbl-btn" onclick="toggleUpdateLog()" id="update-log-btn"
-              style="display:none">What changed</button>
+              data-i18n="admin.upd_what" style="display:none">What changed</button>
       <button class="tbl-btn primary" onclick="applyUpdate()" id="update-apply-btn"
-              style="display:none">Update now</button>
+              data-i18n="admin.upd_now" style="display:none">Update now</button>
     </span>
   </div>
   <pre id="update-log" style="display:none;margin:10px 0 0;padding:9px;font-size:11px;
@@ -490,6 +490,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
       <div class="metric">
         <div class="metric-val green" id="d-status" data-i18n="common.online">Online</div>
         <div class="metric-sub" data-i18n="admin.dash_port">Port 8765 · HTTPS · TLS</div>
+        <div class="metric-sub" id="dash-version" style="margin-top:2px;opacity:.75">—</div>
       </div>
       <div class="kv-grid" style="margin-top:12px">
         <div class="kv"><div class="kv-k" data-i18n="admin.dash_uptime">Uptime</div><div class="kv-v" id="d-uptime">—</div></div>
@@ -2867,6 +2868,20 @@ let _allSkills = [];
    Fetched once when the panel loads. Deliberately not polled: /api/update/status
    runs a git fetch, and hitting someone's remote on a timer is a surprise they
    did not ask for. */
+async function loadVersion() {
+  try {
+    const r = await _apiFetch('/api/version');
+    if (!r.ok) return;
+    const v = await r.json();
+    const bits = [];
+    if (v.version) bits.push('v' + v.version);
+    if (v.commit)  bits.push(v.commit);
+    if (v.state)   bits.push(v.state);      // "modified" — files differ from the commit
+    const el = document.getElementById('dash-version');
+    if (el && bits.length) el.textContent = bits.join(' · ');
+  } catch (e) { /* the version line is never worth breaking the panel over */ }
+}
+
 async function checkForUpdates() {
   try {
     const r = await _apiFetch('/api/update/status');
@@ -2880,21 +2895,36 @@ async function checkForUpdates() {
     window._updateStatus = s;
 
     if (s.interrupted) {
-      head.textContent = 'Update interrupted';
+      head.textContent = t('admin.upd_interrupted');
       head.style.color = 'var(--danger)';
       det.textContent = s.reason || '';
       bar.style.display = ''; btn.style.display = 'none'; lbtn.style.display = 'none';
       return;
     }
-    if (!s.behind) { bar.style.display = 'none'; return; }
+    if (!s.behind) {
+      // Up to date, but the checkout may still be in a state that would block
+      // the NEXT update. Saying so now beats discovering it at the worst moment.
+      if (!s.can_update && s.reason && s.reason !== 'already up to date') {
+        head.textContent = t('admin.upd_blocked');
+        head.style.color = 'var(--gold)';
+        det.textContent = s.reason;
+        det.style.color = 'var(--muted)';
+        btn.style.display = 'none'; lbtn.style.display = 'none';
+        bar.style.display = '';
+      } else {
+        bar.style.display = 'none';
+      }
+      return;
+    }
 
-    head.textContent = `${s.behind} update${s.behind === 1 ? '' : 's'} available`;
+    head.textContent = t(s.behind === 1 ? 'admin.upd_available' : 'admin.upd_available_p',
+                        { n: s.behind });
     head.style.color = 'var(--text)';
     lbtn.style.display = (s.changes && s.changes.length) ? '' : 'none';
     document.getElementById('update-log').textContent =
           (s.changes || []).join(String.fromCharCode(10));
     if (s.can_update) {
-      det.textContent = `${s.current} → latest. A backup is taken first; a restart is needed after.`;
+      det.textContent = t('admin.upd_ready', { cur: s.current });
       btn.style.display = '';
     } else {
       // The reason is the whole point when an update is blocked.
@@ -2913,24 +2943,22 @@ function toggleUpdateLog() {
 
 async function applyUpdate() {
   const s = window._updateStatus || {};
-  if (!confirm(`Update ${s.current} → latest?
-
-A backup is taken first. Your data, `
-             + `config and certificates are never touched. SUNI must be restarted `
-             + `afterwards — it will not restart itself.`)) return;
+  const msg = t('admin.upd_confirm', { cur: s.current || '' })
+            + String.fromCharCode(10, 10) + t('admin.upd_confirm_note');
+  if (!confirm(msg)) return;
   const btn = document.getElementById('update-apply-btn');
-  btn.disabled = true; btn.textContent = 'Updating…';
+  btn.disabled = true; btn.textContent = t('admin.upd_working');
   try {
     const r = await _apiFetch('/api/update/apply', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ confirm: true, backup: true }),
     });
     const res = (await r.json()).result || {};
-    alert(res.message || (res.ok ? 'Updated.' : 'Update did not run.'));
+    alert(res.message || t(res.ok ? 'admin.upd_done' : 'admin.upd_noop'));
   } catch (e) {
-    alert('Update failed: ' + e);
+    alert(t('admin.upd_failed') + e);
   } finally {
-    btn.disabled = false; btn.textContent = 'Update now';
+    btn.disabled = false; btn.textContent = t('admin.upd_now');
     checkForUpdates();
   }
 }
@@ -3476,6 +3504,7 @@ _checkAuth().then(()=>{
   // runs a git fetch, and reaching out to someone's remote every few seconds is
   // a surprise nobody asked for.
   checkForUpdates();
+  loadVersion();
   setInterval(fetchDashboard, 8000);
   setInterval(fetchMetrics, 30000);
 });

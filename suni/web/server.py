@@ -2449,6 +2449,13 @@ def create_app() -> FastAPI:
     # running; a non-admin able to trigger it would be the widest privilege
     # escalation in the codebase, wider than any tool.
 
+    @app.get("/api/version")
+    async def version_api(user: dict = Depends(get_current_user)):
+        """What is running. Available to any signed-in user, unlike the update
+        routes — knowing the version is not the same as being able to change it."""
+        from .. import updater as _up
+        return JSONResponse(_up.version())
+
     @app.get("/api/update/status")
     async def update_status_api(user: dict = Depends(require_admin)):
         from .. import updater as _up

@@ -121,6 +121,32 @@ def rollback_target(root: Path | None = None) -> str:
     return ""
 
 
+def version(root: Path | None = None) -> dict[str, str]:
+    """What is actually running: the declared version and the exact commit.
+
+    Both, because they answer different questions. The version says which
+    release this is meant to be; the commit says what the files on disk actually
+    are, which is the one that matters when something is behaving oddly and
+    nobody is sure whether an update landed.
+    """
+    root = root or ROOT
+    ver = ""
+    try:
+        for line in (root / "pyproject.toml").read_text(encoding="utf-8").splitlines():
+            if line.strip().startswith("version"):
+                ver = line.split("=", 1)[1].strip().strip('"').strip("'")
+                break
+    except Exception:      # noqa: BLE001
+        pass
+    commit = _git("rev-parse", "--short", "HEAD", cwd=root)[1] if _is_repo(root) else ""
+    dirty = ""
+    if commit:
+        rc, out = _git("status", "--porcelain", cwd=root)
+        if rc == 0 and out.strip():
+            dirty = "modified"
+    return {"version": ver, "commit": commit, "state": dirty}
+
+
 def _git(*args: str, cwd: Path | None = None) -> tuple[int, str]:
     try:
         p = subprocess.run(["git", *args], cwd=str(cwd or ROOT),
