@@ -663,6 +663,17 @@ def create_app() -> FastAPI:
             pass
         while not stop_event.is_set():
             try:
+                # Audit retention rides this loop rather than owning a timer:
+                # it is a once-a-day job and apply_retention() enforces that
+                # itself, so the 30s tick just gives it a chance to run. It
+                # never raises, so a purge failure cannot stop schedules.
+                _ret = _audit.apply_retention()
+                if _ret["ran"]:
+                    _log.info("[AUDIT] retention: deleted %d rows older than %d days",
+                              _ret["deleted"], _ret["days"])
+                elif _ret["reason"].startswith(("purge failed", "could not read")):
+                    _log.warning("[AUDIT] retention: %s", _ret["reason"])
+
                 for s in _sched.due():
                     owner = _auth.get_user(s["owner_id"])
                     if not owner or not owner.get("active", True):

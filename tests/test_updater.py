@@ -357,10 +357,22 @@ def test_in_flight_work_blocks_an_update():
     assert "force" in src, "there is no escape hatch for a knowingly idle box"
 
 
+def _function_body(src: str, header: str) -> str:
+    """Everything from `header` to the next sibling definition.
+
+    A fixed character window silently stops testing what it claims to once the
+    function grows past it — adding eight lines at the top of _schedule_runner
+    pushed mark_busy out of a 4000-char slice while the property was untouched.
+    """
+    i = src.index(header)
+    rest = src[i + len(header):]
+    ends = [rest.index(m) for m in ("\n    async def ", "\n    def ") if m in rest]
+    return rest[:min(ends)] if ends else rest
+
+
 def test_scheduled_runs_are_counted_as_in_flight():
     srv = (ROOT / "suni" / "web" / "server.py").read_text(encoding="utf-8-sig")
-    i = srv.index("async def _schedule_runner")
-    block = srv[i:i + 4000]
+    block = _function_body(srv, "async def _schedule_runner")
     assert "mark_busy(+1)" in block and "mark_busy(-1)" in block
 
 

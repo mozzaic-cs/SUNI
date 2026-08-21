@@ -1043,6 +1043,16 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
           <div class="field-hint" data-i18n="admin.cfg_sys_addendum_hint">Appended to the base prompt. Takes effect on next restart.</div>
         </div>
 
+        <div data-cfg-group="advanced" class="section-head" style="margin-top:8px" data-i18n="admin.sec_retention">Audit retention</div>
+        <div class="field">
+          <label data-i18n="admin.lbl_retention_days">Keep audit records for (days)</label>
+          <input type="number" name="audit_retention_days" id="audit_retention_days"
+                 min="0" step="1" value="0" oninput="retentionWarn()">
+          <div class="field-hint" data-i18n-html="admin.hint_retention">Audit rows older than this are deleted once a day. <b>0 = keep everything</b> (the default). The trail records what SUNI did and on whose behalf; it cannot be reconstructed after a purge.</div>
+          <div class="field-hint" id="retention-warn" style="display:none;color:var(--gold)"
+               data-i18n-html="admin.hint_retention_warn"><b>Below 180 days.</b> If this deployment is a high-risk AI system, the EU AI Act (Art. 26(6)) requires its automatically generated logs to be kept for <b>at least six months</b>. GDPR Art. 5(1)(e) pushes the other way — this table holds usernames, IP addresses and query previews — so the balance is yours to strike, not SUNI's.</div>
+        </div>
+
       </div>
     </div>
 
@@ -2280,6 +2290,9 @@ function applyConfigToForm(cfg) {
     const display = inp.nextElementSibling;
     if (display) display.textContent = fmt(val);
   });
+  // The retention warning depends on the LOADED value, not just on typing —
+  // an operator arriving at a panel already set to 90 days must see it.
+  retentionWarn();
 }
 
 // ── Pluggable model chain (drag-ordered preference list) ──────────────
@@ -3163,6 +3176,17 @@ function _updOutcome(res) {
     out.push(s);
   }
   return out.join(' ');
+}
+
+// Shown only for 1..179. Zero means "keep everything", which is the safe
+// default and not a shortfall — warning about it would train the operator to
+// ignore the warning that matters.
+function retentionWarn() {
+  const el_ = document.getElementById('audit_retention_days');
+  const warn = document.getElementById('retention-warn');
+  if (!el_ || !warn) return;
+  const n = parseInt(el_.value, 10);
+  warn.style.display = (Number.isFinite(n) && n > 0 && n < 180) ? '' : 'none';
 }
 
 async function checkForUpdates() {

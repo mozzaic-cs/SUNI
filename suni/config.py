@@ -78,6 +78,21 @@ DEFAULTS: dict[str, Any] = {
     "logship_remote_dir":     "/",
     "logship_token":          "",      # secret — never echoed by /api/config
     "logship_password":       "",      # secret — never echoed by /api/config
+
+    # ── Audit retention ───────────────────────────────────────────────────
+    # How long the audit trail is kept. 0 = keep everything, which is the
+    # default because deleting an operator's records without being asked is
+    # the worse failure: the trail is the evidence for "what did it do, and on
+    # whose behalf", and it cannot be reconstructed once purged.
+    #
+    # Two regimes pull in opposite directions and neither can be satisfied by
+    # a number chosen here. GDPR Art 5(1)(e) says do not keep personal data
+    # (this table holds usernames, IPs and query previews) longer than needed.
+    # AI Act Art 26(6) says a deployer of a high-risk system keeps the
+    # automatically generated logs for AT LEAST six months. So the UI warns
+    # below 180 days rather than refusing it — whether this deployment is
+    # high-risk is not something SUNI can decide.
+    "audit_retention_days":   0,       # 0 = keep everything; >0 = purge older than N days
     "notify_to":              "",      # overrides SUNI_NOTIFY_TO; empty = send to smtp_user
     "imap_host":              "",      # overrides SUNI_IMAP_HOST (inbox watcher)
     "imap_port":              993,     # overrides SUNI_IMAP_PORT

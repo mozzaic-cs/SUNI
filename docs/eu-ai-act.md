@@ -102,27 +102,41 @@ via `log_event()`, so approvals and rejections sit in one timeline with the
 requests that caused them. There is a CSV export (`export_csv`) and an Audit tab
 in the admin panel.
 
-### The retention gap — read this before relying on the above
+### Retention — configurable, and off by default
 
-**Nothing purges the audit log.** `purge_old(days)` exists in `suni/audit.py` and
-**is never called**; there is no retention setting in the config or the admin
-panel. The module docstring claims entries are auto-purged after a configurable
-90 days. That is not true today, and this document would rather say so than
-repeat it.
+Set **`audit_retention_days`** (admin panel → Configuration → Advanced → *Audit
+retention*). Rows older than the window are deleted once a day by
+`audit.apply_retention()`, called from the scheduler loop in `suni/web/server.py`.
 
-The practical consequences point in opposite directions, which is why it needs a
-deliberate decision rather than a default:
+**The default is 0, which means keep everything.** That is deliberate. Deleting
+an operator's records without being asked is the worse failure of the two: the
+trail is the evidence for "what did it do, and on whose behalf", and it cannot be
+reconstructed after a purge.
+
+The two regimes point in opposite directions, which is why SUNI warns instead of
+choosing:
 
 - **GDPR storage limitation (Art 5(1)(e))** — the table holds IP addresses,
-  usernames and query content indefinitely. For personal data that is a
-  data-minimisation problem, and an erasure request currently has no mechanism.
-- **AI Act Art 26(6)** — a deployer of a high-risk system must keep logs for **at
-  least six months**. Any retention policy set below ~180 days would conflict with
-  that obligation, so "just purge aggressively" is the wrong reflex.
+  usernames and query previews. Keeping them forever is a data-minimisation
+  problem, and an erasure request still has no dedicated mechanism.
+- **AI Act Art 26(6)** — a deployer of a high-risk system must keep the
+  automatically generated logs for **at least six months**. So "just purge
+  aggressively" is the wrong reflex.
 
-Until this is wired up, treat audit retention as **manual**: the deployer decides,
-and prunes `memory/audit.db` themselves. If you are subject to either regime,
-that is a decision to make consciously rather than inherit.
+Setting a window **below 180 days** raises a warning in the admin panel naming
+both articles. It is a warning, not a refusal: whether a given deployment is a
+high-risk system is not something SUNI can determine.
+
+Two implementation notes worth knowing, because both are sharp edges:
+
+- `purge_old(0)` would compute a cutoff of *now* and delete the entire table —
+  and 0 is exactly the value meaning "keep everything". It therefore **raises**
+  on any non-positive window rather than accepting it.
+- `apply_retention()` never raises. It is called from the loop that also runs
+  scheduled jobs, and a failed purge must not stop those.
+
+Previously this section documented the absence of all of the above, and
+`audit.py`'s docstring claimed a 90-day auto-purge that nothing performed.
 
 ---
 

@@ -2,7 +2,12 @@
 Audit trail — append-only SQLite log of every user interaction.
 
 Database: memory/audit.db
-Retention: auto-purge entries older than configured days (default 90).
+Retention: `audit_retention_days` in config. **Default 0 = keep everything.**
+    apply_retention() enforces it once a day from the scheduler loop. This
+    docstring previously claimed a 90-day auto-purge; nothing called purge_old()
+    at all, so the claim was false in the direction that matters — an operator
+    reading it would believe old records were being cleaned up when they were
+    accumulating forever.
 Privacy: only query previews (100 chars), not full conversation content.
 """
 from __future__ import annotations
@@ -174,10 +179,59 @@ def export_csv(
 
 
 def purge_old(days: int) -> int:
+    """Delete audit rows older than `days`. Refuses a non-positive `days`.
+
+    The guard is the point. `purge_old(0)` computes a cutoff of "now" and
+    deletes the entire audit trail — and 0 is exactly the value the config uses
+    to mean "keep everything", so an unguarded call would do the precise
+    opposite of what the setting says. Same for a negative, which would delete
+    rows from the future and then, on the next tick, everything.
+    """
+    if days <= 0:
+        raise ValueError(
+            "purge_old() needs a positive number of days; "
+            f"got {days!r}. 0 means 'keep everything' — do not call this.")
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     with _conn() as c:
         n = c.execute("DELETE FROM audit_log WHERE ts<?", (cutoff,)).rowcount
     return n
+
+
+# The retention pass runs at most once a day; the caller is a 30-second loop.
+_last_retention_pass: str = ""
+
+
+def apply_retention(force: bool = False) -> dict:
+    """Enforce `audit_retention_days`, at most once per calendar day.
+
+    Returns what it did, so the caller can log it. Never raises: a failure here
+    must not take down the scheduler that calls it, and losing a retention pass
+    is recoverable while losing the loop is not.
+    """
+    global _last_retention_pass
+    out = {"ran": False, "deleted": 0, "days": 0, "reason": ""}
+    try:
+        from . import config
+        days = int(config.load().get("audit_retention_days", 0) or 0)
+    except Exception as exc:                     # noqa: BLE001
+        out["reason"] = f"could not read config: {exc}"
+        return out
+    out["days"] = days
+    if days <= 0:
+        out["reason"] = "retention disabled (keeping everything)"
+        return out
+
+    today = datetime.now(timezone.utc).date().isoformat()
+    if not force and _last_retention_pass == today:
+        out["reason"] = "already ran today"
+        return out
+    try:
+        out["deleted"] = purge_old(days)
+        _last_retention_pass = today
+        out["ran"] = True
+    except Exception as exc:                     # noqa: BLE001
+        out["reason"] = f"purge failed: {exc}"
+    return out
 
 
 def usage_summary(days: int = 30) -> dict:
