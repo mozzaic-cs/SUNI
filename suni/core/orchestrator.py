@@ -414,6 +414,21 @@ class Orchestrator:
                                   "unknown_tools": _missing})
             except Exception:      # noqa: BLE001 — a warning is never worth the turn
                 pass
+            # Daily allowance. Checked here, before any model or tool work, so an
+            # agent that has spent its budget costs nothing to refuse. The global
+            # tool-iteration cap bounds ONE turn; this bounds a day of them,
+            # which is what an unattended schedule actually needs.
+            try:
+                from ..agents import over_daily_budget as _over
+                if _over(agent_profile):
+                    _cap = int(agent_profile.get("max_runs_day") or 0)
+                    _log.warning("[AGENT] %r has used its daily allowance (%d runs)",
+                                 agent_profile.get("slug", "?"), _cap)
+                    return (f"The agent {agent_profile.get('name', '?')!r} has used its "
+                            f"allowance for today ({_cap} runs). It will run again "
+                            f"tomorrow, or raise the limit in the admin panel.")
+            except Exception:      # noqa: BLE001 — never fail a turn on a budget check
+                pass
             _GR.set(_agent_grants)
 
         # ── Mode 2: multi-model collaboration (explicit opt-in) ───────────
@@ -1245,6 +1260,12 @@ class Orchestrator:
         # Cap on tool-call rounds. Configurable via the admin panel
         # (max_tool_iterations); falls back to the module default if unset/invalid.
         _max_iters = int(_cfg.get("max_tool_iterations", MAX_TOOL_ITERATIONS) or MAX_TOOL_ITERATIONS)
+        # An agent may carry a tighter step budget than the global cap. Only
+        # tighter: taking the min means a profile cannot buy itself more room
+        # than the instance allows, which is the same rule as its tool grants.
+        _ag_steps = int((grants or {}).get("max_steps") or 0)
+        if _ag_steps > 0:
+            _max_iters = min(_max_iters, _ag_steps)
 
         # Behavioural escalation signal — a confidently-wrong model produces failing
         # tool calls, which the refusal-phrase heuristic never catches. Track tool

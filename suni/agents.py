@@ -44,6 +44,8 @@ CREATE TABLE IF NOT EXISTS agents (
     blocked_json TEXT NOT NULL DEFAULT '[]',     -- always ADDED to the role's
     mcp_json     TEXT NOT NULL DEFAULT 'null',   -- null = inherit the caller's
     enabled      INTEGER NOT NULL DEFAULT 1,
+    max_steps    INTEGER NOT NULL DEFAULT 0,   -- 0 = the global tool-iteration cap
+    max_runs_day INTEGER NOT NULL DEFAULT 0,   -- 0 = unlimited
     created_at   TEXT NOT NULL,
     updated_at   TEXT NOT NULL,
     used_count   INTEGER NOT NULL DEFAULT 0,
@@ -156,7 +158,116 @@ def effective_grants(
         "mode": mode,
         "model": str(agent.get("model") or ""),
         "system_prompt": str(agent.get("system_prompt") or ""),
+        # Carried through with the grants so the orchestrator reads one object.
+        "max_steps": int(agent.get("max_steps") or 0),
+        "max_runs_day": int(agent.get("max_runs_day") or 0),
     }
+
+
+def budget_for(agent: dict | None, default_steps: int) -> dict[str, int]:
+    """Per-agent ceilings, falling back to the global ones.
+
+    A schedule firing every 15 minutes with a tool loop has no natural stopping
+    point: the global iteration cap bounds ONE turn, not a day of them. An agent
+    that is allowed to run unattended should carry its own ceiling, and 0 keeps
+    the previous behaviour so nothing changes for agents that do not set one.
+    """
+    a = agent or {}
+    steps = int(a.get("max_steps") or 0)
+    return {
+        "max_steps": steps if steps > 0 else int(default_steps),
+        "max_runs_day": int(a.get("max_runs_day") or 0),
+    }
+
+
+def runs_today(slug: str) -> int:
+    """How many times this agent has run since UTC midnight.
+
+    Counted from the audit trail rather than a counter on the profile: the audit
+    row is written whatever happens, and a counter would drift the first time a
+    run failed between incrementing and finishing.
+    """
+    if not slug:
+        return 0
+    try:
+        from . import audit as _audit
+        import sqlite3
+        from datetime import datetime, timezone
+        midnight = datetime.now(timezone.utc).replace(
+            hour=0, minute=0, second=0, microsecond=0).isoformat()
+        with sqlite3.connect(_audit.DB_PATH if hasattr(_audit, "DB_PATH") else "memory/audit.db") as c:
+            row = c.execute(
+                "SELECT COUNT(*) FROM audit_log WHERE agent_slug=? AND ts>=? AND route='chat'",
+                (slug, midnight)).fetchone()
+        return int(row[0]) if row else 0
+    except Exception:      # noqa: BLE001 — a budget check must not break the turn
+        return 0
+
+
+def over_daily_budget(agent: dict | None) -> bool:
+    """True when this agent has used up its allowance for the day."""
+    a = agent or {}
+    cap = int(a.get("max_runs_day") or 0)
+    if cap <= 0:
+        return False
+    return runs_today(str(a.get("slug") or "")) >= cap
+
+
+def report(slug: str, days: int = 7) -> dict[str, Any]:
+    """What this agent did, and what it was permitted to do, over `days`.
+
+    Built from the audit trail rather than any counter kept on the profile: the
+    audit rows are the record, and a summary derived from anything else could
+    disagree with them. This is the artifact a compliance review asks for —
+    Art 12 record-keeping is only useful if somebody can read it back.
+    """
+    import sqlite3
+    from datetime import datetime, timedelta, timezone
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    out: dict[str, Any] = {
+        "slug": slug, "days": days, "runs": 0, "users": [], "tools": {},
+        "errors": 0, "prompt_tokens": 0, "gen_tokens": 0,
+        "grants_seen": [], "first": "", "last": "",
+    }
+    try:
+        with sqlite3.connect("memory/audit.db") as c:
+            c.row_factory = sqlite3.Row
+            rows = c.execute(
+                """SELECT ts, username, route, tools_called, tool_errors,
+                          prompt_tokens, gen_tokens, query_preview
+                   FROM audit_log WHERE agent_slug=? AND ts>=? ORDER BY ts""",
+                (slug, since)).fetchall()
+    except Exception:      # noqa: BLE001 — a report is never worth an exception
+        return out
+
+    users, grants = set(), []
+    for r in rows:
+        if r["route"] == "chat":
+            out["runs"] += 1
+            out["errors"] += int(r["tool_errors"] or 0)
+            out["prompt_tokens"] += int(r["prompt_tokens"] or 0)
+            out["gen_tokens"] += int(r["gen_tokens"] or 0)
+            for tool in (r["tools_called"] or "").split(","):
+                if tool.strip():
+                    out["tools"][tool.strip()] = out["tools"].get(tool.strip(), 0) + 1
+        elif r["route"] == "agent.invoked":
+            # The resolved grants at that moment — what it COULD reach, which is
+            # a different question from what it did.
+            grants.append({"ts": r["ts"], "grants": r["query_preview"]})
+        if r["username"]:
+            users.add(r["username"])
+    out["users"] = sorted(users)
+    # Distinct grant strings only: a week of identical entries says nothing, a
+    # CHANGE in what it could reach is the thing worth seeing.
+    seen, distinct = set(), []
+    for g in grants:
+        if g["grants"] not in seen:
+            seen.add(g["grants"])
+            distinct.append(g)
+    out["grants_seen"] = distinct
+    if rows:
+        out["first"], out["last"] = rows[0]["ts"], rows[-1]["ts"]
+    return out
 
 
 def unknown_tools(agent: dict[str, Any] | None, registered: list[str] | None) -> list[str]:
@@ -336,7 +447,8 @@ def update(slug: str, user_id: str, user_role: str = "", **fields) -> dict | Non
     if not cur:
         return None
     allowed = {"name", "description", "model", "mode", "tools",
-               "blocked", "mcp_servers", "enabled", "system_prompt"}
+               "blocked", "mcp_servers", "enabled", "system_prompt",
+               "max_steps", "max_runs_day"}
     for k, v in fields.items():
         if k in allowed:
             cur[k] = v
@@ -344,11 +456,14 @@ def update(slug: str, user_id: str, user_role: str = "", **fields) -> dict | Non
     with _conn() as c:
         c.execute(
             """UPDATE agents SET name=?, description=?, model=?, mode=?, tools_json=?,
-               blocked_json=?, mcp_json=?, enabled=?, updated_at=? WHERE slug=?""",
+               blocked_json=?, mcp_json=?, enabled=?, max_steps=?, max_runs_day=?,
+               updated_at=? WHERE slug=?""",
             (cur["name"], cur.get("description", ""), cur.get("model", ""),
              cur.get("mode", "assistant"), json.dumps(cur.get("tools")),
              json.dumps(cur.get("blocked") or []), json.dumps(cur.get("mcp_servers")),
-             1 if cur.get("enabled", True) else 0, cur["updated_at"], slug),
+             1 if cur.get("enabled", True) else 0,
+             int(cur.get("max_steps") or 0), int(cur.get("max_runs_day") or 0),
+             cur["updated_at"], slug),
         )
     _write_md(cur)
     return cur

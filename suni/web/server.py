@@ -2515,6 +2515,14 @@ def create_app() -> FastAPI:
                          target_id=slug, agent_slug=slug)
         return JSONResponse({"agent": rec})
 
+    @app.get("/api/agents/{slug}/report")
+    async def agents_report_api(slug: str, days: int = 7,
+                                user: dict = Depends(get_current_user)):
+        from .. import agents as _agents
+        if slug not in {a["slug"] for a in _agents.list_for_user(user["id"], user.get("role", ""))}:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        return JSONResponse({"report": _agents.report(slug, max(1, min(int(days), 365)))})
+
     @app.get("/api/agents/{slug}/members")
     async def agents_members_api(slug: str, user: dict = Depends(get_current_user)):
         from .. import agents as _agents

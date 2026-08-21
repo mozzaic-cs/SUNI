@@ -1256,7 +1256,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
     <table class="tbl" id="agents-table">
       <thead><tr>
         <th>Name</th><th>Description</th><th>Model</th><th>Mode</th>
-        <th>Tools</th><th>Used</th><th></th>
+        <th>Tools</th><th>Limit</th><th>Used</th><th></th>
       </tr></thead>
       <tbody id="agents-tbody"></tbody>
     </table>
@@ -1325,6 +1325,21 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
         Listing a tool here cannot grant it: the final set is this list intersected
         with the role of whoever runs the agent.
       </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div class="field">
+        <label>Max steps per run — blank uses the instance limit</label>
+        <input type="number" id="ag-steps" min="1" placeholder="8" style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
+      </div>
+      <div class="field">
+        <label>Max runs per day — blank means unlimited</label>
+        <input type="number" id="ag-runs" min="1" placeholder="unlimited" style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
+      </div>
+    </div>
+    <div style="font-size:10px;color:var(--muted);margin:-4px 0 10px">
+      The instance limit bounds one turn. These bound a day of them, which is what
+      an agent left on a schedule actually needs. A step budget can only tighten
+      the instance limit, never raise it.
     </div>
     <div class="field" style="margin-bottom:10px">
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
@@ -2915,6 +2930,7 @@ async function loadAgents() {
         `<td>${esc(e.model || 'default')}</td>` +
         `<td>${e.mode === 'collaborate' ? '<strong>panel</strong>' : esc(e.mode || '')}</td>` +
         `<td>${e.tools === 'all' ? 'all' : e.tools}</td>` +
+        `<td>${a.max_runs_day ? esc(String(a.max_runs_day)) + '/day' : '—'}</td>` +
         `<td>${a.used_count || 0}</td>` +
         `<td style="text-align:right"><button class="tbl-btn" onclick="deleteAgent('${esc(a.slug)}')">Delete</button></td>`;
       tb.appendChild(tr);
@@ -2929,6 +2945,7 @@ function openNewAgent(){
   el('ag-model').value = ''; el('ag-tools').value = '';
   el('ag-prompt').value = '';
   el('ag-panel').checked = false;
+  el('ag-steps').value = ''; el('ag-runs').value = '';
   el('ag-err').style.display = 'none';
   el('modal-agent').classList.add('open');
 }
@@ -2952,6 +2969,8 @@ async function saveAgent(){
       // A panel agent is just mode=collaborate — the existing branch handles it,
       // and effective_grants() still clamps the mode to what the role may use.
       mode: el('ag-panel').checked ? 'collaborate' : 'assistant',
+      max_steps: parseInt(el('ag-steps').value, 10) || 0,
+      max_runs_day: parseInt(el('ag-runs').value, 10) || 0,
       // blank means "inherit whatever the person running it may use"
       tools: toolsRaw ? toolsRaw.split(',').map(s=>s.trim()).filter(Boolean) : null,
     }),
