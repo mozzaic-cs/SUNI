@@ -1404,7 +1404,10 @@ body.simple .section-gap{height:6px!important}
         Stored as Markdown + YAML frontmatter beside a SQLite index, so a
         definition stays readable and editable outside the app<br>
         Sharing mirrors project_members: owner / editor / viewer<br>
-        <span style="color:var(--purple)">Model pinned by a profile suppresses tier escalation — otherwise the choice would be swapped out mid-run</span>
+        <span style="color:var(--purple)">Model pinned by a profile suppresses tier escalation — otherwise the choice would be swapped out mid-run</span><br>
+        A profile naming an UNREGISTERED tool is warned about: the intersection
+        keeps the name, the registry returns nothing, and the model narrates
+        instead of calling — which reads as a weak model and is not
       </div>
     </div>
 
@@ -1444,6 +1447,58 @@ body.simple .section-gap{height:6px!important}
       </div>
     </div>
 
+
+    <div class="node" style="border-color:rgba(155,89,182,.4);min-width:250px">
+      <div class="node-tag" style="background:rgba(155,89,182,.06);color:var(--purple)">invoke_agent &middot; list_agents &middot; _handle_agent_direct</div>
+      <div class="node-title" style="color:var(--purple)">Delegation</div>
+      <div class="node-detail">
+        <span>"Ask the X agent to&hellip;" hands the task to that agent</span>
+        The NAME is extracted by regex, not chosen by the model — measured, the
+        core tier picked four different wrong tools across four runs<br>
+        Sub-turn grants intersect the CALLING turn's, not the raw role, or a
+        narrow agent delegates its way back to full reach<br>
+        An agent that DECLARES tools is floored at a tier that can emit
+        well-formed calls, and escalates to T5 when no local tier qualifies — a
+        pinned model is never overridden<br>
+        <span style="color:var(--purple)">Depth cap 1: agents may be invoked, may not invoke &middot; unknown name refused, never self-handled</span>
+      </div>
+    </div>
+
+    <div class="node" style="border-color:rgba(0,227,150,.4);min-width:250px">
+      <div class="node-tag" style="background:rgba(0,227,150,.06);color:var(--green)">mode=collaborate &rarr; orchestrate.py</div>
+      <div class="node-title" style="color:var(--green)">Panel Agents</div>
+      <div class="node-detail">
+        <span>An agent whose model is a PANEL, not a model</span>
+        Draft &rarr; cross-critique &rarr; synthesise across the pool, answered in
+        that agent's voice. Per-agent pool override<br>
+        Persona shapes only the SYNTHESIS — applying it to every seat would
+        correlate the models, which is the whole point of a panel<br>
+        <span style="color:var(--green)">Cloud models: this leaves the machine, unlike the single-model path</span>
+      </div>
+    </div>
+
+    <div class="node" style="border-color:rgba(255,69,96,.45);min-width:250px">
+      <div class="node-tag" style="background:rgba(255,69,96,.07);color:var(--red)">max_steps &middot; max_runs_day</div>
+      <div class="node-title" style="color:var(--red)">Ceilings</div>
+      <div class="node-detail">
+        <span>The instance cap bounds one turn; these bound a day of them</span>
+        A schedule firing every 15 minutes has no natural stopping point<br>
+        max_steps applies as a MINIMUM against the instance cap — a profile can
+        tighten it, never raise it, the same rule as its tool grants<br>
+        <span style="color:var(--red)">Runs counted from the audit trail, not a profile counter that would drift on a failed run</span>
+      </div>
+    </div>
+
+    <div class="node" style="border-color:rgba(0,212,255,.35);min-width:250px">
+      <div class="node-tag" style="background:rgba(0,212,255,.06);color:var(--cyan)">POST /api/agents/{slug}/dry-run</div>
+      <div class="node-title" style="color:var(--cyan)">Preview before trust</div>
+      <div class="node-detail">
+        <span>What it WOULD call, and what it may reach — executing nothing</span>
+        Reports the resolved grants too: what an agent could reach is the
+        governance question, and another task might choose differently<br>
+        <span style="color:var(--cyan)">Unlike task mode, the plan is NOT stashed — an executable plan left behind turns a preview into something one word could fire</span>
+      </div>
+    </div>
     <div class="node c-gold" style="min-width:250px">
       <div class="node-tag" style="background:rgba(201,162,39,.07);color:var(--gold)">audit_log.agent_slug &middot; agent.invoked</div>
       <div class="node-title">Traceable by agent</div>
@@ -1451,7 +1506,9 @@ body.simple .section-gap{height:6px!important}
         <span>Which agent answered, and what it was allowed to reach then</span>
         Per-request row carries agent_slug; a governance event records the
         RESOLVED grants — model, mode, tool count, MCP prefixes<br>
-        <span style="color:var(--gold)">Grants are re-derived each run, so the profile as it stands later is not evidence of what applied</span>
+        <span style="color:var(--gold)">Grants are re-derived each run, so the profile as it stands later is not evidence of what applied</span><br>
+        report(slug, days) reads it back — what it DID vs what it COULD reach,
+        identical grant states collapsed because only a change is signal
       </div>
     </div>
 
@@ -1534,7 +1591,7 @@ body.simple .section-gap{height:6px!important}
   <div class="legend-item"><span class="new-badge" style="background:rgba(155,89,182,.12);color:var(--purple)">new</span> Phase 6.4: web_url route (web_fetch hint) · memory SYSTEM dedup · _sanitize_response (DOC-EXCERPT) · file-serve JWT token auth · _inject_dl_token · configurable output directory (global + per-user)</div>
   <div class="legend-item"><span class="new-badge" style="background:rgba(0,212,255,.12);color:var(--cyan)">new</span> Phase 7: adaptive memory — LLM supersession · soft-deprecation (lifecycle) · weekly consolidation · conversation dedup · age-out</div>
   <div class="legend-item"><span class="new-badge" style="background:rgba(201,162,39,.14);color:var(--gold)">new</span> Phase 7: EU AI Act Art 50 — AI-interaction disclosure · AI-generated content marking (PDF/email) · risk classification · safeguard mapping</div>
-  <div class="legend-item"><span class="new-badge" style="background:rgba(155,89,182,.15);color:var(--purple)">new</span> Phase 12: named agents (narrow-only grants, model pinning, delegation with a depth cap) &middot; scheduled invocations &middot; deterministic cadence parsing &middot; per-agent audit</div>
+  <div class="legend-item"><span class="new-badge" style="background:rgba(155,89,182,.15);color:var(--purple)">new</span> Phase 12: named agents (narrow-only grants, model pinning, delegation with a depth cap) &middot; panel agents &middot; scheduled invocations &middot; deterministic cadence parsing &middot; per-agent ceilings, dry-run and report</div>
   <div class="legend-item"><span class="new-badge" style="background:rgba(20,217,140,.15);color:var(--teal)">new</span> Phase 11: deployment — Docker + compose · TLS generated on first run · first-run wizard · pip wheel · systemd unit · cross-platform boot path · local image generation</div>
 </div>
 
