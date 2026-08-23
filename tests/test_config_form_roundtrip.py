@@ -41,6 +41,13 @@ def _apply_fn() -> str:
     return HTML[i:j]
 
 
+def _save_fn() -> str:
+    """The submit handler that builds the POST body."""
+    i = HTML.index("document.getElementById('cfg-form').addEventListener('submit'")
+    j = HTML.index("\n});", i)
+    return HTML[i:j]
+
+
 def _controls() -> set[str]:
     """Named inputs/selects/textareas inside the config form."""
     form = _cfg_form()
@@ -76,10 +83,39 @@ def test_every_config_backed_control_is_applied_back_to_the_form():
         f"applyConfigToForm, so saving the form resets them: {missing}")
 
 
+def test_every_config_backed_control_is_actually_saved():
+    """The other direction, and the one the first version of this file missed.
+
+    A control that loads correctly but is never read by the submit handler is
+    editable, looks saved, and changes nothing. Both fields added on 2026-08-23
+    shipped exactly that way — the load was fixed, the save was not, and only
+    checking one direction hid it.
+    """
+    save_src = _save_fn()
+    missing = []
+    for name in sorted(_controls()):
+        base = name[:-4] if name.endswith("_raw") else name
+        if base not in config.DEFAULTS:
+            continue
+        if name not in save_src and base not in save_src:
+            missing.append(name)
+    assert not missing, (
+        "these controls are bound to config keys but the submit handler never "
+        f"reads them, so editing them does nothing: {missing}")
+
+
 def test_the_two_that_shipped_broken_stay_fixed():
-    apply_src = _apply_fn()
+    """Both halves: displayed on load AND read on save."""
+    apply_src, save_src = _apply_fn(), _save_fn()
     for name in ("audit_retention_days", "session_ingest_owner"):
-        assert name in apply_src
+        assert name in apply_src, f"{name} is not loaded into the form"
+        assert name in save_src, f"{name} is never saved"
+
+
+def test_the_save_handler_was_actually_found():
+    """If the slice missed, the check above would pass vacuously."""
+    src = _save_fn()
+    assert len(src) > 2000 and "data.model" in src
 
 
 def test_the_parser_would_notice_a_missing_field():

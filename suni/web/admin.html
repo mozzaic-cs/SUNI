@@ -2511,6 +2511,18 @@ document.getElementById('cfg-form').addEventListener('submit', async e => {
   data.doc_kb_enabled = !!document.getElementById('doc_kb_enabled')?.checked;
   const _dtk = parseInt(form.elements.doc_top_k?.value, 10);
   if (!isNaN(_dtk)) data.doc_top_k = _dtk;
+  // Audit retention: 0 means keep everything, so a blank or negative box is
+  // not the same as 0 and is simply not sent — the stored window survives.
+  const _ard = parseInt(form.elements.audit_retention_days?.value, 10);
+  if (!isNaN(_ard) && _ard >= 0) data.audit_retention_days = _ard;
+  // Owner of locally-ingested sessions ("" = shared store). Only sent when the
+  // picker actually holds the account list: if that fetch failed it would read
+  // as "" and an unrelated save would silently reset the owner — the same trap
+  // that made the email fields wipe themselves.
+  const _sio = form.elements.session_ingest_owner;
+  if (_sio && _sio.options && _sio.options.length > 1) {
+    data.session_ingest_owner = _sio.value ?? '';
+  }
   // Email: blank password = keep stored (the API preserves it, same as the bot
   // tokens). Ports are numbers; a blank/invalid port is simply not sent so the
   // stored value survives.
