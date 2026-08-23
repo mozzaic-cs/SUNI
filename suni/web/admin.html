@@ -2211,7 +2211,22 @@ function applyConfigToForm(cfg) {
                   'embed_backend','embed_base_url','embed_model','embed_api_key',
                   'stt_backend','stt_base_url','stt_model','stt_api_key',
                   'vision_base_url','vision_model','vision_api_key',
-                  'tts_backend','tts_base_url','tts_model','tts_api_key'];
+                  'tts_backend','tts_base_url','tts_model','tts_api_key',
+                  // A field missing from this list is not merely "not shown":
+                  // it renders as its widget default, and because it lives
+                  // inside cfg-form the next Save posts that default back and
+                  // silently wipes whatever was configured. Both of these
+                  // shipped that way. test_config_form_roundtrip.py now fails
+                  // when a cfg-form control bound to a DEFAULTS key is absent.
+                  'audit_retention_days','session_ingest_owner',
+                  // Found by that test, pre-existing: the email fields are
+                  // posted unconditionally by the save path but were never
+                  // loaded here, so every save wrote back an empty host/user/
+                  // recipient. Harmless only while they are unset. The ports
+                  // and doc_top_k are guarded by isNaN on save, so those were
+                  // display-only — the box read blank whatever was stored.
+                  'smtp_host','smtp_user','notify_to','imap_host',
+                  'smtp_port','imap_port','doc_top_k'];
   // doc_paths: stored as array, edited as newline-separated textarea
   if (cfg.doc_paths !== undefined) {
     const ta = form.elements['doc_paths_raw'];
