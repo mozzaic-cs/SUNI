@@ -12,6 +12,18 @@
 
   var _T = {
     en: {
+    // --- erasure ---
+    "admin.erase_audit_note": "{n} audit row(s) are KEPT, with username, IP address and query preview cleared. The AI Act requires the log to survive, and it is also the record that this erasure happened.",
+    "admin.erase_backups": "{n} backup(s) are left untouched — restoring one re-introduces this data.",
+    "admin.erase_confirm_label": "Type {user} to confirm",
+    "admin.erase_done": "Erased.",
+    "admin.erase_failed": "Erasure failed.",
+    "admin.erase_go": "Erase permanently",
+    "admin.erase_intro": "This removes the person from every store, not just their account. It cannot be undone. Here is exactly what will go:",
+    "admin.erase_not_covered": "Not covered by this erasure:",
+    "admin.erase_nothing": "Nothing found to erase for this account.",
+    "admin.erase_title": "Erase {user} — everything, everywhere",
+    "admin.users_erase": "Erase",
     // --- audit retention ---
     "admin.hint_retention": "Audit rows older than this are deleted once a day. <b>0 = keep everything</b> (the default). The trail records what SUNI did and on whose behalf; it cannot be reconstructed after a purge.",
     "admin.hint_retention_warn": "<b>Below 180 days.</b> If this deployment is a high-risk AI system, the EU AI Act (Art. 26(6)) requires its automatically generated logs to be kept for <b>at least six months</b>. GDPR Art. 5(1)(e) pushes the other way — this table holds usernames, IP addresses and query previews — so the balance is yours to strike, not SUNI's.",
@@ -623,6 +635,18 @@
     },
 
     pt: {
+    // --- erasure ---
+    "admin.erase_audit_note": "{n} registo(s) de auditoria são MANTIDOS, com o nome de utilizador, o endereço IP e a pré-visualização da pergunta apagados. O Regulamento da IA exige que o registo subsista, e é também a prova de que esta eliminação ocorreu.",
+    "admin.erase_backups": "{n} cópia(s) de segurança não são alteradas — restaurar uma reintroduz estes dados.",
+    "admin.erase_confirm_label": "Escreva {user} para confirmar",
+    "admin.erase_done": "Apagado.",
+    "admin.erase_failed": "A eliminação falhou.",
+    "admin.erase_go": "Apagar definitivamente",
+    "admin.erase_intro": "Isto remove a pessoa de todos os repositórios, não apenas a sua conta. Não pode ser revertido. Eis exatamente o que será removido:",
+    "admin.erase_not_covered": "Não abrangido por esta eliminação:",
+    "admin.erase_nothing": "Não foi encontrado nada para apagar nesta conta.",
+    "admin.erase_title": "Apagar {user} — tudo, em todo o lado",
+    "admin.users_erase": "Apagar",
     // --- audit retention ---
     "admin.hint_retention": "Os registos de auditoria mais antigos do que isto são eliminados uma vez por dia. <b>0 = manter tudo</b> (por omissão). O registo documenta o que o SUNI fez e em nome de quem; não pode ser reconstruído depois de uma eliminação.",
     "admin.hint_retention_warn": "<b>Menos de 180 dias.</b> Se esta instalação for um sistema de IA de risco elevado, o Regulamento da IA da UE (art. 26.º, n.º 6) exige que os registos gerados automaticamente sejam conservados durante <b>pelo menos seis meses</b>. O RGPD (art. 5.º, n.º 1, alínea e)) puxa no sentido contrário — esta tabela contém nomes de utilizador, endereços IP e pré-visualizações de perguntas — pelo que o equilíbrio é seu, não do SUNI.",

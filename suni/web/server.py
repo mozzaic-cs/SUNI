@@ -1413,6 +1413,47 @@ def create_app() -> FastAPI:
         _log.info("[AUTH] User %s deleted by %s", user_id, admin["username"])
         return JSONResponse({"ok": True})
 
+    # ── Erasure (GDPR Art 17) ───────────────────────────────────────────────
+    # Deliberately separate from DELETE /api/users/{id}: that removes an
+    # account, this removes a person from every store. Preview first, then an
+    # execute that will not fire without the subject's id echoed back.
+    @app.get("/api/users/{user_id}/erasure-preview")
+    async def erasure_preview(user_id: str, admin: dict = Depends(require_admin)):
+        from .. import erasure as _erase
+        return JSONResponse(_erase.preview(user_id))
+
+    @app.post("/api/users/{user_id}/erase")
+    async def erase_user(user_id: str, request: Request,
+                         admin: dict = Depends(require_admin)):
+        from .. import erasure as _erase
+        if user_id == admin["id"]:
+            raise HTTPException(400, "Cannot erase your own account")
+        body = {}
+        try:
+            body = await request.json()
+        except Exception:      # noqa: BLE001 — an empty body is a valid request
+            pass
+        # The subject's id must be echoed back. This is irreversible and spans
+        # every store, so a bare POST must not be able to trigger it.
+        confirm = str(body.get("confirm_user_id", ""))
+
+        # Hand over the LIVE store if this process holds one, and drop it from
+        # the cache either way: MemoryStore._save() rewrites the whole file from
+        # memory, so a cached manager would write the erased entries back.
+        live = _user_memories.pop(user_id, None)
+        store = getattr(live, "store", None) if live else None
+
+        result = _erase.erase(user_id, confirm, memory_store=store)
+        if not result["ok"] and "not confirmed" in result["message"]:
+            raise HTTPException(400, result["message"])
+        # Audited like any other admin action — and this row survives the
+        # pseudonymisation above, because it is written after it.
+        _audit.log_event(admin["id"], admin["username"], "user.erased",
+                         detail=result["message"][:100], target_id=user_id)
+        _log.warning("[ERASURE] %s erased by %s — %s",
+                     user_id, admin["username"], result["message"])
+        return JSONResponse(result)
+
     # ── Audit log endpoints (admin only) ────────────────────────────────────
     @app.get("/api/audit/logs")
     async def audit_logs(

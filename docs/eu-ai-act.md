@@ -138,6 +138,42 @@ Two implementation notes worth knowing, because both are sharp edges:
 Previously this section documented the absence of all of the above, and
 `audit.py`'s docstring claimed a 90-day auto-purge that nothing performed.
 
+### Erasure (GDPR Art 17)
+
+`suni/erasure.py`, exposed as **Users → Erase** in the admin panel. Admin-only,
+never scheduled, and it will not run until the subject's id is echoed back.
+
+This started as a bug rather than a feature: `auth.delete_user()` deleted one row
+from `users.db`. The account vanished and the person's conversations, memory,
+schedules, agents and audit rows stayed, now attached to no account. "Delete
+user" was already a promise the code did not keep.
+
+`preview(user_id)` counts what would go, per store, touching nothing — the panel
+shows it before asking, because an admin who cannot see the blast radius is not
+consenting to it.
+
+Three deliberate choices:
+
+- **The audit trail is pseudonymised, not deleted.** `username`, `ip_address`
+  and `query_preview` are cleared; `ts`, `route`, `mode` and durations stay, as
+  does `user_id` — an opaque uuid once the account row is gone. Art 17(3)(b)
+  exempts processing needed for a legal obligation, and Art 26(6) above is one.
+  Deleting the rows would break that obligation and destroy the evidence that
+  the erasure took place.
+- **Messages are deleted through their conversation.** `messages` has no user
+  column. Deleting by `user_id` alone removes the conversations and leaves every
+  message body orphaned — which reports success while retaining the most
+  personal data in the system.
+- **What it cannot reach, it reports.** The shared `memory/suni_memory.json`
+  carries no user attribution on any entry, and the document index keys on file
+  paths in shared locations. Neither can be filtered by subject, so both are
+  listed in the preview as limitations. Backups are named and never modified:
+  restoring one re-introduces the data.
+
+One operational note: `MemoryStore._save()` rewrites the whole file from memory,
+so the endpoint hands the live store to `erase()` and drops it from the cache.
+Erasing the file underneath a loaded store would let the next save resurrect it.
+
 ---
 
 ## Existing controls mapped to high-risk themes
@@ -161,10 +197,9 @@ shortens the work if a deployment ever does fall under Annex III:
 - **Not a conformity assessment.** No notified body has looked at this.
 - **Not a compliance guarantee for your deployment.** What you do with SUNI
   determines most of your obligations, and the software cannot know that.
-- **Not GDPR coverage.** A known gap: memory supersession is a reversible
-  soft-deprecation, and an erasure request needs a hard delete. Reversible removal
-  is the right default for an assistant's memory and the wrong answer for Article
-  17. If you process personal data, handle erasure explicitly.
+- **Not full GDPR coverage.** Erasure now has a mechanism (see below), but the
+  rest of the regulation — lawful basis, DPIAs, processor agreements, subject
+  access — is yours, not the software's.
 - **Not a substitute for advice** from someone qualified to give it.
 
 Corrections are welcome — open an issue. Getting this wrong in either direction

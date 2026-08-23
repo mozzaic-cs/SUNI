@@ -3652,6 +3652,7 @@ async function loadUsers(){
         <button class="tbl-btn" onclick="openEditUser(${JSON.stringify(u).replace(/"/g,'&quot;')})">${t('common.edit')}</button>
         <button class="tbl-btn" onclick="resetPassword('${u.id}','${esc(u.username)}')">${t('admin.users_reset_pw')}</button>
         <button class="tbl-btn danger" onclick="deleteUser('${u.id}','${esc(u.username)}')">${t('common.delete')}</button>
+        <button class="tbl-btn danger" onclick="eraseUser('${u.id}','${esc(u.username)}')">${t('admin.users_erase')}</button>
       </td>
     </tr>`).join('');
   // Populate audit user filter
@@ -3741,6 +3742,89 @@ async function deleteUser(uid, uname){
   const r = await _apiFetch(`/api/users/${uid}`, {method:'DELETE'});
   if(r.ok) loadUsers();
   else alert('Error: ' + (await r.json()).detail);
+}
+
+// ── Erasure (GDPR Art 17) ─────────────────────────────────────────────
+// Distinct from Delete, which removes the account only. This removes the
+// person from every store, so it shows the blast radius BEFORE asking, and
+// asks by making the admin type the username rather than click once.
+//
+// The dialog is built in JS and appended to <body> rather than added to the
+// page markup: an insertion that lands in the wrong container is the failure
+// this panel has actually shipped, and there is no container to get wrong here.
+async function eraseUser(uid, uname){
+  let p;
+  try {
+    const r = await _apiFetch(`/api/users/${uid}/erasure-preview`);
+    if(!r.ok){ alert('Error: ' + ((await r.json()).detail || r.status)); return; }
+    p = await r.json();
+  } catch(e){ alert('Error: ' + e.message); return; }
+
+  const rows = Object.entries(p.erasable)
+    .filter(([, v]) => typeof v === 'number' && v > 0)
+    .map(([k, v]) => `<tr><td style="padding:2px 10px 2px 0">${esc(k)}</td>
+                          <td style="text-align:right"><b>${v}</b></td></tr>`).join('');
+  const kept = p.not_erasable.map(u =>
+    `<li style="margin-bottom:4px"><code>${esc(u.store)}</code>${
+      u.entries > 0 ? ` (${u.entries})` : ''} — ${esc(u.reason)}</li>`).join('');
+
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay';
+  ov.style.display = 'flex';
+  ov.innerHTML = `
+    <div class="modal" style="width:min(680px,96vw);max-height:85vh;overflow:auto">
+      <div class="modal-title"><span>${t('admin.erase_title', {user: esc(uname)})}</span></div>
+      <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:10px">
+        ${t('admin.erase_intro')}
+      </div>
+      ${rows ? `<table style="font-size:11px;margin-bottom:10px">${rows}</table>`
+             : `<div style="font-size:11px;color:var(--muted);margin-bottom:10px">${t('admin.erase_nothing')}</div>`}
+      <div style="font-size:11px;color:var(--gold);line-height:1.5;margin-bottom:10px">
+        ${t('admin.erase_audit_note', {n: p.pseudonymised.audit_rows})}
+      </div>
+      <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:6px">
+        <b>${t('admin.erase_not_covered')}</b>
+      </div>
+      <ul style="font-size:10px;color:var(--muted);line-height:1.5;margin:0 0 10px 16px">${kept}</ul>
+      ${p.backups.length ? `<div style="font-size:10px;color:var(--muted);margin-bottom:10px">
+        ${t('admin.erase_backups', {n: p.backups.length})}</div>` : ''}
+      <div class="field">
+        <label>${t('admin.erase_confirm_label', {user: esc(uname)})}</label>
+        <input type="text" id="erase-confirm" autocomplete="off">
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button class="btn btn-secondary" id="erase-cancel">${t('common.cancel')}</button>
+        <button class="btn btn-primary" id="erase-go" disabled
+                style="background:var(--danger,#c0392b);border-color:var(--danger,#c0392b)">
+          ${t('admin.erase_go')}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+
+  const inp = ov.querySelector('#erase-confirm');
+  const go  = ov.querySelector('#erase-go');
+  const close = () => ov.remove();
+  ov.querySelector('#erase-cancel').onclick = close;
+  ov.onclick = e => { if(e.target === ov) close(); };
+  // Typing the username is the confirmation. The id goes to the server; the
+  // name is what a human can actually verify they meant.
+  inp.oninput = () => { go.disabled = inp.value.trim() !== uname; };
+  inp.focus();
+
+  go.onclick = async () => {
+    go.disabled = true;
+    try {
+      const r = await _apiFetch(`/api/users/${uid}/erase`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({confirm_user_id: uid}),
+      });
+      const res = await r.json();
+      close();
+      alert(res.message || (r.ok ? t('admin.erase_done') : t('admin.erase_failed')));
+      loadUsers();
+    } catch(e){ close(); alert('Error: ' + e.message); }
+  };
 }
 
 // ═══════════════════════════════════════════
