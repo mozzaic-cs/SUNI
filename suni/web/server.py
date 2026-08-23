@@ -593,6 +593,34 @@ def create_app() -> FastAPI:
             )
         return _user_memories[user_id]
 
+    def _ingest_target():
+        """Which store the session watcher writes into, re-asked every cycle.
+
+        Locally-ingested Claude Code transcripts are somebody's personal data,
+        but the ingest path has no authenticated user. With an owner named in
+        the config they go to that user's own store, where erasure and subject
+        access already work; with none they go to the shared store, which is
+        the historical behaviour and cannot be attributed to anyone.
+
+        Fails SAFE, never silently: an owner that has been deleted or disabled
+        falls back to the shared store and says so, because dropping the
+        ingest instead would lose the transcripts entirely.
+        """
+        try:
+            owner = str(suni_config.load().get("session_ingest_owner", "") or "").strip()
+        except Exception as exc:      # noqa: BLE001
+            _log.warning("[INGEST] could not read session_ingest_owner (%s) — "
+                         "using the shared store", exc)
+            return memory
+        if not owner:
+            return memory
+        user = _auth.get_user(owner)
+        if not user or not user.get("active", True):
+            _log.warning("[INGEST] session_ingest_owner %r is unknown or inactive "
+                         "— falling back to the shared store", owner)
+            return memory
+        return _get_user_memory(owner)
+
     # ── Channel supervisor — live start/stop without a restart ─────────────
     # Each channel runs as a background task with its OWN stop Event, so it can
     # be started/stopped/restarted from the admin panel (POST /api/config)
@@ -760,7 +788,7 @@ def create_app() -> FastAPI:
                   SUNI_MODEL or "(none configured — set one in the admin panel)")
         # Connect to external MCP servers
         await bridge.start()
-        asyncio.create_task(watch(memory, stop_event))
+        asyncio.create_task(watch(memory, stop_event, resolve=_ingest_target))
         asyncio.create_task(watch_inbox(stop_event))
         asyncio.create_task(_metrics_collector(stop_event))
         # Backend circuit-breaker recovery probe (Ollama liveness)

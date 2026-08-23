@@ -12,6 +12,10 @@
 
   var _T = {
     en: {
+    // --- session ingest owner ---
+    "admin.hint_ingest_owner": "The session watcher reads <code>~/.claude/projects/</code> and stores what it finds. Those transcripts are someone's personal data, but the ingest path has no signed-in user — so by default they land in the shared store, where <b>erasure and data export cannot reach them</b>. Naming an owner routes new ingests into that user's own memory. Existing entries are not moved: they carry no attribution to move.",
+    "admin.lbl_ingest_owner": "Owner of ingested Claude Code sessions",
+    "admin.opt_ingest_shared": "Shared store (not attributable to anyone)",
     // --- subject access ---
     "admin.users_export": "Export",
     // --- erasure ---
@@ -637,6 +641,10 @@
     },
 
     pt: {
+    // --- session ingest owner ---
+    "admin.hint_ingest_owner": "O observador de sessões lê <code>~/.claude/projects/</code> e guarda o que encontra. Essas transcrições são dados pessoais de alguém, mas o percurso de importação não tem utilizador autenticado — por isso, por omissão, ficam no repositório partilhado, onde <b>a eliminação e a exportação de dados não lhes conseguem chegar</b>. Indicar um proprietário encaminha as novas importações para a memória desse utilizador. As entradas existentes não são movidas: não têm atribuição para mover.",
+    "admin.lbl_ingest_owner": "Proprietário das sessões do Claude Code importadas",
+    "admin.opt_ingest_shared": "Repositório partilhado (não atribuível a ninguém)",
     // --- subject access ---
     "admin.users_export": "Exportar",
     // --- erasure ---

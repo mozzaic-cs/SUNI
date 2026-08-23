@@ -13,10 +13,16 @@ console = Console(stderr=True)
 POLL_INTERVAL = 60  # seconds
 
 
-async def watch(memory_manager, stop_event: asyncio.Event) -> None:
+async def watch(memory_manager, stop_event: asyncio.Event, resolve=None) -> None:
     """
     Continuously poll for new Claude Code sessions until stop_event is set.
     Designed to run as a background asyncio task.
+
+    `resolve`, when given, is called once per cycle to choose the store to
+    ingest into. It is re-asked every time rather than resolved once at start
+    so that changing the owner in the admin panel takes effect without a
+    restart — and so a store that has been erased is not held open by this
+    task. Without it, `memory_manager` is used, which is the CLI's behaviour.
     """
     console.print("[dim]Session watcher started (60s interval).[/dim]")
     while not stop_event.is_set():
@@ -27,7 +33,8 @@ async def watch(memory_manager, stop_event: asyncio.Event) -> None:
                 console.print(
                     f"[dim]Watcher: found {len(new_sessions)} new session(s), ingesting...[/dim]"
                 )
-                stats = await ingest_all(memory_manager)
+                target = resolve() if resolve is not None else memory_manager
+                stats = await ingest_all(target)
                 console.print(
                     f"[dim]Watcher: +{stats['chunks']} memories from "
                     f"{stats['sessions']} session(s)[/dim]"

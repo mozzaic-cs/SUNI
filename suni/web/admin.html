@@ -957,6 +957,13 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
             <span class="range-val">5</span>
           </div>
         </div>
+        <div class="field">
+          <label data-i18n="admin.lbl_ingest_owner">Owner of ingested Claude Code sessions</label>
+          <select name="session_ingest_owner" id="session_ingest_owner">
+            <option value="" data-i18n="admin.opt_ingest_shared">Shared store (not attributable to anyone)</option>
+          </select>
+          <div class="field-hint" data-i18n-html="admin.hint_ingest_owner">The session watcher reads <code>~/.claude/projects/</code> and stores what it finds. Those transcripts are someone's personal data, but the ingest path has no signed-in user — so by default they land in the shared store, where <b>erasure and data export cannot reach them</b>. Naming an owner routes new ingests into that user's own memory. Existing entries are not moved: they carry no attribution to move.</div>
+        </div>
 
         <div data-cfg-group="memory" class="section-head" style="margin-top:8px" data-i18n="admin.cfg_kb">Knowledge Base</div>
         <div class="field">
@@ -2167,6 +2174,21 @@ async function loadConfig() {
     const {voices} = await r.json();
     const sel = el('cfg-voice');
     sel.innerHTML = voices.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+  } catch(e) {}
+
+  // Accounts for the ingest-owner picker. Populated BEFORE applyConfigToForm:
+  // assigning a <select> value that has no matching <option> yet silently
+  // leaves it on the first entry, so a configured owner would read back as
+  // "shared store" and the next save would quietly clear it.
+  try {
+    const r = await _apiFetch('/api/users');
+    const data = await r.json();
+    const sel = el('session_ingest_owner');
+    if (sel) {
+      const keep = sel.querySelector('option[value=""]').outerHTML;
+      sel.innerHTML = keep + (data.users || data).map(u =>
+        `<option value="${esc(u.id)}">${esc(u.username)}</option>`).join('');
+    }
   } catch(e) {}
 
   // Load current config

@@ -93,6 +93,21 @@ DEFAULTS: dict[str, Any] = {
     # below 180 days rather than refusing it — whether this deployment is
     # high-risk is not something SUNI can decide.
     "audit_retention_days":   0,       # 0 = keep everything; >0 = purge older than N days
+
+    # ── Who owns locally-ingested Claude Code sessions ────────────────────
+    # The session watcher reads ~/.claude/projects/ and stores what it finds.
+    # Those transcripts are somebody's personal data, but the ingest path has
+    # no authenticated user, so historically everything landed in the SHARED
+    # store with no attribution — which means erasure and subject access
+    # cannot reach it: nothing there can be tied to, or separated from, one
+    # person.
+    #
+    # Naming an owner here routes new ingests into THAT user's own memory,
+    # where both operations already work. Empty = the old behaviour (shared
+    # store, unattributable), which stays the default because guessing who
+    # owns a machine's transcripts would be worse than leaving it explicit.
+    # Existing entries are not migrated: they carry no attribution to migrate.
+    "session_ingest_owner":   "",      # user id, or "" for the shared store
     "notify_to":              "",      # overrides SUNI_NOTIFY_TO; empty = send to smtp_user
     "imap_host":              "",      # overrides SUNI_IMAP_HOST (inbox watcher)
     "imap_port":              993,     # overrides SUNI_IMAP_PORT
