@@ -174,6 +174,33 @@ One operational note: `MemoryStore._save()` rewrites the whole file from memory,
 so the endpoint hands the live store to `erase()` and drops it from the cache.
 Erasing the file underneath a loaded store would let the next save resurrect it.
 
+### Subject access and portability (GDPR Art 15, Art 20)
+
+`suni/subject_access.py`, exposed as **Users → Export**. Admin-only, audited,
+read-only, and it produces a JSON download — nothing mails or ships it, because
+where the most sensitive payload in the system goes is a decision for a human.
+
+It reads the **same inventory** as erasure (`erasure.SUBJECT_TABLES`,
+`JOIN_TABLES`, `AUDIT_TABLE`). Two independent lists is how an export comes to
+omit a store that erasure deletes, or cover one it does not — both are untrue
+statements made to a data subject. A test walks `sqlite_master` and fails if any
+user-keyed table exists outside that inventory, so adding one upstream breaks the
+build instead of silently escaping both operations.
+
+**Columns are allow-listed, not deny-listed.** A denylist fails open: a
+credential column added upstream would be exported by default, in a file that
+leaves the machine. `EXPORT_COLUMNS` names what goes out and everything else is
+dropped, so `password_h`, `api_token_h`, `anthropic_api_key` and `smtp_pass` are
+absent because they were never listed — verified both by asserting on the
+allowlist and by planting canary values and checking they appear nowhere in the
+serialised payload.
+
+Also excluded: embedding vectors (machine state, not readable content), and
+other people — where an agent is shared, the subject's own membership is
+exported and the co-members' identities are not. What cannot be attributed to
+one person cannot be handed to them either, so the export repeats the same
+limitations block the erasure preview shows.
+
 ---
 
 ## Existing controls mapped to high-risk themes

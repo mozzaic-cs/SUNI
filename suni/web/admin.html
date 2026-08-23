@@ -3651,6 +3651,7 @@ async function loadUsers(){
       <td class="tbl-actions">
         <button class="tbl-btn" onclick="openEditUser(${JSON.stringify(u).replace(/"/g,'&quot;')})">${t('common.edit')}</button>
         <button class="tbl-btn" onclick="resetPassword('${u.id}','${esc(u.username)}')">${t('admin.users_reset_pw')}</button>
+        <button class="tbl-btn" onclick="exportUser('${u.id}','${esc(u.username)}')">${t('admin.users_export')}</button>
         <button class="tbl-btn danger" onclick="deleteUser('${u.id}','${esc(u.username)}')">${t('common.delete')}</button>
         <button class="tbl-btn danger" onclick="eraseUser('${u.id}','${esc(u.username)}')">${t('admin.users_erase')}</button>
       </td>
@@ -3742,6 +3743,29 @@ async function deleteUser(uid, uname){
   const r = await _apiFetch(`/api/users/${uid}`, {method:'DELETE'});
   if(r.ok) loadUsers();
   else alert('Error: ' + (await r.json()).detail);
+}
+
+// ── Subject access export (GDPR Art 15/20) ────────────────────────────
+// Non-destructive, so no typed confirmation: friction where there is no risk
+// only teaches people to click through the friction that matters (see the
+// erase dialog below, which does need it).
+//
+// Fetched rather than linked because the endpoint needs the auth header a
+// plain <a href> would not send; the response becomes a blob download.
+async function exportUser(uid, uname){
+  try {
+    const r = await _apiFetch(`/api/users/${uid}/export`);
+    if(!r.ok){ alert('Error: ' + ((await r.json().catch(()=>({}))).detail || r.status)); return; }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `suni-export-${uname}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch(e){ alert('Error: ' + e.message); }
 }
 
 // ── Erasure (GDPR Art 17) ─────────────────────────────────────────────

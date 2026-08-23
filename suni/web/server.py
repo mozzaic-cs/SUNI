@@ -1422,6 +1422,23 @@ def create_app() -> FastAPI:
         from .. import erasure as _erase
         return JSONResponse(_erase.preview(user_id))
 
+    @app.get("/api/users/{user_id}/export")
+    async def export_subject(user_id: str, admin: dict = Depends(require_admin)):
+        """Art 15/20 subject access. Read-only, and a download only — nothing
+        here mails or ships the file, because the payload is the most sensitive
+        one the system can produce and where it goes is the admin's decision."""
+        from .. import subject_access as _sa
+        payload = _sa.export(user_id)
+        _audit.log_event(admin["id"], admin["username"], "user.exported",
+                         detail=f"subject access export ({sum(payload['counts'].values())} records)",
+                         target_id=user_id)
+        name = payload["subject"]["username"] or user_id
+        return Response(
+            content=_sa.to_json(payload),
+            media_type="application/json",
+            headers={"Content-Disposition":
+                     f'attachment; filename="suni-export-{name}.json"'})
+
     @app.post("/api/users/{user_id}/erase")
     async def erase_user(user_id: str, request: Request,
                          admin: dict = Depends(require_admin)):

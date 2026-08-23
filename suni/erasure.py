@@ -47,6 +47,41 @@ ROOT = Path(__file__).resolve().parent.parent
 # audit_log is operational and stays.
 _AUDIT_IDENTIFYING = ("username", "ip_address", "query_preview")
 
+# ── Where one person's data lives ────────────────────────────────────────────
+# The single inventory that erasure AND subject access both read. Two modules
+# each keeping their own list is how you end up with an export that omits a
+# store erasure deletes, or the reverse — and either one is a lie told to a data
+# subject. tests/test_erasure.py walks sqlite_master and fails if a user-keyed
+# table exists that is not listed here, so adding a table upstream breaks the
+# test rather than silently escaping both operations.
+#
+# (database, table, column holding the subject's id, label)
+# Order matters for deletion: the account row goes last, so a failure partway
+# through never leaves rows whose owner has already been removed.
+SUBJECT_TABLES: tuple[tuple[str, str, str, str], ...] = (
+    ("schedules.db", "schedules", "owner_id", "schedules"),
+    ("agents.db", "agents", "owner_id", "agents_owned"),
+    ("agents.db", "agent_members", "user_id", "agent_memberships"),
+    ("conversations.db", "conversations", "user_id", "conversations"),
+    ("users.db", "oidc_identities", "user_id", "oidc_identities"),
+    ("users.db", "users", "id", "account"),
+)
+
+# Tables with NO user column, reachable only through a parent. `messages` is the
+# whole reason this constant exists: keyed on conversation_id, it is invisible to
+# any "WHERE user_id=?" sweep, so deleting the parent first strands every message
+# body. Listed explicitly so the sqlite_master guard can see it too.
+#
+# (database, table, fk column, parent table, parent key, parent's user column, label)
+JOIN_TABLES: tuple[tuple[str, str, str, str, str, str, str], ...] = (
+    ("conversations.db", "messages", "conversation_id",
+     "conversations", "id", "user_id", "messages"),
+)
+
+# The audit table is neither erased nor ignored — it is pseudonymised in place,
+# so it is tracked separately from both tuples above.
+AUDIT_TABLE = ("audit.db", "audit_log", "user_id")
+
 
 def _db(root: Path, name: str) -> Path:
     return root / "memory" / name
@@ -85,11 +120,15 @@ def _personal_memory_count(root: Path, user_id: str) -> int:
     return 0
 
 
-def _unerasable(root: Path) -> list[dict[str, Any]]:
+def unattributed_stores(root: Path) -> list[dict[str, Any]]:
     """Stores that hold content but cannot be filtered by subject.
 
     Reported every time, including when the counts are zero, because the point
     is to tell the operator what erasure does NOT cover.
+
+    Shared with subject access, deliberately: a store that cannot be erased for
+    one person cannot be exported for them either, and the two operations must
+    describe the same limitation in the same words or one of them is wrong.
     """
     import json
     out: list[dict[str, Any]] = []
@@ -156,29 +195,17 @@ def preview(user_id: str, root: Path | None = None) -> dict[str, Any]:
         except sqlite3.Error:
             username = ""
 
-    messages = _count(
-        conv_db,
-        "SELECT COUNT(*) FROM messages WHERE conversation_id IN "
-        "(SELECT id FROM conversations WHERE user_id=?)", (user_id,))
-
-    erasable = {
-        "account": _count(users_db, "SELECT COUNT(*) FROM users WHERE id=?", (user_id,)),
-        "oidc_identities": _count(
-            users_db, "SELECT COUNT(*) FROM oidc_identities WHERE user_id=?", (user_id,)),
-        "conversations": _count(
-            conv_db, "SELECT COUNT(*) FROM conversations WHERE user_id=?", (user_id,)),
-        "messages": messages,
-        "schedules": _count(
-            _db(root, "schedules.db"),
-            "SELECT COUNT(*) FROM schedules WHERE owner_id=?", (user_id,)),
-        "agents_owned": _count(
-            _db(root, "agents.db"),
-            "SELECT COUNT(*) FROM agents WHERE owner_id=?", (user_id,)),
-        "agent_memberships": _count(
-            _db(root, "agents.db"),
-            "SELECT COUNT(*) FROM agent_members WHERE user_id=?", (user_id,)),
-        "personal_memory_entries": _personal_memory_count(root, user_id),
-    }
+    erasable: dict[str, Any] = {}
+    for db_name, table, column, label in SUBJECT_TABLES:
+        erasable[label] = _count(
+            _db(root, db_name), f"SELECT COUNT(*) FROM {table} WHERE {column}=?",
+            (user_id,))
+    for db_name, table, fk, parent, pkey, pcol, label in JOIN_TABLES:
+        erasable[label] = _count(
+            _db(root, db_name),
+            f"SELECT COUNT(*) FROM {table} WHERE {fk} IN "
+            f"(SELECT {pkey} FROM {parent} WHERE {pcol}=?)", (user_id,))
+    erasable["personal_memory_entries"] = _personal_memory_count(root, user_id)
     return {
         "user_id": user_id,
         "username": username,
@@ -193,7 +220,7 @@ def preview(user_id: str, root: Path | None = None) -> dict[str, Any]:
                     "this erasure took place"),
         },
         "personal_memory_dir": str(_personal_memory_dir(root, user_id)),
-        "not_erasable": _unerasable(root),
+        "not_erasable": unattributed_stores(root),
         "backups": _backups(root),
         "backups_note": ("backups are never modified — restoring one re-introduces "
                          "this data. Delete the snapshots separately if required."),
@@ -242,31 +269,24 @@ def erase(user_id: str, confirm_user_id: str, root: Path | None = None,
         except sqlite3.Error as exc:
             result["errors"].append(f"audit: {exc}")
 
-    # 3. Messages BEFORE conversations — the child rows are only reachable
-    #    through the parent, so deleting the parent first strands them.
-    conv_db = _db(root, "conversations.db")
-    if conv_db.exists():
+    # 3. Child rows BEFORE their parents — they are only reachable through the
+    #    parent, so deleting the parent first strands them permanently.
+    for db_name, table, fk, parent, pkey, pcol, label in JOIN_TABLES:
+        path = _db(root, db_name)
+        if not path.exists():
+            continue
         try:
-            with sqlite3.connect(str(conv_db)) as c:
+            with sqlite3.connect(str(path)) as c:
                 n = c.execute(
-                    "DELETE FROM messages WHERE conversation_id IN "
-                    "(SELECT id FROM conversations WHERE user_id=?)",
+                    f"DELETE FROM {table} WHERE {fk} IN "
+                    f"(SELECT {pkey} FROM {parent} WHERE {pcol}=?)",
                     (user_id,)).rowcount
-                result["deleted"]["messages"] = max(n, 0)
-                n = c.execute("DELETE FROM conversations WHERE user_id=?",
-                              (user_id,)).rowcount
-                result["deleted"]["conversations"] = max(n, 0)
+                result["deleted"][label] = max(n, 0)
         except sqlite3.Error as exc:
-            result["errors"].append(f"conversations: {exc}")
+            result["errors"].append(f"{table}: {exc}")
 
-    # 4. The straightforward per-user rows.
-    for db_name, table, column, label in (
-        ("schedules.db", "schedules", "owner_id", "schedules"),
-        ("agents.db", "agents", "owner_id", "agents_owned"),
-        ("agents.db", "agent_members", "user_id", "agent_memberships"),
-        ("users.db", "oidc_identities", "user_id", "oidc_identities"),
-        ("users.db", "users", "id", "account"),
-    ):
+    # 4. The straightforward per-user rows, account last.
+    for db_name, table, column, label in SUBJECT_TABLES:
         path = _db(root, db_name)
         if not path.exists():
             continue

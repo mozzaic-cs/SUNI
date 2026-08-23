@@ -12,6 +12,8 @@
 
   var _T = {
     en: {
+    // --- subject access ---
+    "admin.users_export": "Export",
     // --- erasure ---
     "admin.erase_audit_note": "{n} audit row(s) are KEPT, with username, IP address and query preview cleared. The AI Act requires the log to survive, and it is also the record that this erasure happened.",
     "admin.erase_backups": "{n} backup(s) are left untouched — restoring one re-introduces this data.",
@@ -635,6 +637,8 @@
     },
 
     pt: {
+    // --- subject access ---
+    "admin.users_export": "Exportar",
     // --- erasure ---
     "admin.erase_audit_note": "{n} registo(s) de auditoria são MANTIDOS, com o nome de utilizador, o endereço IP e a pré-visualização da pergunta apagados. O Regulamento da IA exige que o registo subsista, e é também a prova de que esta eliminação ocorreu.",
     "admin.erase_backups": "{n} cópia(s) de segurança não são alteradas — restaurar uma reintroduz estes dados.",
