@@ -53,6 +53,15 @@ EXPORT_COLUMNS: dict[str, tuple[str, ...]] = {
                "used_count", "last_used", "max_steps", "max_runs_day"),
     # slug + role only: the co-members of a shared agent are other people.
     "agent_members": ("slug", "role", "added_at"),
+    "bg_tasks": ("id", "title", "description", "status", "created_at",
+                 "started_at", "completed_at", "result", "error", "progress",
+                 "notify_channel"),
+    "watch_items": ("id", "type", "value", "enabled", "created_at"),
+    "projects": ("id", "name", "goal", "status", "context_json", "action_log",
+                 "created_at", "updated_at"),
+    # project_id + role only — same rule as agent_members: the other people on
+    # a shared project are not this subject's data.
+    "project_members": ("project_id", "role", "added_at"),
     # The subject's own audit rows, including their query previews and IPs —
     # that IS their data, and Art 15 entitles them to it.
     "audit_log": ("ts", "session_id", "ip_address", "query_preview", "route",

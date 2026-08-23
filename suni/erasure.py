@@ -63,6 +63,17 @@ SUBJECT_TABLES: tuple[tuple[str, str, str, str], ...] = (
     ("agents.db", "agents", "owner_id", "agents_owned"),
     ("agents.db", "agent_members", "user_id", "agent_memberships"),
     ("conversations.db", "conversations", "user_id", "conversations"),
+    # These four were missed by the first version of this module. The unit
+    # fixture only contained the databases the tests created, so the guard
+    # passed while the real instance had four user-keyed tables nobody had
+    # listed — background task titles and results, monitor watch values, and
+    # project goals and action logs are all the subject's own content.
+    # tests now run the same sqlite_master check against the REAL memory/
+    # directory, which is what actually caught this.
+    ("bg_tasks.db", "bg_tasks", "user_id", "background_tasks"),
+    ("monitor.db", "watch_items", "user_id", "monitor_watches"),
+    ("projects.db", "project_members", "user_id", "project_memberships"),
+    ("projects.db", "projects", "user_id", "projects_owned"),
     ("users.db", "oidc_identities", "user_id", "oidc_identities"),
     ("users.db", "users", "id", "account"),
 )

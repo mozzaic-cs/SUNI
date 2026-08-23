@@ -57,6 +57,59 @@ def test_every_user_keyed_table_is_in_the_inventory(instance):
     assert not missing, f"user-keyed tables outside the inventory: {missing}"
 
 
+def test_the_inventory_covers_the_real_instance_databases():
+    """The same guard, pointed at memory/ rather than at a fixture.
+
+    This is the one that earns its keep. The fixture only contains databases the
+    tests themselves create, so it passed while the live instance had four
+    user-keyed tables nobody had listed — bg_tasks, watch_items, projects and
+    project_members. Erasure and export both silently skipped them.
+
+    Skips when there is no instance data (CI, a fresh clone), which is why it
+    supplements the fixture test rather than replacing it.
+    """
+    mem = ROOT / "memory"
+    dbs = sorted(mem.glob("*.db")) if mem.is_dir() else []
+    if not dbs:
+        pytest.skip("no instance databases in this checkout")
+
+    listed = {(db, t) for db, t, _c, _l in erasure.SUBJECT_TABLES}
+    listed |= {(db, t) for db, t, *_ in erasure.JOIN_TABLES}
+    listed.add((erasure.AUDIT_TABLE[0], erasure.AUDIT_TABLE[1]))
+
+    missing = []
+    for db_path in dbs:
+        try:
+            with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as c:
+                for (table,) in c.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table' "
+                        "AND name NOT LIKE 'sqlite_%'"):
+                    cols = {r[1] for r in c.execute(f"PRAGMA table_info({table})")}
+                    keyed = bool(cols & _USER_COLUMNS) or (
+                        table == "users" and "id" in cols)
+                    if keyed and (db_path.name, table) not in listed:
+                        missing.append(f"{db_path.name}::{table}")
+        except sqlite3.Error:
+            continue        # a locked or partial db is not this test's business
+    assert not missing, (
+        "user-keyed tables in the live instance that erasure and export both "
+        f"miss: {missing}")
+
+
+def test_every_inventory_table_has_export_columns():
+    """Adding a table to the inventory without an allowlist would erase it but
+    export nothing from it — a silent asymmetry."""
+    for _db, table, _c, _l in erasure.SUBJECT_TABLES:
+        assert table in subject_access.EXPORT_COLUMNS, f"{table} has no allowlist"
+
+
+def test_shared_membership_tables_never_export_the_user_column():
+    """agent_members and project_members name OTHER people."""
+    for table in ("agent_members", "project_members"):
+        cols = subject_access.EXPORT_COLUMNS[table]
+        assert "user_id" not in cols, f"{table} would export other members' ids"
+
+
 def test_the_join_table_is_not_invisible_to_that_guard():
     """`messages` has no user column, so a naive 'user-keyed' rule skips the one
     table that already caused a bug. It is listed explicitly."""
