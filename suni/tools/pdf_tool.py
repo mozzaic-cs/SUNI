@@ -6,6 +6,8 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
+from .safe_path import safe_output_path
+
 # Characters illegal in Windows filenames
 _WIN_INVALID = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
@@ -371,11 +373,13 @@ def _create_pdf_sync(content: str, path: str, title: str = "") -> str:
 
 
 def _sanitize_path(path: str) -> str:
-    """Sanitise the filename component so it is valid on Windows."""
-    p = Path(path)
-    stem = _WIN_INVALID.sub('_', p.stem).strip('. _') or 'document'
-    suffix = p.suffix if p.suffix.lower() == '.pdf' else '.pdf'
-    return str(p.with_name(stem + suffix))
+    """Sanitise the filename component so it is valid on Windows.
+
+    Delegates to the shared helper: sanitising `p.stem` cleaned a filename that
+    Path had already misparsed, because Windows reads a colon in a name as a
+    drive separator. See suni/tools/safe_path.py.
+    """
+    return safe_output_path(path, 'pdf')
 
 
 async def handler(content: str, path: str, title: str = "") -> str:

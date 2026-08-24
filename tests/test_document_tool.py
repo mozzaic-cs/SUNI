@@ -208,3 +208,30 @@ def test_one_tool_not_three():
     assert set(dt.SCHEMA["parameters"]["properties"]["format"]["enum"]) == \
         {"docx", "xlsx", "pptx"}
     assert len(json.dumps(dt.SCHEMA)) // 4 < 220, "the schema itself has grown too fat"
+
+
+# ── the shared path helper ───────────────────────────────────────────────────
+def test_pdf_and_document_share_one_path_sanitiser():
+    """Both had to solve the same Windows drive-separator problem. One copy
+    means the next fix lands in one place rather than half of them."""
+    import inspect
+    from suni.tools import pdf_tool
+    from suni.tools.safe_path import safe_output_path
+    assert "safe_output_path" in inspect.getsource(pdf_tool._sanitize_path)
+    assert "safe_output_path" in inspect.getsource(dt._sanitize_path)
+    assert callable(safe_output_path)
+
+
+def test_pdf_no_longer_breaks_on_a_colon_in_the_filename(tmp_path):
+    """The bug this shared helper exists for: Path() reads the colon as a drive
+    separator, so the parent resolved to 'a:' and the write failed outright."""
+    from suni.tools.pdf_tool import _sanitize_path
+    out = _sanitize_path(f"{tmp_path}/quarterly:report?.pdf")
+    assert ":" not in Path(out).name and "?" not in Path(out).name
+    assert out.endswith(".pdf")
+    assert str(tmp_path) in out, "the directory was discarded"
+
+
+def test_the_pdf_extension_is_still_forced():
+    from suni.tools.pdf_tool import _sanitize_path
+    assert _sanitize_path("C:/out/notes.txt").endswith(".pdf")

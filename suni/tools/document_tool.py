@@ -24,6 +24,8 @@ import io
 import re
 from pathlib import Path
 
+from .safe_path import safe_output_path
+
 # Same filename rules as pdf_tool — these land on the same filesystem.
 _WIN_INVALID = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
@@ -247,24 +249,7 @@ _WRITERS = {"docx": _write_docx, "xlsx": _write_xlsx, "pptx": _write_pptx}
 
 
 def _sanitize_path(path: str, fmt: str) -> str:
-    """Clean the filename and force the extension to match the format.
-
-    The split is done by hand rather than via Path.stem because on Windows a
-    colon inside a filename is read as a DRIVE separator: Path("out/a:b.docx")
-    resolves its parent to "a:", and the write fails with "cannot find the path
-    specified" instead of quietly cleaning the name. Splitting on the separator
-    first means the illegal character is stripped before Path ever sees it.
-
-    The extension follows `fmt`, so a model that passes "report.pdf" with
-    format="xlsx" cannot produce a file that lies about what it contains.
-    """
-    raw = str(path).replace("\\", "/")
-    parent, _, name = raw.rpartition("/")
-    name = _WIN_INVALID.sub("_", name).strip(". _")
-    stem = name.rsplit(".", 1)[0] if "." in name else name
-    stem = stem.strip(". _") or "document"
-    filename = f"{stem}.{fmt}"
-    return str(Path(parent) / filename) if parent else filename
+    return safe_output_path(path, fmt)
 
 
 def _create_sync(content: str, path: str, fmt: str, title: str = "") -> str:
