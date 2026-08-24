@@ -132,6 +132,17 @@ def test_the_warning_names_both_regimes_and_decides_neither():
         "the warning cites one regime but not the other"
 
 
+def test_the_warning_sits_above_the_input_not_below():
+    """On a phone the on-screen keyboard covers everything under a focused
+    number field — which is precisely when this warning fires, since it reacts
+    to what is being typed. SUNI is used from a phone over VPN, so a warning
+    rendered below the box is one the operator never sees."""
+    html = (ROOT / "suni" / "web" / "admin.html").read_text(encoding="utf-8")
+    warn = html.index('id="retention-warn"')
+    field = html.index('id="audit_retention_days"')
+    assert warn < field, "the retention warning is below the input again"
+
+
 def test_the_warning_is_reapplied_after_the_config_loads():
     """Typing is not the only way the value arrives — it also arrives from the
     server, and a saved 90 must warn on arrival."""

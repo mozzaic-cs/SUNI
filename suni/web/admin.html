@@ -1053,11 +1053,17 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
         <div data-cfg-group="advanced" class="section-head" style="margin-top:8px" data-i18n="admin.sec_retention">Audit retention</div>
         <div class="field">
           <label data-i18n="admin.lbl_retention_days">Keep audit records for (days)</label>
+          <!-- ABOVE the input, deliberately. Anything below a focused number
+               field is covered by the on-screen keyboard on a phone — which is
+               exactly when this warning is relevant, since it reacts to what
+               you are typing. SUNI is used from a phone over VPN, so a warning
+               only visible on a desktop is a warning that does not exist. -->
+          <div class="field-hint" id="retention-warn"
+               style="display:none;color:var(--gold);margin:0 0 6px"
+               data-i18n-html="admin.hint_retention_warn"><b>Below 180 days.</b> If this deployment is a high-risk AI system, the EU AI Act (Art. 26(6)) requires its automatically generated logs to be kept for <b>at least six months</b>. GDPR Art. 5(1)(e) pushes the other way — this table holds usernames, IP addresses and query previews — so the balance is yours to strike, not SUNI's.</div>
           <input type="number" name="audit_retention_days" id="audit_retention_days"
                  min="0" step="1" value="0" oninput="retentionWarn()">
           <div class="field-hint" data-i18n-html="admin.hint_retention">Audit rows older than this are deleted once a day. <b>0 = keep everything</b> (the default). The trail records what SUNI did and on whose behalf; it cannot be reconstructed after a purge.</div>
-          <div class="field-hint" id="retention-warn" style="display:none;color:var(--gold)"
-               data-i18n-html="admin.hint_retention_warn"><b>Below 180 days.</b> If this deployment is a high-risk AI system, the EU AI Act (Art. 26(6)) requires its automatically generated logs to be kept for <b>at least six months</b>. GDPR Art. 5(1)(e) pushes the other way — this table holds usernames, IP addresses and query previews — so the balance is yours to strike, not SUNI's.</div>
         </div>
 
       </div>
