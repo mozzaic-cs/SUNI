@@ -26,7 +26,13 @@ SKILLS_DB  = Path("memory/skills.db")
 # Starter skills shipped with SUNI (tracked in the repo). Seeded once into the
 # user's skills dir on first run; later edits/deletes are respected via a sentinel.
 BUNDLED_SKILLS_DIR = Path(__file__).resolve().parent.parent / "bundled_skills"
-_SEED_SENTINEL     = ".bundled_seeded_v2"
+# Bump this whenever bundled_skills/ gains a skill. The sentinel is versioned
+# precisely so new starters reach EXISTING instances: seeding re-runs once per
+# version, and the per-file `if not dst.exists()` check below means a skill the
+# user has edited or deleted is never silently restored. Without a bump, new
+# bundled skills only ever appear on a fresh install.
+# v3: added write-a-skill, status-report, threat-model.
+_SEED_SENTINEL     = ".bundled_seeded_v3"
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 _SLUG_RE        = re.compile(r"[^\w\-]")
