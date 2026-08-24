@@ -19,8 +19,20 @@ way** — not only visibly, but detectably by other software.
 
 That second half is the part that is easy to skip and awkward to retrofit,
 because it has to happen at every point where content leaves the system. SUNI
-does it in the two places where output actually escapes: generated PDFs and
-outgoing email.
+does it everywhere output actually escapes: generated PDFs, outgoing email, and
+the editable Office formats — `.docx`, `.xlsx` and `.pptx`.
+
+Each file carries the marking twice: machine-readable in the document's own
+property dictionary (the PDF `/Info` dictionary, the OOXML core properties),
+and human-readable in the document itself — a page footer in PDF and Word, the
+sheet's print footer in Excel, a line on every slide in PowerPoint. Excel's is
+in the print footer rather than a cell on purpose: a note row would corrupt the
+data for anyone sorting or summing the sheet.
+
+This list is load-bearing rather than descriptive. Adding an output format
+without marking it turns the claim above into a false one, silently, so
+`tests/test_document_tool.py` opens each generated file back up and fails if
+either marking is missing.
 
 ---
 

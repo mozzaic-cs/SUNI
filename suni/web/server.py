@@ -38,7 +38,7 @@ from ..models.ollama_agent import OllamaAgent
 from ..models.claude_code_agent import ClaudeCodeAgent
 from ..memory.manager import MemoryManager
 from ..tools.registry import ToolRegistry
-from ..tools import shell_tool, file_tool, claude_code_tool, claude_code_advanced, web_tool, email_tool, pdf_tool, download_tool, kb_tool, skills_tool, contacts_tool, monitor_tool, task_tool, project_tool, database_tool, calendar_tool, articles_tool, image_tool
+from ..tools import shell_tool, file_tool, claude_code_tool, claude_code_advanced, web_tool, email_tool, pdf_tool, document_tool, download_tool, kb_tool, skills_tool, contacts_tool, monitor_tool, task_tool, project_tool, database_tool, calendar_tool, articles_tool, image_tool
 from ..skills import SkillStore
 from ..tools.mcp_bridge import MCPBridge, CLAUDE_DESKTOP_CONFIG
 from ..ingestion.watcher import watch
@@ -292,6 +292,7 @@ def _build_orchestrator(
     registry.register(email_tool.LIST_SCHEMA, email_tool.list_handler)
     registry.register(email_tool.READ_SCHEMA, email_tool.read_handler)
     registry.register(pdf_tool.SCHEMA, pdf_tool.handler)
+    registry.register(document_tool.SCHEMA, document_tool.handler)
     registry.register(image_tool.SCHEMA, image_tool.handler)
     registry.register(download_tool.SCHEMA, download_tool.handler)
     registry.register(kb_tool.SCHEMA, kb_tool.search)
