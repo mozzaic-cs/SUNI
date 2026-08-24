@@ -1,6 +1,38 @@
-# SUNI Enterprise Memory Governance — Design Proposal
+# SUNI Enterprise Memory Governance
 
-**Status:** proposal · **Author:** SUNI dev session · **Scope:** enterprise multi-user memory
+**Status:** **Phase 1 shipped** · Phases 2–3 outstanding · **Scope:** enterprise
+multi-user memory
+
+> This began as a design proposal and the header still said so long after the
+> foundation was built, which is its own small lesson: a proposal that ships
+> without its status changing reads, to the next person, as work nobody started.
+>
+> **Phase 1 is implemented and tested** — see `tests/test_memory_governance.py`.
+> The clearance ACL, the candidate-stage scope filter, the governed promotion
+> endpoint and the audit events below are live. **Phases 2 and 3 are not**:
+> there is no automatic candidate extraction, no PII/injection classifier, no
+> redaction, no review-queue UI, no revocation sweep and no department ACLs.
+> Promotion is manual, by a power-user or admin, through `/api/memory/promote`.
+>
+> The "known limitation" in §10 is also out of date: `MemoryStore` now holds a
+> `threading.Lock` around mutations, so concurrent in-process promotes no longer
+> clobber. Cross-process writers remain unguarded.
+
+Behaviour as shipped, verified by test:
+
+| entry | read-only | standard | power-user | admin | clearance omitted |
+|---|---|---|---|---|---|
+| legacy (no metadata) | read | read | read | read | read |
+| approved / `org` | read | read | read | read | read |
+| approved / `restricted` | — | — | read | read | — |
+| `candidate` / `rejected` | — | — | — | — | — |
+| unknown visibility label | — | — | — | — | — |
+
+Two properties are load-bearing and easy to lose in a refactor. Scope filtering
+runs at the **candidate** stage, never over the returned top-k — filtering
+results would silently drop in-clearance memory whenever out-of-clearance
+entries scored higher, which looks like "nothing relevant found" rather than a
+bug. And an omitted clearance falls back to `{"org"}` rather than wide open.
 
 SUNI already runs two memory scopes today — a private per-user store
 (`memory/users/{id}/…`) and one shared global store (`collective_memory.json`),
