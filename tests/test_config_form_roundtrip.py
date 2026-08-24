@@ -8,13 +8,23 @@ display its value — it renders as its widget default, and because it sits insi
 `<form id="cfg-form">` the next "Save configuration" posts that default back.
 The setting is silently reset by the act of saving something unrelated.
 
-`audit_retention_days` and `session_ingest_owner` both shipped that way:
-saveable, persisted, never displayed, and wiped by the following save. Neither
-was caught by a test asserting the field existed, nor by one asserting it was
-inside the form, nor by loading the page — it looks completely normal.
+Whether that is merely annoying or actually destructive depends on how the
+submit handler sends the field, and the distinction matters:
 
-So the check is a round-trip: for every control inside cfg-form whose name is a
-key in config.DEFAULTS, applyConfigToForm must actually handle that name.
+  sent UNCONDITIONALLY (`data.smtp_host = form.elements.smtp_host.value`) and
+  not loaded — the blank box is posted every time, so the stored value is
+  destroyed. `smtp_host`, `smtp_user`, `notify_to` and `imap_host` were here.
+
+  sent under a guard (`if (!isNaN(n)) data.x = n`) or not sent at all — the key
+  is simply absent from the body, and since the endpoint merges over the
+  current config, the stored value survives. `audit_retention_days` and
+  `session_ingest_owner` were here: mis-displayed and uneditable from the UI,
+  but never wiped. An earlier version of this docstring called them
+  destructive, which was wrong.
+
+So there are three checks: every config-backed control must be loaded, every
+one must be saved, and — the real safety property — anything sent
+unconditionally must be loaded, or saving destroys it.
 """
 from __future__ import annotations
 
@@ -110,6 +120,40 @@ def test_the_two_that_shipped_broken_stay_fixed():
     for name in ("audit_retention_days", "session_ingest_owner"):
         assert name in apply_src, f"{name} is not loaded into the form"
         assert name in save_src, f"{name} is never saved"
+
+
+def test_anything_sent_unconditionally_is_also_loaded():
+    """The actual safety property, stronger than either direction alone.
+
+    A field the submit handler always sends, but applyConfigToForm never fills,
+    posts an empty box over stored data on every save. That is how the mail
+    settings were being erased. Guarded fields (isNaN) and conditionally-sent
+    ones are exempt: an absent key is preserved by the endpoint's merge.
+    """
+    save_src, apply_src = _save_fn(), _apply_fn()
+    unconditional = set(re.findall(r'data\.(\w+)\s*=\s*\(?form\.elements', save_src))
+    at_risk = []
+    for name in sorted(unconditional):
+        if name not in config.DEFAULTS:
+            continue
+        # secrets follow the server-side "blank means keep stored" rule
+        if name.endswith(("_api_key", "_token", "_pass", "_password")):
+            continue
+        if name not in apply_src:
+            at_risk.append(name)
+    assert not at_risk, (
+        "these are posted on every save but never loaded, so saving overwrites "
+        f"the stored value with an empty box: {at_risk}")
+
+
+def test_the_secret_exemption_is_real_not_assumed():
+    """The exemption above rests on the endpoint preserving blank secrets. If
+    that rule ever goes away, the exemption becomes a data-loss bug."""
+    srv = (ROOT / "suni" / "web" / "server.py").read_text(encoding="utf-8-sig")
+    i = srv.index('@app.post("/api/config"')
+    block = srv[i:i + 2000]
+    assert 'endswith("_api_key")' in block or "_api_key" in block
+    assert "smtp_pass" in block and "del filtered[" in block
 
 
 def test_the_save_handler_was_actually_found():
