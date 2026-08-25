@@ -1,7 +1,7 @@
 """
 When SUNI should ask instead of guessing.
 
-Joaquim asked for this: SUNI should ask when the information it has is not
+Requested by the operator: SUNI should ask when the information it has is not
 enough. The obvious implementation — a bundled skill — is the wrong layer: a
 skill is a recipe the model chooses to open, and a model that has recognised it
 needs clarification no longer needs a recipe telling it so. This lives in the

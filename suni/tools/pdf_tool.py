@@ -6,7 +6,7 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
-from .safe_path import safe_output_path
+from .safe_path import resolve_output_path, safe_output_path
 
 # Characters illegal in Windows filenames
 _WIN_INVALID = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
@@ -372,18 +372,27 @@ def _create_pdf_sync(content: str, path: str, title: str = "") -> str:
     return doc.save(path)
 
 
-def _sanitize_path(path: str) -> str:
-    """Sanitise the filename component so it is valid on Windows.
+def _sanitize_path(path: str, user_id: str = "") -> str:
+    """Where a generated PDF should be written.
 
-    Delegates to the shared helper: sanitising `p.stem` cleaned a filename that
-    Path had already misparsed, because Windows reads a colon in a name as a
-    drive separator. See suni/tools/safe_path.py.
+    Delegates to the shared helper, which does two things this file got wrong
+    on its own: it cleans a filename Path has already misparsed (Windows reads
+    a colon in a name as a drive separator), and it refuses to create a
+    directory the model invented — the reason a user's PDF once landed in
+    C:/Users/yourusername/Desktop, the placeholder copied out of this tool's
+    own description.
     """
-    return safe_output_path(path, 'pdf')
+    return resolve_output_path(path, "pdf", user_id)
 
 
-async def handler(content: str, path: str, title: str = "") -> str:
-    path = _sanitize_path(path)
+async def handler(content: str, path: str, title: str = "",
+                  _user_id: str = "") -> str:
+    # The model invents a path when the description tells it "the user's
+    # Desktop" without saying where that is. resolve_output_path honours a
+    # directory that exists and otherwise drops the file in the configured
+    # output directory, so an invented path lands somewhere findable rather
+    # than creating C:/Users/yourusername/Desktop.
+    path = _sanitize_path(path, _user_id)
     loop = asyncio.get_event_loop()
     try:
         return await loop.run_in_executor(None, _create_pdf_sync, content, path, title)

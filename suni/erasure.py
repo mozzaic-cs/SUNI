@@ -358,6 +358,15 @@ def erase(user_id: str, confirm_user_id: str, root: Path | None = None,
         except OSError as exc:
             result["errors"].append(f"personal memory dir: {exc}")
 
+    # 7. Approval trust rules are cached in the running process, so deleting
+    #    trust_rules.json above is only half of it — a live server would keep
+    #    honouring the erased subject's standing permissions until restart.
+    try:
+        from . import approval as _approval
+        _approval.forget_user(user_id)
+    except Exception as exc:                      # noqa: BLE001 — never block erasure
+        result["errors"].append(f"trust rules: {exc}")
+
     result["ok"] = not result["errors"]
     result["message"] = _summarise(result)
     return result

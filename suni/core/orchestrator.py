@@ -42,6 +42,72 @@ _LANG_MAP: dict[str, tuple[str, str]] = {
 }
 
 
+# Replies SUNI composes in Python rather than generating. The language
+# instruction only reaches the model, so any hardcoded sentence answers a
+# pt-PT user in English — which is exactly how "create a PDF about Coimbra"
+# came back in English to a Portuguese-configured account.
+#
+# English is the fallback for a language with no entry, so an unsupported
+# locale degrades to English rather than to a missing key.
+_CANNED: dict[str, dict[str, str]] = {
+    "no_email_address": {
+        "en": "I could not find an email address in your request. "
+              "Please specify who to send it to.",
+        "pt-PT": "Não encontrei um endereço de email no seu pedido. "
+                 "Indique para quem devo enviar.",
+        "pt-BR": "Não encontrei um endereço de e-mail no seu pedido. "
+                 "Indique para quem devo enviar.",
+        "es-ES": "No encontré una dirección de correo en su solicitud. "
+                 "Indique a quién debo enviarlo.",
+    },
+    "plan_cancelled": {
+        "en": "Plan cancelled. What would you like to do instead?",
+        "pt-PT": "Plano cancelado. O que prefere fazer em vez disso?",
+        "pt-BR": "Plano cancelado. O que você prefere fazer no lugar?",
+        "es-ES": "Plan cancelado. ¿Qué prefiere hacer en su lugar?",
+    },
+    "image_failed": {
+        "en": "I couldn't analyze the image due to an unexpected error.",
+        "pt-PT": "Não consegui analisar a imagem devido a um erro inesperado.",
+        "pt-BR": "Não consegui analisar a imagem devido a um erro inesperado.",
+        "es-ES": "No pude analizar la imagen debido a un error inesperado.",
+    },
+    "no_compiled_content": {
+        "en": "I could not find any compiled content to put into a PDF. "
+              "Please compile the information first, then ask me to create the PDF.",
+        "pt-PT": "Não encontrei conteúdo já compilado para colocar num PDF. "
+                 "Compile primeiro a informação e depois peça-me o PDF.",
+        "pt-BR": "Não encontrei conteúdo já compilado para colocar em um PDF. "
+                 "Compile primeiro a informação e depois me peça o PDF.",
+        "es-ES": "No encontré contenido ya compilado para poner en un PDF. "
+                 "Compile primero la información y luego pídame el PDF.",
+    },
+    "attached": {
+        "en": "Please find the requested information attached.",
+        "pt-PT": "Segue em anexo a informação solicitada.",
+        "pt-BR": "Segue em anexo a informação solicitada.",
+        "es-ES": "Adjunto encontrará la información solicitada.",
+    },
+}
+
+
+def _say(key: str, response_language: str = "") -> str:
+    """A canned reply in the caller's language, falling back to English."""
+    lang = (response_language or _cfg.get("response_language")
+            or _cfg.get("stt_language", "en-GB") or "en")
+    table = _CANNED.get(key, {})
+    if lang in table:
+        return table[lang]
+    # A bare tag ("pt") should reach the regional entry ("pt-PT") rather than
+    # falling through to English — a user configured as "pt" is not asking for
+    # English. Exact match first so pt-BR never answers a pt-PT user.
+    base = lang.split("-")[0]
+    for tag, text in table.items():
+        if tag.split("-")[0] == base:
+            return text
+    return table.get("en", "")
+
+
 def _lang_instruction(response_language: str = "") -> str | None:
     """Return a language override instruction if not English, else None.
 
@@ -67,6 +133,24 @@ _MIN_TIER_FOR_STRUCTURED = 3
 # describe them. Same threshold, different reason: one is about choosing a
 # tool, this is about emitting a well-formed call at all.
 _MIN_TIER_FOR_TOOL_USE = 3
+
+# How much prior assistant text counts as "something to put in a PDF".
+_COMPILED_MIN_CHARS = 100
+
+
+def _compiled_content(context) -> str:
+    """The last substantial assistant message, or "" if there is none.
+
+    Used by BOTH the direct-pdf dispatch guard and the handler. Keeping one
+    definition is the point: when the guard and the handler each decided this
+    for themselves, the guard admitted requests the handler then refused, and
+    the refusal was a hardcoded English sentence telling the user to go and
+    compile the text first.
+    """
+    for msg in reversed(getattr(context, "history", []) or []):
+        if msg.role == Role.ASSISTANT and len(msg.content) > _COMPILED_MIN_CHARS:
+            return msg.content
+    return ""
 
 # Global activity ring-buffer — readable by the dashboard API
 activity_log: deque = deque(maxlen=20)
@@ -323,7 +407,7 @@ class Orchestrator:
                 return final.content
             else:
                 self._pending_plans.pop(id(context), None)
-                cancelled = "Plan cancelled. What would you like to do instead?"
+                cancelled = _say("plan_cancelled", response_language)
                 context.add(Message(role=Role.ASSISTANT, content=cancelled, agent=self.primary.name))
                 if _mem:
                     await _mem.add_exchange(user_input, cancelled)
@@ -579,8 +663,18 @@ class Orchestrator:
             response = await self._handle_vision_direct(user_input, images, trace)
             context.add(response)
             _tick("direct vision", ts)
+        # The direct-pdf path is an optimisation for "put THIS in a PDF": it
+        # takes the last substantial assistant message as the document body. If
+        # there is nothing to compile — "create a PDF about Coimbra" as a first
+        # turn — its precondition does not hold, and it used to answer with a
+        # hardcoded English refusal asking the user to compile the text first.
+        # A fast path whose precondition fails must hand back to the general
+        # path, where the model can research the topic and call the tools, not
+        # dead-end. (It also bypassed the response-language instruction, so a
+        # pt-PT user was refused in English.)
         elif route == "pdf" and not _readonly and not _pdf_needs_fetch \
-                and "create_pdf" in self.registry.names():
+                and "create_pdf" in self.registry.names() \
+                and _compiled_content(context):
             ts = time.perf_counter()
             response = await self._handle_pdf_direct(user_input, context, trace)
             context.add(response)
@@ -824,7 +918,7 @@ class Orchestrator:
             text = f"I couldn't analyze the image: {exc}"
         except Exception as exc:
             _log.error("[VISION] unexpected: %s", exc, exc_info=True)
-            text = "I couldn't analyze the image due to an unexpected error."
+            text = _say("image_failed")
         trace.append((f"vision ({len(images)} image(s))", time.perf_counter() - ts, ""))
         return Message(role=Role.ASSISTANT, content=_sanitize_response(text),
                        agent=self.primary.name)
@@ -909,18 +1003,14 @@ class Orchestrator:
         import re as _re
         from pathlib import Path as _Path
 
-        # Find the last substantial ASSISTANT message (the compiled content)
-        content = ""
-        for msg in reversed(context.history):
-            if msg.role == Role.ASSISTANT and len(msg.content) > 100:
-                content = msg.content
-                break
+        # Same helper the dispatch guard uses, so the two cannot disagree about
+        # whether this path applies.
+        content = _compiled_content(context)
 
         if not content:
             return Message(
                 role=Role.ASSISTANT,
-                content="I could not find any compiled content to put into a PDF. "
-                        "Please compile the information first, then ask me to create the PDF.",
+                content=_say("no_compiled_content"),
                 agent=self.primary.name,
             )
 
@@ -1101,7 +1191,7 @@ class Orchestrator:
         if not recipients:
             return Message(
                 role=Role.ASSISTANT,
-                content="I could not find an email address in your request. Please specify who to send it to.",
+                content=_say("no_email_address", response_language),
                 agent=self.primary.name,
             )
 
@@ -1113,7 +1203,7 @@ class Orchestrator:
                 break
 
         if not body:
-            body = "Please find the requested information attached."
+            body = _say("attached", response_language)
 
         # Find subject: first meaningful line of body or user_input hint
         subject_match = _re.search(r'subject[:\s]+([^\n]+)', user_input, _re.IGNORECASE)

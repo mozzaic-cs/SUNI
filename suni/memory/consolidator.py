@@ -107,6 +107,20 @@ def _get_lock(store_path: str) -> asyncio.Lock:
     return _locks[store_path]
 
 
+def _num_ctx() -> int:
+    """The context every Ollama caller in SUNI must agree on.
+
+    Resolved per call rather than at import, matching how the host is resolved:
+    the admin panel can change num_ctx at runtime, and a value captured at
+    import would go stale without any symptom except a reload on every request.
+    """
+    try:
+        from ..system_profile import NUM_CTX
+        return int(_config.get("num_ctx", NUM_CTX) or NUM_CTX)
+    except Exception:      # noqa: BLE001
+        return 8192
+
+
 def _cfg(key: str, fallback):
     try:
         return _config.get(key, fallback)
@@ -128,7 +142,19 @@ async def _call_ollama(prompt: str, system: str, host: str, model: str) -> str:
                 {"role": "system", "content": system},
                 {"role": "user",   "content": prompt},
             ],
-            options={"temperature": 0.1, "num_predict": 512},
+            # num_ctx must match every other caller. Omitting it does two
+            # things, both silent:
+            #
+            #   Ollama falls back to a 4096 context, and the extraction prompt
+            #   is EXTRACTION_BATCH conversation entries — measured at ~5,155
+            #   tokens on a real store. The overflow is truncated away, so
+            #   extraction quietly ran on part of its input.
+            #
+            #   And the model is reloaded whenever the requested context
+            #   differs from the resident one (4.7 GB at 4096, 5.1 GB at 8192),
+            #   so a consolidation pass evicted and reloaded the chat model.
+            options={"temperature": 0.1, "num_predict": 512,
+                     "num_ctx": _num_ctx()},
         )
         return resp["message"]["content"].strip()
     except Exception as exc:

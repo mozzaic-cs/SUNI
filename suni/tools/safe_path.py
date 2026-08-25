@@ -27,6 +27,41 @@ from pathlib import Path
 _WIN_INVALID = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
 
+def resolve_output_path(path: str, ext: str, user_id: str = "") -> str:
+    """Where a generated file should actually be written.
+
+    The model is told "use the user's Desktop by default" and never told what
+    that path is, so it invents one. Observed in production: it wrote
+    `\\Users\\yourusername\\Desktop\\coimbra_info.pdf` — the literal placeholder
+    from the tool description — and because the writer called
+    `mkdir(parents=True)`, a `C:\\Users\\yourusername\\Desktop` directory was
+    created and the user's file went somewhere they would never look.
+
+    The rule: honour a directory that already EXISTS, because a user who says
+    "save it to D:/reports" means it. Otherwise keep only the filename and put
+    it in the configured output directory. An invented path therefore lands
+    somewhere findable instead of creating a new tree.
+    """
+    raw = str(path or "").replace("\\", "/")
+    parent, _, _name = raw.rpartition("/")
+    cleaned = safe_output_path(raw, ext)
+
+    if parent:
+        parent_path = Path(parent)
+        if parent_path.is_dir():
+            return cleaned            # a real directory the caller chose
+
+    # No directory, or one that does not exist: use the configured location.
+    try:
+        from ..user_settings import resolve_output_dir
+        out_dir = resolve_output_dir(user_id)
+    except Exception:                 # noqa: BLE001
+        out_dir = ""
+    if not out_dir:
+        return cleaned
+    return str(Path(out_dir) / Path(cleaned).name)
+
+
 def safe_output_path(path: str, ext: str) -> str:
     """Clean the final component of `path` and force its extension to `ext`.
 

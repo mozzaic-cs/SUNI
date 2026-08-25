@@ -24,7 +24,7 @@ import io
 import re
 from pathlib import Path
 
-from .safe_path import safe_output_path
+from .safe_path import resolve_output_path, safe_output_path
 
 # Same filename rules as pdf_tool — these land on the same filesystem.
 _WIN_INVALID = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
@@ -248,8 +248,8 @@ def _write_pptx(content: str, path: str, title: str) -> None:
 _WRITERS = {"docx": _write_docx, "xlsx": _write_xlsx, "pptx": _write_pptx}
 
 
-def _sanitize_path(path: str, fmt: str) -> str:
-    return safe_output_path(path, fmt)
+def _sanitize_path(path: str, fmt: str, user_id: str = "") -> str:
+    return resolve_output_path(path, fmt, user_id)
 
 
 def _create_sync(content: str, path: str, fmt: str, title: str = "") -> str:
@@ -260,12 +260,13 @@ def _create_sync(content: str, path: str, fmt: str, title: str = "") -> str:
     return f"{fmt.upper()} created: {dest} ({kb} KB)"
 
 
-async def handler(content: str, path: str, format: str, title: str = "") -> str:  # noqa: A002
+async def handler(content: str, path: str, format: str, title: str = "",
+                  _user_id: str = "") -> str:  # noqa: A002
     fmt = (format or "").strip().lower().lstrip(".")
     if fmt not in _WRITERS:
         return (f"Unsupported format {format!r}. Use one of: {', '.join(_FORMATS)} "
                 "(or create_pdf for a fixed document).")
-    path = _sanitize_path(path, fmt)
+    path = _sanitize_path(path, fmt, _user_id)
     loop = asyncio.get_event_loop()
     try:
         return await loop.run_in_executor(None, _create_sync, content, path, fmt, title)

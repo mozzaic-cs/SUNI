@@ -174,8 +174,28 @@ def test_a_directory_in_the_path_is_never_mistaken_for_a_filename(tmp_path):
     assert (sub / "summary.docx").exists(), msg
 
 
-def test_missing_directories_are_created(tmp_path):
+def test_a_nonexistent_directory_is_not_created_but_redirected(tmp_path):
+    """Deliberate change of behaviour. Creating whatever directory the model
+    named is how SUNI came to build C:/Users/yourusername/Desktop and leave a
+    user's PDF in it — "yourusername" being the placeholder from the tool
+    description, which the model copied verbatim.
+
+    A path whose parent does not exist is now treated as invented: the filename
+    is kept and the file goes to the configured output directory, where the
+    user will actually find it. A directory that DOES exist is still honoured,
+    which is the case that matters for "save it to D:/reports"."""
     out = tmp_path / "deep" / "nested" / "r.docx"
+    msg = _run(content="x", path=str(out), format="docx")
+    assert not out.exists(), "an invented directory tree was created"
+    assert "created" in msg, msg
+    assert "r.docx" in msg, "the filename was lost in the redirect"
+
+
+def test_an_existing_directory_is_honoured(tmp_path):
+    """The user explicitly naming a real folder must still win."""
+    sub = tmp_path / "reports"
+    sub.mkdir()
+    out = sub / "r.docx"
     _run(content="x", path=str(out), format="docx")
     assert out.exists()
 
@@ -217,9 +237,13 @@ def test_pdf_and_document_share_one_path_sanitiser():
     import inspect
     from suni.tools import pdf_tool
     from suni.tools.safe_path import safe_output_path
-    assert "safe_output_path" in inspect.getsource(pdf_tool._sanitize_path)
-    assert "safe_output_path" in inspect.getsource(dt._sanitize_path)
-    assert callable(safe_output_path)
+    from suni.tools.safe_path import resolve_output_path
+    # Both now go through resolve_output_path, which applies the "honour an
+    # existing directory, otherwise use the configured output dir" rule and
+    # then delegates the filename cleaning to safe_output_path.
+    assert "resolve_output_path" in inspect.getsource(pdf_tool._sanitize_path)
+    assert "resolve_output_path" in inspect.getsource(dt._sanitize_path)
+    assert callable(safe_output_path) and callable(resolve_output_path)
 
 
 def test_pdf_no_longer_breaks_on_a_colon_in_the_filename(tmp_path):

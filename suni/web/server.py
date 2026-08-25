@@ -2320,6 +2320,15 @@ def create_app() -> FastAPI:
         return Response(content=I18N_FILE.read_text(encoding="utf-8"),
                         media_type="application/javascript; charset=utf-8")
 
+    @app.get("/approval_ui.js")
+    async def approval_ui_js():
+        """Shared approval prompt for the two voice-first surfaces. chat.html
+        has its own richer card; these had none, which is why every gated tool
+        timed out there."""
+        return Response(
+            content=(Path(__file__).parent / "approval_ui.js").read_text(encoding="utf-8"),
+            media_type="application/javascript; charset=utf-8")
+
     @app.get("/persona-image")
     async def persona_image():
         """Serve the user-supplied portrait for the Persona page's photoreal mode.

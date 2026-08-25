@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
 <script src="/i18n.js"></script>
+<script src="/approval_ui.js"></script>
 <script>
 // Apply operator-configurable branding (Admin -> Configuration -> Identity).
 // Ids are optional per page; a missing element is simply skipped.
@@ -389,6 +390,9 @@ header{
         <option value="" data-i18n="common.sys_default">System default</option>
       </select>
     </div>
+
+    <!-- Filled by renderTrustRules(); stays empty when nothing is trusted. -->
+    <div id="trust-rules" style="margin-bottom:20px"></div>
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
       <button id="orb-modal-logout" data-i18n="common.sign_out"
         style="background:transparent;border:1px solid rgba(255,69,96,.28);
@@ -1201,6 +1205,14 @@ async function send() {
         } else if (ev.type === 'skill_used') {
           showSub('SKILL: ' + (ev.name || ''));
           setTimeout(() => { if (state==='thinking') hideSub(); }, 2500);
+        } else if (ev.type === 'approval_request') {
+          // Without this the request blocks until it auto-denies, while the
+          // interface shows nothing but "thinking" — the reported symptom.
+          showApprovalPrompt(ev, {
+            onWaiting:  () => { setState('idle');
+                                showSub(t('chat.approval_required')); },
+            onAnswered: () => { hideSub(); setState('thinking'); },
+          });
         }
       }
     }
@@ -1367,6 +1379,8 @@ async function _openOrbSettings() {
   document.getElementById('orb-resp-lang').value  = prefs.response_language || '';
   document.getElementById('orb-stt-lang').value   = prefs.stt_language      || '';
   document.getElementById('orb-tts-voice').value  = prefs.tts_voice         || '';
+  // Re-read on every open: a rule may have been added since the last one.
+  if (window.renderTrustRules) renderTrustRules(document.getElementById('trust-rules'));
   _orbModal.style.display = 'flex';
 }
 

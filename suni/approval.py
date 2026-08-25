@@ -16,9 +16,24 @@ Design constraints:
 """
 from __future__ import annotations
 import asyncio
+import json
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
+
+
+def _num_ctx() -> int:
+    """The context every Ollama caller in SUNI must agree on — see the note at
+    the judge's options. Resolved per call so an admin-panel change takes
+    effect without a restart."""
+    try:
+        from . import config as _c
+        from .system_profile import NUM_CTX
+        return int(_c.get("num_ctx", NUM_CTX) or NUM_CTX)
+    except Exception:      # noqa: BLE001
+        return 8192
 
 log = logging.getLogger("suni.approval")
 
@@ -114,7 +129,75 @@ _pending: dict[str, dict] = {}
 
 # Per-user trust rules: {user_id: {tool_name: [pattern, ...]}}
 # pattern "*" means always allow the tool unconditionally.
+#
+# Write-through cache over memory/users/{user_id}/trust_rules.json. This was a
+# bare dict, so "Always allow" — "Permitir sempre" in the Portuguese UI — meant
+# "until SUNI restarts". Nothing said so, and a permission you granted this
+# morning being silently withdrawn is the kind of surprise that gets a gate
+# clicked through rather than read.
+#
+# Cached because is_trusted() runs on every gated dispatch; the file is read
+# once per user per process, not per call.
 _trust_rules: dict[str, dict[str, list[str]]] = {}
+_trust_loaded: set[str] = set()
+
+# user_id comes from the authenticated session, but it is about to become a path
+# segment, so it is checked rather than trusted. UUIDs pass.
+_SAFE_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+def _trust_path(user_id: str) -> Path | None:
+    """Where this user's rules live, or None if the id cannot be a filename.
+
+    Relative, matching user_settings._path — both resolve against the process
+    working directory, so the two agree about where a user's data is and
+    erasure's rmtree of memory/users/{id} takes this file with it.
+    """
+    if not _SAFE_ID.match(str(user_id or "")):
+        return None
+    return Path("memory") / "users" / str(user_id) / "trust_rules.json"
+
+
+def _load_trust(user_id: str) -> None:
+    """Populate the cache from disk, once per user per process."""
+    if user_id in _trust_loaded:
+        return
+    _trust_loaded.add(user_id)          # set first: a broken file must not retry every call
+    path = _trust_path(user_id)
+    if path is None or not path.is_file():
+        return
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        log.warning("[APPROVAL] cannot read trust rules for %s: %s", user_id, exc)
+        return
+    if not isinstance(data, dict):
+        return
+    # Only well-formed entries. A corrupt file must not grant a rule nobody set,
+    # so anything unexpected is dropped rather than coerced.
+    clean = {str(tool): [str(p) for p in pats if isinstance(p, str)]
+             for tool, pats in data.items() if isinstance(pats, list)}
+    _trust_rules[user_id] = {t: p for t, p in clean.items() if p}
+
+
+def _save_trust(user_id: str) -> None:
+    """Persist the cache. Failure leaves the rule live for this process only."""
+    path = _trust_path(user_id)
+    if path is None:
+        return
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(_trust_rules.get(user_id, {}), indent=2),
+                        encoding="utf-8")
+    except OSError as exc:
+        log.warning("[APPROVAL] cannot save trust rules for %s: %s", user_id, exc)
+
+
+def forget_user(user_id: str) -> None:
+    """Drop this user's cached rules. For erasure: deleting the file is not
+    enough while a long-running process still holds the rules in memory."""
+    _trust_rules.pop(user_id, None)
+    _trust_loaded.discard(user_id)
 
 
 # ── Public API ───────────────────────────────────────────────────────────────
@@ -191,8 +274,6 @@ def is_safe(tool_name: str) -> bool:
     """True for read-only/low-risk tools that skip the intent judge (perf)."""
     return tool_name in _SAFE_ALLOWLIST
 
-
-import re
 
 # ── Heuristic pre-tier ────────────────────────────────────────────────────────
 # A synchronous (<1ms, no I/O) pattern check that runs BEFORE the LLM judge.
@@ -322,7 +403,14 @@ async def assess_intent(
                     {"role": "system", "content": _JUDGE_SYSTEM},
                     {"role": "user",   "content": prompt},
                 ],
-                options={"temperature": 0.0, "num_predict": 160},
+                # num_ctx matches the chat agent's. The judge's own prompt is
+                # small, so this is not about room — it is about not making
+                # Ollama reload the model. A request whose context differs from
+                # the resident one evicts and reloads it (4.7 GB at 4096 vs
+                # 5.1 GB at 8192), and this judge runs before consequential
+                # tool calls, so the reload lands in the middle of normal use.
+                options={"temperature": 0.0, "num_predict": 160,
+                         "num_ctx": _num_ctx()},
                 format="json",
             ),
             timeout=JUDGE_TIMEOUT,
@@ -339,6 +427,7 @@ async def assess_intent(
 
 def is_trusted(user_id: str, tool_name: str, args: dict) -> bool:
     """Return True if the user has an always-allow rule covering this call."""
+    _load_trust(user_id)
     rules = _trust_rules.get(user_id, {})
     patterns = rules.get(tool_name, [])
     if "*" in patterns:
@@ -349,20 +438,29 @@ def is_trusted(user_id: str, tool_name: str, args: dict) -> bool:
 
 
 def add_trust_rule(user_id: str, tool_name: str, pattern: str = "*") -> None:
+    _load_trust(user_id)
     _trust_rules.setdefault(user_id, {}).setdefault(tool_name, [])
     if pattern not in _trust_rules[user_id][tool_name]:
         _trust_rules[user_id][tool_name].append(pattern)
+    _save_trust(user_id)
     log.info("[APPROVAL] trust rule added: user=%s tool=%s pattern=%r", user_id, tool_name, pattern)
 
 
 def remove_trust_rule(user_id: str, tool_name: str, pattern: str = "*") -> None:
-    _trust_rules.get(user_id, {}).get(tool_name, []).discard(pattern) if False else None
+    """Revoke one rule. Removing the last pattern removes the tool entirely, so
+    a revoked tool does not linger as an empty list that reads like a rule."""
+    _load_trust(user_id)
     rules = _trust_rules.get(user_id, {}).get(tool_name, [])
     if pattern in rules:
         rules.remove(pattern)
+    if not rules:
+        _trust_rules.get(user_id, {}).pop(tool_name, None)
+    _save_trust(user_id)
+    log.info("[APPROVAL] trust rule removed: user=%s tool=%s pattern=%r", user_id, tool_name, pattern)
 
 
 def list_trust_rules(user_id: str) -> dict:
+    _load_trust(user_id)
     return dict(_trust_rules.get(user_id, {}))
 
 

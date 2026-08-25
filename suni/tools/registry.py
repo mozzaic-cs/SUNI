@@ -28,6 +28,42 @@ class ToolRegistry:
         self._schemas[name] = schema
         self._handlers[name] = handler
 
+    def _strip_unknown_args(self, name: str, handler, merged: dict) -> set[str]:
+        """Remove arguments the handler cannot accept. Returns what was removed.
+
+        The schema is the source of truth where it declares properties, because
+        that is what the model was shown. The handler signature is the fallback
+        and the backstop — a schema can drift from its function, and it is the
+        function that raises.
+
+        A handler taking **kwargs is left alone: it opted into whatever arrives.
+        """
+        import inspect
+        try:
+            sig = inspect.signature(handler)
+        except (TypeError, ValueError):
+            return set()
+        if any(p.kind is inspect.Parameter.VAR_KEYWORD
+               for p in sig.parameters.values()):
+            return set()
+
+        accepted = set(sig.parameters)
+        schema = self._schemas.get(name) or {}
+        declared = set((schema.get("parameters") or {}).get("properties") or {})
+        if declared:
+            # Underscore-prefixed parameters are injected by the runtime
+            # (_user_id and friends) and are deliberately absent from the
+            # schema, so intersecting with `declared` alone would discard them.
+            system = {p for p in sig.parameters if p.startswith("_")}
+            accepted &= declared | system
+        unknown = {k for k in merged if k not in accepted}
+        for k in unknown:
+            merged.pop(k, None)
+        if unknown:
+            _log.warning("[TOOL] %s: ignoring unknown argument(s) %s",
+                         name, ", ".join(sorted(unknown)))
+        return unknown
+
     async def execute(self, name: str, args: dict) -> Any:
         if name not in self._handlers:
             msg = f"tool '{name}' not found"
@@ -37,6 +73,16 @@ class ToolRegistry:
         try:
             handler = self._handlers[name]
             merged = dict(args)
+            # A small model folds arguments from the wider request into
+            # whichever tool it calls first — "make a PDF and email it to X"
+            # produced create_pdf(content=…, path=…, to="X"). Passing that
+            # straight through raised TypeError: unexpected keyword argument
+            # 'to', the raw Python error went back as the tool result, and the
+            # model answered the user with a lecture about JSON formatting
+            # instead of retrying. Dropping the stray argument lets the call
+            # succeed; the model is told what was ignored so it can make the
+            # follow-up call it actually needed.
+            dropped = self._strip_unknown_args(name, handler, merged)
             _inject_system_params(handler, merged)
             if asyncio.iscoroutinefunction(handler):
                 result = await handler(**merged)
@@ -46,6 +92,13 @@ class ToolRegistry:
             result_str = str(result)
             preview = result_str[:120] + ("…" if len(result_str) > 120 else "")
             _log.info("[TOOL] %-30s %.2fs  %s", name, elapsed, preview)
+            if dropped:
+                # Appended rather than logged only: the model needs to know the
+                # part of its intent that did not happen, or the email never
+                # gets sent and nothing says so.
+                return (f"{result}\n[note] {name} ignored these arguments: "
+                        f"{', '.join(sorted(dropped))}. If they were meant for "
+                        f"another tool, call that tool now.")
             return result
         except Exception as e:
             elapsed = time.perf_counter() - t0

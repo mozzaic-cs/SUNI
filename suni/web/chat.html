@@ -8,6 +8,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
 <script src="/i18n.js"></script>
+<!-- Only for renderTrustRules(): this page draws its own approval card. -->
+<script src="/approval_ui.js"></script>
 <script>
 // Apply operator-configurable branding (Admin -> Configuration -> Identity).
 // Ids are optional per page; a missing element is simply skipped.
@@ -594,6 +596,9 @@ select option,select optgroup{background:var(--bg2);color:var(--text)}
       <small style="color:var(--muted);font-size:11px" data-i18n="settings.output_dir_hint">Where generated files (PDFs, etc.) are saved. Must be inside the admin-configured global output directory.</small>
     </div>
 
+    <!-- Filled by renderTrustRules(); stays empty when nothing is trusted. -->
+    <div class="field" id="trust-rules"></div>
+
     <div class="field">
       <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="var b=document.getElementById('s-email-block');b.style.display=b.style.display==='none'?'block':'none'">
         <span data-i18n="settings.email">Your email account</span>
@@ -777,6 +782,8 @@ function _openSettings() {
   // Open the section automatically when an account is already configured.
   document.getElementById('s-email-block').style.display =
     (_userSettings.smtp_user || _userSettings.has_smtp_pass) ? 'block' : 'none';
+  // Re-read on every open: a rule may have been added since the last one.
+  if (window.renderTrustRules) renderTrustRules(document.getElementById('trust-rules'));
   _modal.classList.add('open');
 }
 

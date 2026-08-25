@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
 <script src="/i18n.js"></script>
+<script src="/approval_ui.js"></script>
 <script>
 // Apply operator-configurable branding (Admin -> Configuration -> Identity).
 // Ids are optional per page; a missing element is simply skipped.
@@ -507,6 +508,9 @@ header{
         <option value="" data-i18n="common.sys_default">System default</option>
       </select>
     </div>
+
+    <!-- Filled by renderTrustRules(); stays empty when nothing is trusted. -->
+    <div id="trust-rules" style="margin-bottom:20px"></div>
     <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:20px">
       <label style="font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:rgba(255,255,255,.5)">Face colour</label>
       <div style="display:flex;align-items:center;gap:10px">
@@ -2309,6 +2313,17 @@ async function send() {
         } else if (ev.type === 'skill_used') {
           showSub('SKILL: ' + (ev.name || ''));
           setTimeout(() => { if (state==='thinking') hideSub(); }, 2500);
+        } else if (ev.type === 'approval_request') {
+          // Without this the Face interface cannot answer, so every gated tool
+          // — send_email, write_file, run_shell, claude_task — waited five
+          // minutes for an answer the user was never shown, then auto-denied.
+          // Observed: "create a PDF about Coimbra and email it" produced the
+          // PDF, asked to send, and timed out while the face sat on 'thinking'.
+          showApprovalPrompt(ev, {
+            onWaiting:  () => { setState('idle');
+                                showSub(t('chat.approval_required')); },
+            onAnswered: () => { hideSub(); setState('thinking'); },
+          });
         } else if (ev.type === 'collab') {
           // Multi-model collaboration phases (Mode 2) — keep the face "working"
           // and surface the current phase as a sub-caption for the multi-minute run.
@@ -2484,6 +2499,8 @@ async function _openOrbSettings() {
   document.getElementById('orb-resp-lang').value  = prefs.response_language || '';
   document.getElementById('orb-stt-lang').value   = prefs.stt_language      || '';
   document.getElementById('orb-tts-voice').value  = prefs.tts_voice         || '';
+  // Re-read on every open: a rule may have been added since the last one.
+  if (window.renderTrustRules) renderTrustRules(document.getElementById('trust-rules'));
   _orbModal.style.display = 'flex';
 }
 
