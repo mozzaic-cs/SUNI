@@ -12,6 +12,10 @@
 
   var _T = {
     en: {
+    // --- sensitivity labels ---
+    "admin.sens_confidential": "confidential",
+    "admin.sens_normal": "normal",
+    "admin.sens_pii": "personal data",
     // --- org extraction ---
     "admin.chk_org_extraction": "Extract organisational facts from conversations",
     "admin.hint_org_extraction": "Lets the weekly consolidation mark facts that are about the <b>organisation</b> rather than the person — suppliers, deadlines, decisions — and stage them for review. <b>Nothing is ever published automatically</b>: every extracted fact waits in Memory → review queue, however clean it looks. Off by default, because it turns one person's conversation into memory colleagues can read.",
@@ -661,6 +665,10 @@
     },
 
     pt: {
+    // --- sensitivity labels ---
+    "admin.sens_confidential": "confidencial",
+    "admin.sens_normal": "normal",
+    "admin.sens_pii": "dados pessoais",
     // --- org extraction ---
     "admin.chk_org_extraction": "Extrair factos organizacionais das conversas",
     "admin.hint_org_extraction": "Permite que a consolidação semanal marque factos relativos à <b>organização</b> em vez da pessoa — fornecedores, prazos, decisões — e os retenha para revisão. <b>Nada é publicado automaticamente</b>: cada facto extraído aguarda em Memória → fila de revisão, por mais inofensivo que pareça. Desligado por omissão, porque transforma a conversa de uma pessoa em memória que os colegas podem ler.",

@@ -3878,7 +3878,7 @@ async function loadMemoryQueue() {
       return `
       <tr${rejected ? ' style="opacity:.55"' : ''}>
         <td style="max-width:420px">${esc(c.content)}</td>
-        <td><span class="role-badge ${_SENS_CSS[c.sensitivity] || ''}">${esc(c.sensitivity)}</span></td>
+        <td><span class="role-badge ${_SENS_CSS[c.sensitivity] || ''}">${esc(t('admin.sens_' + c.sensitivity))}</span></td>
         <td style="font-size:10px;color:var(--muted)">${reasons.map(esc).join(', ') || '—'}</td>
         <td style="font-size:10px;color:var(--muted)">${c.timestamp ? new Date(c.timestamp).toLocaleDateString() : '—'}</td>
         <td class="tbl-actions">${rejected ? `

@@ -297,3 +297,23 @@ def test_every_new_key_exists_in_both_languages():
     assert used, "no memory-queue keys found in the panel"
     for key in used:
         assert js.count(f'"{key}":') == 2, f"{key} is missing from en or pt"
+
+
+def test_every_sensitivity_the_detector_emits_has_a_label():
+    """A missing key renders as the raw key in the badge — and the levels come
+    from sensitivity.LEVELS, so adding one there must not silently produce
+    `admin.sens_whatever` in the panel."""
+    import pathlib
+    from suni.sensitivity import LEVELS
+    root = pathlib.Path(__file__).resolve().parent.parent
+    js = (root / "suni" / "web" / "i18n.js").read_text(encoding="utf-8")
+    for level in LEVELS:
+        assert js.count(f'"admin.sens_{level}":') == 2, \
+            f"sensitivity '{level}' has no label in en and pt"
+
+
+def test_the_badge_is_translated_not_raw():
+    html = _html()
+    i = html.index("async function loadMemoryQueue")
+    block = html[i:i + 1600]
+    assert "t('admin.sens_'" in block, "the sensitivity badge shows the raw value"
