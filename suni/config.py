@@ -120,6 +120,20 @@ DEFAULTS: dict[str, Any] = {
     # candidate waits in Memory → review queue, however clean it looks — the
     # detector is young and nobody read the conversation it came from.
     "memory_org_extraction":  False,
+
+    # ── Skill catalogue injection ─────────────────────────────────────────
+    # The Level-0 skill list used to be injected into every request. Measured
+    # on eight two-tool tasks (qwen2.5:7b): with the catalogue the model
+    # completed 1 of 8; without it, 4 of 8. Not a token-size effect — an
+    # equal-sized block of filler scored 6/8 — but the menu itself: offered a
+    # list of ready-made recipes, the model picks one and stops instead of
+    # chaining the tools the task needs.
+    #
+    # Off by default, so skills are reached through the `skills_list` tool when
+    # a task actually looks like a stored procedure. Set True to restore the
+    # old always-inject behaviour if discoverability matters more than
+    # multi-step completion for a given deployment.
+    "skills_inject_catalogue": False,
     "notify_to":              "",      # overrides SUNI_NOTIFY_TO; empty = send to smtp_user
     "imap_host":              "",      # overrides SUNI_IMAP_HOST (inbox watcher)
     "imap_port":              993,     # overrides SUNI_IMAP_PORT

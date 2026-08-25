@@ -349,8 +349,26 @@ class Orchestrator:
                                 content=agent_profile["system_prompt"].strip(),
                                 agent="agent-profile"))
 
-        # ── skills Level-0 injection ───────────────────────────────────
-        if self.skill_store:
+        # ── skills: on-demand, not injected every turn ─────────────────
+        # The catalogue used to be injected into every request. Measured on
+        # eight two-tool tasks (qwen2.5:7b, temp 0), fully-completed count:
+        #
+        #   tools only ................ 5/8
+        #   prompt WITHOUT catalogue .. 4/8
+        #   prompt WITH catalogue ..... 1/8
+        #
+        # Injecting it cost three of eight completed multi-step tasks. It is not
+        # the token size — an equal-sized block of neutral filler scored 6/8 —
+        # and not the instructions about skills, which score 2/8 when removed
+        # while the catalogue stays. It is the menu itself: given a list of
+        # ready-made recipes, the model picks one and stops instead of chaining
+        # the two tools the task needs.
+        #
+        # `skills_list` is a registered tool, so the model can ask for the
+        # catalogue when a task actually looks like a stored procedure. That
+        # trades some discoverability for the multi-step completion above; the
+        # trade is deliberate and measurable with scratchpad/confirm.py.
+        if self.skill_store and bool(_cfg.get("skills_inject_catalogue", False)):
             skills_ctx = self.skill_store.level0_context()
             if skills_ctx:
                 context.add(Message(role=Role.SYSTEM, content=skills_ctx, agent="skills"))
