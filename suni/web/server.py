@@ -1622,22 +1622,55 @@ def create_app() -> FastAPI:
                 status_code=409,
             )
 
+        # Sensitivity is detected, not assumed. This field used to be hardcoded
+        # to "normal" on every promotion and read by nothing — a governance
+        # label that was always true-by-declaration and never true-by-check.
+        from .. import sensitivity as _sens
+        auto_ok, verdict = _sens.may_auto_approve(content)
+
         now = datetime.now(timezone.utc).isoformat()
+        # Default-deny (governance design §9.2): anything not plainly normal is
+        # staged for a human instead of entering shared memory. A candidate is
+        # already unreadable to every role — the clearance predicate requires
+        # status == "approved" — so staging is a real quarantine, not a label.
+        status = "approved" if auto_ok else "candidate"
         meta = {
             "visibility":  visibility,
-            "sensitivity": "normal",
-            "status":      "approved",
+            "sensitivity": verdict["sensitivity"],
+            "status":      status,
+            "detection":   {"reasons": verdict["reasons"],
+                            "injection": verdict["injection"]},
             "provenance":  {"source_type": "manual", "source_user_id": user["id"],
                             "extracted_at": now},
-            "review":      {"approved_by": user["id"], "approved_at": now,
-                            "policy_version": "p1"},
+            "review":      ({"approved_by": user["id"], "approved_at": now,
+                             "policy_version": "p1"} if auto_ok else
+                            {"approved_by": "", "approved_at": "",
+                             "policy_version": "p1"}),
         }
         new_id = _collective_store.add(content, embedding, mtype, metadata=meta)
-        _audit.log_event(user["id"], user["username"], "memory.promote.approved",
-                         detail=f"[{visibility}] {content[:70]}", target_id=new_id)
-        _log.info("[MEMORY] fact promoted to collective by %s (visibility=%s)",
-                  user["username"], visibility)
-        return JSONResponse({"ok": True, "id": new_id, "visibility": visibility})
+
+        # The audit detail deliberately drops the content when something was
+        # detected: writing a flagged fact into the audit trail would copy the
+        # credential or identifier into the very record kept for compliance.
+        if auto_ok:
+            _audit.log_event(user["id"], user["username"], "memory.promote.approved",
+                             detail=f"[{visibility}] {content[:70]}", target_id=new_id)
+            _log.info("[MEMORY] fact promoted to collective by %s (visibility=%s)",
+                      user["username"], visibility)
+        else:
+            _audit.log_event(
+                user["id"], user["username"], "memory.promote.candidate",
+                detail=f"[{visibility}] staged: {verdict['sensitivity']} "
+                       f"({', '.join(verdict['reasons']) or 'unspecified'})",
+                target_id=new_id)
+            _log.warning("[MEMORY] promotion staged for review by %s — %s (%s)",
+                         user["username"], verdict["sensitivity"],
+                         ", ".join(verdict["reasons"]))
+        return JSONResponse({
+            "ok": True, "id": new_id, "visibility": visibility,
+            "status": status, "sensitivity": verdict["sensitivity"],
+            "reasons": verdict["reasons"],
+        })
 
     @app.post("/api/memory/consolidate")
     async def memory_consolidate(request: Request, admin: dict = Depends(require_admin)):

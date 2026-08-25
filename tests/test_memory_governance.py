@@ -154,11 +154,20 @@ def test_default_search_is_unfiltered(tmp_path):
 
 # ── the promotion gate ───────────────────────────────────────────────────────
 def _promote_block() -> str:
+    """The whole endpoint, sliced to the next route rather than a fixed length.
+
+    This used to take a fixed 2600 characters and silently stopped covering the
+    approval branch the moment the endpoint grew — the same way a 4000-character
+    window in test_updater.py quietly stopped testing mark_busy. A window that
+    can fall short of what it names is not a test, it is a coin flip.
+    """
     import pathlib
+    import re
     root = pathlib.Path(__file__).resolve().parent.parent
     srv = (root / "suni" / "web" / "server.py").read_text(encoding="utf-8-sig")
     i = srv.index('@app.post("/api/memory/promote")')
-    return srv[i:i + 2600]
+    nxt = re.search(r'\n    @app\.', srv[i + 10:])
+    return srv[i:i + 10 + nxt.start()] if nxt else srv[i:]
 
 
 def test_promotion_requires_power_user_or_admin():
