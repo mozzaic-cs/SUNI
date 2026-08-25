@@ -144,21 +144,33 @@ def unattributed_stores(root: Path) -> list[dict[str, Any]]:
     import json
     out: list[dict[str, Any]] = []
 
-    glob_store = root / "memory" / "suni_memory.json"
-    n = 0
-    if glob_store.exists():
-        try:
-            data = json.loads(glob_store.read_text(encoding="utf-8"))
-            n = len(data) if isinstance(data, list) else len(data.get("entries", []))
-        except (OSError, ValueError):
-            n = -1
-    out.append({
-        "store": "memory/suni_memory.json",
-        "entries": n,
-        "reason": ("the shared episodic store carries no user attribution on its "
-                   "entries, so no entry can be tied to — or separated from — one "
-                   "person. Review it by hand if the subject may appear in it."),
-    })
+    # Counts only the entries that genuinely cannot be attributed. Since org
+    # extraction began stamping provenance.source_user_id, part of the shared
+    # store IS reachable, and reporting the whole file as unerasable would be a
+    # claim that gets less true every week.
+    for name, label in (("suni_memory.json", "memory/suni_memory.json"),
+                        ("collective_memory.json", "memory/collective_memory.json")):
+        path = root / "memory" / name
+        n = 0
+        if path.exists():
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                entries = data if isinstance(data, list) else data.get("entries", [])
+                n = sum(1 for e in entries
+                        if not ((e.get("metadata") or {})
+                                .get("provenance", {}) or {}).get("source_user_id"))
+            except (OSError, ValueError):
+                n = -1
+        if n == 0 and not path.exists():
+            continue
+        out.append({
+            "store": label,
+            "entries": n,
+            "reason": ("entries here that carry no provenance cannot be tied to — "
+                       "or separated from — one person. Entries stamped with a "
+                       "source user ARE erased; this count is what remains. "
+                       "Review by hand if the subject may appear in it."),
+        })
 
     doc_meta = root / "memory" / "doc_meta.json"
     dn = 0
@@ -309,7 +321,34 @@ def erase(user_id: str, confirm_user_id: str, root: Path | None = None,
         except sqlite3.Error as exc:
             result["errors"].append(f"{table}: {exc}")
 
-    # 5. The subject's own memory directory, including the sidecar meta and
+    # 5. Shared-store entries the subject can be shown to have produced.
+    #    Org extraction stamps provenance.source_user_id, so these ARE
+    #    attributable even though the store as a whole is not. Skipping them
+    #    would leave a person's words in memory their colleagues can read,
+    #    after being told the erasure was done.
+    for name in ("collective_memory.json", "suni_memory.json"):
+        path = root / "memory" / name
+        if not path.exists():
+            continue
+        try:
+            import json as _json
+            data = _json.loads(path.read_text(encoding="utf-8"))
+            entries = data if isinstance(data, list) else data.get("entries", [])
+            keep = [e for e in entries
+                    if ((e.get("metadata") or {}).get("provenance", {}) or {})
+                    .get("source_user_id") != user_id]
+            removed = len(entries) - len(keep)
+            if removed:
+                # Whole-file rewrite, matching how MemoryStore persists. Any
+                # process holding this store open will overwrite this on its
+                # next save — the same live-store hazard as the personal store
+                # above, which is why the endpoint evicts before calling here.
+                path.write_text(_json.dumps(keep), encoding="utf-8")
+                result["deleted"][f"shared_{name.split('_')[0]}_entries"] = removed
+        except (OSError, ValueError) as exc:
+            result["errors"].append(f"{name}: {exc}")
+
+    # 6. The subject's own memory directory, including the sidecar meta and
     #    per-user settings that live alongside it.
     mem_dir = _personal_memory_dir(root, user_id)
     if mem_dir.is_dir():

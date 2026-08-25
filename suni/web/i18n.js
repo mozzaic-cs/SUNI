@@ -12,6 +12,9 @@
 
   var _T = {
     en: {
+    // --- org extraction ---
+    "admin.chk_org_extraction": "Extract organisational facts from conversations",
+    "admin.hint_org_extraction": "Lets the weekly consolidation mark facts that are about the <b>organisation</b> rather than the person — suppliers, deadlines, decisions — and stage them for review. <b>Nothing is ever published automatically</b>: every extracted fact waits in Memory → review queue, however clean it looks. Off by default, because it turns one person's conversation into memory colleagues can read.",
     // --- memory review queue ---
     "admin.card_memq": "Memory review queue",
     "admin.memq_approve": "Approve",
@@ -658,6 +661,9 @@
     },
 
     pt: {
+    // --- org extraction ---
+    "admin.chk_org_extraction": "Extrair factos organizacionais das conversas",
+    "admin.hint_org_extraction": "Permite que a consolidação semanal marque factos relativos à <b>organização</b> em vez da pessoa — fornecedores, prazos, decisões — e os retenha para revisão. <b>Nada é publicado automaticamente</b>: cada facto extraído aguarda em Memória → fila de revisão, por mais inofensivo que pareça. Desligado por omissão, porque transforma a conversa de uma pessoa em memória que os colegas podem ler.",
     // --- memory review queue ---
     "admin.card_memq": "Fila de revisão da memória",
     "admin.memq_approve": "Aprovar",

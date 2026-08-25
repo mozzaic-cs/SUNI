@@ -33,6 +33,7 @@ import asyncio
 import logging
 import re
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from .. import config as _config
 
@@ -61,6 +62,23 @@ _EXTRACT_SYSTEM = (
 )
 
 _EXTRACT_USER = "Extract durable facts from these conversation exchanges:\n\n{exchanges}"
+
+# Appended to the extraction prompt ONLY when org extraction is enabled, so that
+# "off" is byte-identical to the behaviour before this existed — the model never
+# sees the marker, never emits it, and every fact stays personal.
+#
+# This rides the extraction call that already happens rather than adding a
+# second pass. A separate org-relevance call would double the LLM cost of every
+# consolidation on a 7B that is already short of context.
+_ORG_RULES = (
+    "\n- Use [ORG] instead of [FACT] when the information is about the "
+    "ORGANISATION rather than the person: suppliers, clients, products, "
+    "processes, policies, deadlines, decisions a colleague would need to know.\n"
+    "- Information about the user themselves is never [ORG], even work-related: "
+    "their role, their preferences and their own projects stay [FACT].\n"
+    "- [ORG] lines are reviewed by a human before anyone else can read them, so "
+    "prefer marking too few rather than too many."
+)
 
 _SUPERSEDE_SYSTEM = (
     "You are given a numbered list of stored facts about one user, ordered "
@@ -130,6 +148,13 @@ def _parse_extractions(text: str) -> list[tuple[str, str]]:
         m = re.match(r"^\[PREFERENCE\]\s+(.+)$", line, re.IGNORECASE)
         if m:
             results.append((m.group(1).strip(), "preference"))
+            continue
+        # Only emitted when org extraction is on — the marker is not in the
+        # prompt otherwise. Parsing it unconditionally is harmless and means a
+        # stray marker cannot silently become a personal fact.
+        m = re.match(r"^\[ORG\]\s+(.+)$", line, re.IGNORECASE)
+        if m:
+            results.append((m.group(1).strip(), "org"))
     return results
 
 
@@ -160,9 +185,16 @@ async def extract_facts(
     if not conversations:
         return 0
 
+    # Off by default: this turns one person's conversation into memory other
+    # people can read, which is a decision an operator makes rather than
+    # something that starts happening after an upgrade.
+    org_on = bool(_cfg("memory_org_extraction", False)) and \
+        getattr(manager, "collective_store", None) is not None
+    system_prompt = _EXTRACT_SYSTEM + (_ORG_RULES if org_on else "")
+
     exchanges_text = "\n---\n".join(e["content"] for e in conversations)
     llm_output = await _call_ollama(
-        _EXTRACT_USER.format(exchanges=exchanges_text), _EXTRACT_SYSTEM, host, model
+        _EXTRACT_USER.format(exchanges=exchanges_text), system_prompt, host, model
     )
 
     extractions = _parse_extractions(llm_output)
@@ -170,15 +202,100 @@ async def extract_facts(
         return 0
 
     now_ts = datetime.now().isoformat()
+    personal = staged = 0
     for content, mtype in extractions:
+        if mtype == "org":
+            if not org_on:
+                # The marker cannot normally appear with the feature off, but a
+                # model that emits it anyway must not have the line silently
+                # dropped — keep it as a personal fact, which is the behaviour
+                # that existed before org extraction did.
+                await manager.add(content, memory_type="fact",
+                                  metadata={"source": "llm-extracted",
+                                            "extracted_at": now_ts})
+                personal += 1
+                continue
+            if await _stage_org_candidate(manager, content, now_ts):
+                staged += 1
+            continue
         await manager.add(
             content,
             memory_type=mtype,
             metadata={"source": "llm-extracted", "extracted_at": now_ts},
         )
+        personal += 1
 
-    log.info("[CONSOLIDATOR] extracted %d fact/preference entries", len(extractions))
-    return len(extractions)
+    if staged:
+        log.info("[CONSOLIDATOR] extracted %d personal, staged %d org candidate(s) "
+                 "for review", personal, staged)
+    else:
+        log.info("[CONSOLIDATOR] extracted %d fact/preference entries", personal)
+    return personal + staged
+
+
+async def _stage_org_candidate(manager, content: str, now_ts: str) -> bool:
+    """Put an org-relevant extraction into the review queue. Never publishes.
+
+    Automatic extraction is the highest-risk path into shared memory — nobody
+    read the conversation it came from, and the detector is young. So the gate's
+    verdict decides the *sensitivity label*, not whether to publish: everything
+    from this path is staged, per §9.2 of the governance design ("default-deny
+    early, loosen as the classifier proves out"). A `normal` verdict here means
+    "no findings", not "safe to share".
+
+    Returns False when the fact is already in the collective store, so a weekly
+    consolidation pass does not re-stage the same thing for review every week.
+    """
+    from .. import sensitivity as _sens
+
+    collective = manager.collective_store
+    try:
+        embedding = await manager._embed(content)
+    except Exception as exc:                      # noqa: BLE001
+        log.warning("[CONSOLIDATOR] could not embed org candidate: %s", exc)
+        return False
+    # Same guard manager.add() applies. Writing a wrong-dimension vector into
+    # the collective store would make the entry unsearchable rather than fail.
+    if not manager._embed_write_ok(embedding):
+        return False
+
+    # Dedup against everything already there, whatever its status: re-staging a
+    # fact a reviewer already rejected would make the queue an argument.
+    if collective.search(embedding, top_k=1, threshold=0.93,
+                         include_deprecated=True):
+        return False
+
+    verdict = _sens.classify(content)
+    collective.add(content, embedding, "fact", metadata={
+        "visibility":  "org",
+        "sensitivity": verdict["sensitivity"],
+        "status":      "candidate",
+        "detection":   {"reasons": verdict["reasons"],
+                        "injection": verdict["injection"]},
+        "provenance":  {"source_type": "extracted",
+                        "source_user_id": _owner_of(manager),
+                        "source_store": str(manager.store.path),
+                        "extracted_at": now_ts},
+        "review":      {"approved_by": "", "approved_at": "",
+                        "policy_version": "p1"},
+    })
+    return True
+
+
+def _owner_of(manager) -> str:
+    """Whose conversation this extraction came from.
+
+    MemoryManager carries no user_id, but a per-user store lives at
+    memory/users/<uuid>/suni_memory.json, so the owner is the parent directory.
+    Deriving it matters: without it an extracted candidate has no attributable
+    source, and erasure.py can no more reach it than it can reach the legacy
+    unattributed entries — which is the gap this phase exists to stop widening.
+    """
+    try:
+        parent = Path(manager.store.path).resolve().parent
+        return parent.name if parent.parent.name == "users" else ""
+    except Exception:                             # noqa: BLE001
+        return ""
 
 
 # ── Supersession (semantic contradiction resolution) ─────────────────────────

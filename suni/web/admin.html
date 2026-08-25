@@ -965,6 +965,14 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
           </select>
           <div class="field-hint" data-i18n-html="admin.hint_ingest_owner">The session watcher reads <code>~/.claude/projects/</code> and stores what it finds. Those transcripts are someone's personal data, but the ingest path has no signed-in user — so by default they land in the shared store, where <b>erasure and data export cannot reach them</b>. Naming an owner routes new ingests into that user's own memory. Existing entries are not moved: they carry no attribution to move.</div>
         </div>
+        <div class="field">
+          <label style="display:flex;align-items:center;gap:9px;cursor:pointer">
+            <input type="checkbox" id="memory_org_extraction" name="memory_org_extraction"
+                   style="accent-color:var(--cyan);width:15px;height:15px;flex-shrink:0">
+            <span data-i18n="admin.chk_org_extraction">Extract organisational facts from conversations</span>
+          </label>
+          <div class="field-hint" data-i18n-html="admin.hint_org_extraction">Lets the weekly consolidation mark facts that are about the <b>organisation</b> rather than the person — suppliers, deadlines, decisions — and stage them for review. <b>Nothing is ever published automatically</b>: every extracted fact waits in Memory → review queue, however clean it looks. Off by default, because it turns one person's conversation into memory colleagues can read.</div>
+        </div>
 
         <div data-cfg-group="memory" class="section-head" style="margin-top:8px" data-i18n="admin.cfg_kb">Knowledge Base</div>
         <div class="field">
@@ -2301,6 +2309,8 @@ function applyConfigToForm(cfg) {
   if (fcc) { fcc.checked = !!cfg.force_claude_code; fcc.defaultChecked = !!cfg.force_claude_code; }
   const mcr = document.getElementById('model_chain_routing');
   if (mcr) { mcr.checked = !!cfg.model_chain_routing; }
+  const orgx = document.getElementById('memory_org_extraction');
+  if (orgx) { orgx.checked = !!cfg.memory_org_extraction; }
   // Collaboration (Mode 2): toggles + pool
   const cen = document.getElementById('collaborate_enabled');
   if (cen) { cen.checked = cfg.collaborate_enabled !== false; }
@@ -2552,6 +2562,7 @@ document.getElementById('cfg-form').addEventListener('submit', async e => {
   data.response_language = form.elements.response_language?.value ?? '';
   // Knowledge base: retrieval toggle + how many excerpts to inject.
   data.doc_kb_enabled = !!document.getElementById('doc_kb_enabled')?.checked;
+  data.memory_org_extraction = !!document.getElementById('memory_org_extraction')?.checked;
   const _dtk = parseInt(form.elements.doc_top_k?.value, 10);
   if (!isNaN(_dtk)) data.doc_top_k = _dtk;
   // Audit retention: 0 means keep everything, so a blank or negative box is

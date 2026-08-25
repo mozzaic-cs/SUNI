@@ -108,6 +108,18 @@ DEFAULTS: dict[str, Any] = {
     # owns a machine's transcripts would be worse than leaving it explicit.
     # Existing entries are not migrated: they carry no attribution to migrate.
     "session_ingest_owner":   "",      # user id, or "" for the shared store
+
+    # ── Organisational memory extracted from conversations ────────────────
+    # When on, the consolidator marks facts that are about the ORGANISATION
+    # rather than the person and stages them for review. Off by default and
+    # deliberately so: it turns one person's conversation into memory other
+    # people can read, which is an operator's decision rather than something
+    # that starts happening after an upgrade.
+    #
+    # Nothing from this path is ever published automatically. Every extracted
+    # candidate waits in Memory → review queue, however clean it looks — the
+    # detector is young and nobody read the conversation it came from.
+    "memory_org_extraction":  False,
     "notify_to":              "",      # overrides SUNI_NOTIFY_TO; empty = send to smtp_user
     "imap_host":              "",      # overrides SUNI_IMAP_HOST (inbox watcher)
     "imap_port":              993,     # overrides SUNI_IMAP_PORT
