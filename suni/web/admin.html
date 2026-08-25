@@ -450,6 +450,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
     <button class="tab" onclick="switchTab('skills',this)"    data-i18n="admin.nav_skills">Skills</button>
     <button class="tab" onclick="switchTab('agents',this)" data-i18n="admin.nav_agents">Agents</button>
     <button class="tab" onclick="switchTab('schedules',this)" data-i18n="admin.nav_schedules">Schedules</button>
+    <button class="tab" onclick="switchTab('memory',this)"    data-i18n="admin.nav_memory">Memory</button>
     <button class="tab" onclick="switchTab('backup',this)"    data-i18n="admin.nav_backup">Backup</button>
     <button class="tab" onclick="switchTab('config',this)"    data-i18n="admin.nav_config">Configuration</button>
     <button class="tab" onclick="switchTab('benchmarks',this)" data-i18n="admin.btn_benchmarks">Benchmarks</button>
@@ -1387,6 +1388,41 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
   </div>
 </div>
 
+<div class="panel" id="panel-memory">
+  <div class="card" style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div class="card-title" style="margin:0;border:none" data-i18n="admin.card_memq">Memory review queue</div>
+      <span id="memq-count" style="font-size:10px;color:var(--muted)"></span>
+      <label style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer">
+        <input type="checkbox" id="memq-show-rejected" onchange="loadMemoryQueue()" style="width:auto;margin:0">
+        <span data-i18n="admin.memq_show_rejected">Show rejected</span>
+      </label>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5" data-i18n-html="admin.memq_intro">
+      Facts staged instead of published. Anything containing personal data, a
+      credential, or text shaped like a prompt injection is held here rather than
+      entering shared memory — <b>a staged entry is unreadable to everyone,
+      including admins</b>, until someone decides. Approving publishes it at the
+      chosen visibility; rejecting keeps it as the record of a refusal.
+    </div>
+  </div>
+  <div class="card">
+    <table class="tbl" id="memq-table">
+      <thead><tr>
+        <th data-i18n="admin.memq_col_content">Fact</th>
+        <th data-i18n="admin.memq_col_sensitivity">Sensitivity</th>
+        <th data-i18n="admin.memq_col_findings">Findings</th>
+        <th data-i18n="admin.memq_col_staged">Staged</th>
+        <th></th>
+      </tr></thead>
+      <tbody id="memq-tbody"></tbody>
+    </table>
+    <div id="memq-empty" style="display:none;padding:24px;text-align:center;color:var(--muted);font-size:12px" data-i18n="admin.memq_empty">
+      Nothing waiting for review.
+    </div>
+  </div>
+</div>
+
 <div class="panel" id="panel-agents">
   <div class="card" style="margin-bottom:16px">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
@@ -1762,6 +1798,7 @@ function switchTab(name, btn) {
              || document.querySelector('.cfg-tab');
     if (btn) cfgTab(btn.getAttribute('data-cfg-tab'), btn);
   }
+  if (name === 'memory') loadMemoryQueue();
   if (name === 'users') loadUsers();
   if (name === 'audit') { loadUsers(); loadAudit(); }
   if (name === 'usage') loadUsage();
@@ -3798,6 +3835,76 @@ async function deleteUser(uid, uname){
   const r = await _apiFetch(`/api/users/${uid}`, {method:'DELETE'});
   if(r.ok) loadUsers();
   else alert('Error: ' + (await r.json()).detail);
+}
+
+// ═══════════════════════════════════════════
+//  MEMORY REVIEW QUEUE
+// ═══════════════════════════════════════════
+const _SENS_CSS = {normal: '', pii: 'warn', confidential: 'crit'};
+
+async function loadMemoryQueue() {
+  const tbody = el('memq-tbody');
+  const empty = el('memq-empty');
+  const table = el('memq-table');
+  if (!tbody) return;
+  const withRejected = !!(el('memq-show-rejected') || {}).checked;
+  try {
+    const r = await _apiFetch('/api/memory/candidates?include_rejected=' + withRejected);
+    if (!r.ok) { tbody.innerHTML = ''; empty.style.display = ''; return; }
+    const {candidates, counts} = await r.json();
+    el('memq-count').textContent = t('admin.memq_count', {
+      pending: counts.candidate || 0, live: counts.approved || 0,
+      rejected: counts.rejected || 0});
+
+    if (!candidates.length) {
+      tbody.innerHTML = ''; table.style.display = 'none'; empty.style.display = '';
+      return;
+    }
+    table.style.display = ''; empty.style.display = 'none';
+    tbody.innerHTML = candidates.map(c => {
+      const reasons = (c.detection && c.detection.reasons) || [];
+      const rejected = c.status === 'rejected';
+      return `
+      <tr${rejected ? ' style="opacity:.55"' : ''}>
+        <td style="max-width:420px">${esc(c.content)}</td>
+        <td><span class="role-badge ${_SENS_CSS[c.sensitivity] || ''}">${esc(c.sensitivity)}</span></td>
+        <td style="font-size:10px;color:var(--muted)">${reasons.map(esc).join(', ') || '—'}</td>
+        <td style="font-size:10px;color:var(--muted)">${c.timestamp ? new Date(c.timestamp).toLocaleDateString() : '—'}</td>
+        <td class="tbl-actions">${rejected ? `
+          <button class="tbl-btn" onclick="memqDecide('${c.id}','approve')">${t('admin.memq_approve')}</button>`
+          : `
+          <button class="tbl-btn" onclick="memqDecide('${c.id}','approve')">${t('admin.memq_approve')}</button>
+          <button class="tbl-btn" onclick="memqDecide('${c.id}','approve','restricted')">${t('admin.memq_approve_restricted')}</button>
+          <button class="tbl-btn danger" onclick="memqDecide('${c.id}','reject')">${t('admin.memq_reject')}</button>`}
+        </td>
+      </tr>`;
+    }).join('');
+  } catch(e) {
+    tbody.innerHTML = '';
+    empty.style.display = '';
+  }
+}
+
+// A decision is recorded against a person, so it asks for a reason rather than
+// firing on one click. The note lands in the entry's review block and is what
+// answers "why is this fact not in memory" months later.
+async function memqDecide(id, action, visibility) {
+  const asking = action === 'reject' ? 'admin.memq_why_reject' : 'admin.memq_why_approve';
+  const note = prompt(t(asking));
+  if (note === null) return;            // cancelled
+  try {
+    const r = await _apiFetch(`/api/memory/candidates/${id}/${action}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(visibility ? {note, visibility} : {note}),
+    });
+    if (!r.ok) {
+      alert(t('admin.memq_failed', {
+        detail: ((await r.json().catch(()=>({}))).detail || r.status)}));
+      return;
+    }
+    loadMemoryQueue();
+  } catch(e) { alert(t('admin.memq_failed', {detail: e.message})); }
 }
 
 // ── Subject access export (GDPR Art 15/20) ────────────────────────────

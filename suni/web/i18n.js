@@ -12,6 +12,23 @@
 
   var _T = {
     en: {
+    // --- memory review queue ---
+    "admin.card_memq": "Memory review queue",
+    "admin.memq_approve": "Approve",
+    "admin.memq_approve_restricted": "Approve as restricted",
+    "admin.memq_col_content": "Fact",
+    "admin.memq_col_findings": "Findings",
+    "admin.memq_col_sensitivity": "Sensitivity",
+    "admin.memq_col_staged": "Staged",
+    "admin.memq_count": "{pending} pending · {live} live · {rejected} rejected",
+    "admin.memq_empty": "Nothing waiting for review.",
+    "admin.memq_failed": "Decision failed: {detail}",
+    "admin.memq_intro": "Facts staged instead of published. Anything containing personal data, a credential, or text shaped like a prompt injection is held here rather than entering shared memory — <b>a staged entry is unreadable to everyone, including admins</b>, until someone decides. Approving publishes it at the chosen visibility; rejecting keeps it as the record of a refusal.",
+    "admin.memq_reject": "Reject",
+    "admin.memq_show_rejected": "Show rejected",
+    "admin.memq_why_approve": "Why is this safe to publish? (recorded against your name)",
+    "admin.memq_why_reject": "Why is this being refused? (recorded against your name)",
+    "admin.nav_memory": "Memory",
     // --- session ingest owner ---
     "admin.hint_ingest_owner": "The session watcher reads <code>~/.claude/projects/</code> and stores what it finds. Those transcripts are someone's personal data, but the ingest path has no signed-in user — so by default they land in the shared store, where <b>erasure and data export cannot reach them</b>. Naming an owner routes new ingests into that user's own memory. Existing entries are not moved: they carry no attribution to move.",
     "admin.lbl_ingest_owner": "Owner of ingested Claude Code sessions",
@@ -641,6 +658,23 @@
     },
 
     pt: {
+    // --- memory review queue ---
+    "admin.card_memq": "Fila de revisão da memória",
+    "admin.memq_approve": "Aprovar",
+    "admin.memq_approve_restricted": "Aprovar como restrito",
+    "admin.memq_col_content": "Facto",
+    "admin.memq_col_findings": "Deteções",
+    "admin.memq_col_sensitivity": "Sensibilidade",
+    "admin.memq_col_staged": "Retido em",
+    "admin.memq_count": "{pending} pendentes · {live} ativos · {rejected} rejeitados",
+    "admin.memq_empty": "Nada a aguardar revisão.",
+    "admin.memq_failed": "A decisão falhou: {detail}",
+    "admin.memq_intro": "Factos retidos em vez de publicados. Tudo o que contenha dados pessoais, uma credencial ou texto com a forma de uma injeção de prompt fica aqui em vez de entrar na memória partilhada — <b>uma entrada retida é ilegível para todos, incluindo administradores</b>, até alguém decidir. Aprovar publica-a com a visibilidade escolhida; rejeitar mantém-na como registo de uma recusa.",
+    "admin.memq_reject": "Rejeitar",
+    "admin.memq_show_rejected": "Mostrar rejeitados",
+    "admin.memq_why_approve": "Porque é seguro publicar isto? (fica registado em seu nome)",
+    "admin.memq_why_reject": "Porque está a ser recusado? (fica registado em seu nome)",
+    "admin.nav_memory": "Memória",
     // --- session ingest owner ---
     "admin.hint_ingest_owner": "O observador de sessões lê <code>~/.claude/projects/</code> e guarda o que encontra. Essas transcrições são dados pessoais de alguém, mas o percurso de importação não tem utilizador autenticado — por isso, por omissão, ficam no repositório partilhado, onde <b>a eliminação e a exportação de dados não lhes conseguem chegar</b>. Indicar um proprietário encaminha as novas importações para a memória desse utilizador. As entradas existentes não são movidas: não têm atribuição para mover.",
     "admin.lbl_ingest_owner": "Proprietário das sessões do Claude Code importadas",

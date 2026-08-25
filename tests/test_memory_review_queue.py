@@ -220,3 +220,80 @@ def test_review_decisions_are_audited_without_echoing_content():
         block = src[i:i + 400]
         assert "reasons" in block
         assert "content" not in block, "review audit echoes the staged content"
+
+
+# ── the admin panel ──────────────────────────────────────────────────────────
+def _html() -> str:
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parent.parent
+    return (root / "suni" / "web" / "admin.html").read_text(encoding="utf-8")
+
+
+def test_the_panel_is_wired_end_to_end():
+    """Five separate things, and a panel is invisible if any one is missing —
+    this file has shipped a nav tab with no panel and a card in the wrong
+    container before."""
+    html = _html()
+    assert "switchTab('memory',this)" in html, "no nav tab"
+    assert 'id="panel-memory"' in html, "no panel div"
+    assert "if (name === 'memory') loadMemoryQueue()" in html, "tab loads nothing"
+    assert "async function loadMemoryQueue" in html, "no loader"
+    assert "async function memqDecide" in html, "no decision handler"
+
+
+def test_the_panel_is_a_top_level_panel_not_nested():
+    """A panel nested inside another never becomes visible — switchTab toggles
+    .active on the outer one only, which is how a card once landed inside
+    <div class="hs-line"> and vanished.
+
+    Counts real div depth up to the panel's opening tag. An earlier version of
+    this test compared a count to itself and ended in `or True`, so it passed
+    for every possible input — the vacuous-guard pattern this suite keeps
+    finding elsewhere.
+    """
+    import re as _re
+    html = _html()
+
+    def _depth_at(idx: int) -> int:
+        d = 0
+        for m in _re.finditer(r"<div\b|</div>", html[:idx]):
+            d += 1 if m.group(0) == "<div" else -1
+        return d
+
+    depths = {pid: _depth_at(html.index(f'<div class="panel" id="panel-{pid}">'))
+              for pid in ("users", "agents", "skills", "memory")}
+    siblings = {v for k, v in depths.items() if k != "memory"}
+    assert len(siblings) == 1, f"the existing panels disagree on depth: {depths}"
+    assert depths["memory"] == siblings.pop(), (
+        f"panel-memory sits at a different div depth from its siblings: {depths}")
+
+
+def test_the_queue_reads_the_endpoint_it_was_given():
+    html = _html()
+    i = html.index("async function loadMemoryQueue")
+    block = html[i:i + 1400]
+    assert "/api/memory/candidates" in block
+    assert "include_rejected=" in block
+
+
+def test_a_decision_asks_for_a_reason():
+    """The note is what answers 'why is this fact not in memory' later, and the
+    decision is recorded against a person."""
+    html = _html()
+    i = html.index("async function memqDecide")
+    block = html[i:i + 900]
+    assert "prompt(" in block, "a decision fires on one click with no reason"
+    assert "note" in block
+
+
+def test_every_new_key_exists_in_both_languages():
+    import pathlib
+    import re as _re
+    root = pathlib.Path(__file__).resolve().parent.parent
+    js = (root / "suni" / "web" / "i18n.js").read_text(encoding="utf-8")
+    html = _html()
+    used = set(_re.findall(r"""(?:data-i18n(?:-html)?=")(admin\.memq[a-z_]*|admin\.nav_memory)""", html))
+    used |= set(_re.findall(r"""t\('(admin\.memq[a-z_]*)'""", html))
+    assert used, "no memory-queue keys found in the panel"
+    for key in used:
+        assert js.count(f'"{key}":') == 2, f"{key} is missing from en or pt"
