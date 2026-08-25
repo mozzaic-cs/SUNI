@@ -286,6 +286,25 @@ class MemoryStore:
             self._save()
         return changed
 
+    def update_metadata(self, memory_id: str, patch: dict) -> bool:
+        """Merge `patch` into one entry's metadata and save. Returns False if
+        the id is unknown.
+
+        Held under the same lock as add(): governance transitions (a candidate
+        being approved) run from an HTTP handler while the consolidator may be
+        writing from a worker thread, and _save() rewrites the whole file from
+        self._data. Two unsynchronised writers would lose one of the changes
+        entirely rather than merge them.
+        """
+        with self._lock:
+            for entry in self._data:
+                if entry["id"] == memory_id:
+                    meta = entry.setdefault("metadata", {})
+                    meta.update(patch)
+                    self._save()
+                    return True
+        return False
+
     def lifecycle_counts(self) -> dict:
         """Count active vs deprecated entries (overall and by type) — for stats.
         count() still reports the raw total including deprecated entries."""

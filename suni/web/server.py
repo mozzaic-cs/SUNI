@@ -1672,6 +1672,77 @@ def create_app() -> FastAPI:
             "reasons": verdict["reasons"],
         })
 
+    # ── Memory governance review queue ──────────────────────────────────────
+    # Everything the sensitivity gate declined to auto-approve lands here.
+    # Power-user or admin, matching who may promote in the first place.
+    def _require_reviewer(user: dict) -> None:
+        if user.get("role") not in ("admin", "power-user"):
+            raise HTTPException(403, "Power-user or admin required")
+
+    @app.get("/api/memory/candidates")
+    async def memory_candidates(include_rejected: bool = False,
+                                user: dict = Depends(get_current_user)):
+        _require_reviewer(user)
+        from ..memory import governance as _gov
+        return JSONResponse({
+            "candidates": _gov.list_candidates(_collective_store, include_rejected),
+            "counts": _gov.counts(_collective_store),
+        })
+
+    @app.post("/api/memory/candidates/{memory_id}/approve")
+    async def memory_candidate_approve(memory_id: str, request: Request,
+                                       user: dict = Depends(get_current_user)):
+        _require_reviewer(user)
+        from ..memory import governance as _gov
+        body = {}
+        try:
+            body = await request.json()
+        except Exception:      # noqa: BLE001 — an empty body is a valid request
+            pass
+        result = _gov.approve(_collective_store, memory_id, user["id"],
+                              user.get("username", ""),
+                              note=str(body.get("note", ""))[:200],
+                              visibility=body.get("visibility"))
+        if not result["ok"]:
+            raise HTTPException(404 if result["reason"] == "not found" else 409,
+                                result["reason"])
+        # Reasons, not content: the entry was staged because of what it
+        # contains, so echoing it into the audit trail would defeat the staging.
+        _audit.log_event(user["id"], user.get("username", ""),
+                         "memory.promote.approved",
+                         detail=f"[review] {result['sensitivity']} "
+                                f"({', '.join(result['reasons']) or 'no findings'}) "
+                                f"-> {result['visibility']}",
+                         target_id=memory_id)
+        _log.info("[MEMORY] candidate %s approved by %s", memory_id,
+                  user.get("username", ""))
+        return JSONResponse(result)
+
+    @app.post("/api/memory/candidates/{memory_id}/reject")
+    async def memory_candidate_reject(memory_id: str, request: Request,
+                                      user: dict = Depends(get_current_user)):
+        _require_reviewer(user)
+        from ..memory import governance as _gov
+        body = {}
+        try:
+            body = await request.json()
+        except Exception:      # noqa: BLE001
+            pass
+        result = _gov.reject(_collective_store, memory_id, user["id"],
+                             user.get("username", ""),
+                             note=str(body.get("note", ""))[:200])
+        if not result["ok"]:
+            raise HTTPException(404 if result["reason"] == "not found" else 409,
+                                result["reason"])
+        _audit.log_event(user["id"], user.get("username", ""),
+                         "memory.promote.rejected",
+                         detail=f"[review] {result['sensitivity']} "
+                                f"({', '.join(result['reasons']) or 'no findings'})",
+                         target_id=memory_id)
+        _log.info("[MEMORY] candidate %s rejected by %s", memory_id,
+                  user.get("username", ""))
+        return JSONResponse(result)
+
     @app.post("/api/memory/consolidate")
     async def memory_consolidate(request: Request, admin: dict = Depends(require_admin)):
         """Trigger memory consolidation for all users or a specific user (admin only)."""
