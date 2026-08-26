@@ -124,6 +124,55 @@ def _lang_instruction(response_language: str = "") -> str | None:
 _log = get_logger(__name__)
 _NL = chr(10)      # newline as a constant, so hint-building needs no escapes
 
+# How a tool result announces that it failed.
+#
+# This used to be `str(result).startswith("Error")`, and almost nothing returns
+# that. Tools report their own failures in their own words — "Failed to send
+# email: …", "Attachment(s) not found: …", "PDF creation failed: …", "Query
+# error: …" — so every graceful failure was counted as a SUCCESS. The
+# consequence was not cosmetic: _tool_fail_counts and _rounds_without_success
+# below drive tier escalation, and neither could ever increment. That whole
+# block has been unreachable for every failure except a registry exception.
+#
+# Anchored at the start, deliberately. These strings are the ENTIRE result, so
+# a leading match is exact — while a substring search would fire on a search
+# result whose text happens to contain "not found", or a file whose contents
+# contain "Error:", and mark a working tool as broken.
+_FAILURE_PREFIX = re.compile(
+    r"^\s*(?:"
+    r"error\b"
+    r"|failed\b"
+    r"|could not\b"
+    r"|cannot\b"
+    r"|unable to\b"
+    r"|no such\b"
+    # A short label before the verdict — "Query error:", "PDF creation failed:",
+    # "Attachment(s) not found:". Neither a full stop nor a colon may appear in
+    # the label, so one sentence cannot run into the next: "Found 3 results. The
+    # document says the file was not found" is a successful search, and "Search
+    # complete: 0 matches, nothing failed." is a successful search too.
+    #
+    # error/failed/failure additionally require the verdict to END the clause —
+    # a colon, a full stop, an opening bracket, or the end of the string. They
+    # are common enough as ordinary adjectives that without it "The build
+    # succeeded after an earlier failed attempt" reads as a failure.
+    r"|\S[^.:\n]{0,60}?\s(?:error|failed|failure)(?=\s*[:.(]|\s*$)"
+    # These carry their own verdict wherever they appear, so they need no such
+    # anchor: "…could not be loaded.", "…is unavailable (no orchestrator bound)."
+    r"|\S[^.:\n]{0,60}?\s(?:not found|could not|is unavailable|blocked)\b"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _is_tool_failure(result) -> bool:
+    """True when a tool result reports a failure rather than an outcome.
+
+    Used for escalation and for the repeat guard — never to hide a result from
+    the model, so a false positive costs a wasted escalation, not a lost answer.
+    """
+    return bool(_FAILURE_PREFIX.match(str(result or "")))
+
 # Structured tool-selection (delegation, scheduling) needs at least a mid tier.
 # Measured: at tier 2 the same prompt chose four different wrong tools across
 # four runs. Below this, escalate rather than answer badly.
@@ -133,6 +182,11 @@ _MIN_TIER_FOR_STRUCTURED = 3
 # describe them. Same threshold, different reason: one is about choosing a
 # tool, this is about emitting a well-formed call at all.
 _MIN_TIER_FOR_TOOL_USE = 3
+
+# How many times one tool may fail in a request before further calls to it are
+# refused without being run. Two, because the second failure is what tells you
+# the first was not a fluke, and a third attempt has nothing new to try.
+_REPEAT_FAIL_LIMIT = 2
 
 # How much prior assistant text counts as "something to put in a PDF".
 _COMPILED_MIN_CHARS = 100
@@ -1383,13 +1437,49 @@ class Orchestrator:
         # Behavioural escalation signal — a confidently-wrong model produces failing
         # tool calls, which the refusal-phrase heuristic never catches. Track tool
         # errors and unproductive re-planning so we can escalate on *behaviour*.
-        _tool_fail_counts: dict[str, int] = {}   # tool name -> cumulative errors this task
+        _tool_fail_counts: dict[str, int] = {}   # tool name -> errors since the last escalation
         _rounds_without_success = 0              # consecutive tool rounds with no success
+
+        # Separate from the counter above, because they answer different
+        # questions. Escalation clears _tool_fail_counts when it moves up a
+        # tier — right, since a stronger model deserves a clean slate at a tool
+        # it may simply have called badly. The repeat guard must NOT reset
+        # there: a rejected SMTP password is not a capability problem, and
+        # letting each tier have two more attempts just spreads the same
+        # unanswerable permission prompts over more tiers.
+        _tool_fail_total: dict[str, int] = {}    # tool name -> failures for the whole request
+        _tool_last_error: dict[str, str] = {}    # tool name -> what it said last time
+
+        # ── Language, pinned to the end of the prompt ────────────────────────
+        # The instruction is added once, before this loop, as a SYSTEM message.
+        # Two things then bury it. Context.add() relocates EVERY system message
+        # to the front of the history when it overflows max_history, so the one
+        # sentence asking for Portuguese ends up as far from the model's
+        # attention as it can get. And each tool round appends more English —
+        # "Failed to send email: …", "Attachment(s) not found: …" — so the last
+        # thing a 7B reads before answering is a wall of English.
+        #
+        # Observed: a Portuguese request, a Portuguese email subject
+        # ("Informação sobre a cidade de Coimbra") composed early in the same
+        # request, and an English reply to the user at the end of it.
+        #
+        # Re-appending per call rather than adding to the context, because
+        # anything added to the context is subject to the same relocation. It
+        # costs ~15 tokens per inference and lands last, which is the only
+        # position that survives.
+        _lang_pin = next(
+            (m for m in reversed(context.get_conversation())
+             if m.role == Role.SYSTEM and m.agent == "lang"),
+            None,
+        )
 
         for iteration in range(_max_iters):
             ts = time.perf_counter()
+            _msgs = context.get_conversation()
+            if _lang_pin is not None:
+                _msgs = list(_msgs) + [_lang_pin]
             response = await current_agent.chat(
-                context.get_conversation(), context, tools=tools
+                _msgs, context, tools=tools
             )
             elapsed = time.perf_counter() - ts
             note = getattr(response, "_trace_note", "")
@@ -1495,6 +1585,38 @@ class Orchestrator:
             _judge_model = _cfg.get("intent_judge_model") or _cfg.get("model") or ""
             _guard_on    = _cfg.get("output_guard", False)
             for tc in response.tool_calls:
+                # ── Repeat guard ──────────────────────────────────────────
+                # A tool that has already failed twice in this request will
+                # fail the same way a third time, and the model does not stop
+                # asking: with a rejected SMTP password it called send_email
+                # in a loop, drifting from the real recipient to an invented
+                # "recipient@example.com / Test Email" as it went.
+                #
+                # Deliberately BEFORE the approval gate. Every one of those
+                # retries opened a permission prompt, so a wrong password
+                # turned into a queue of dialogs asking the user to authorise
+                # an action that could not happen. Approving a call SUNI is
+                # not going to make is worse than not asking.
+                #
+                # This does not halt the model — it will likely try again, and
+                # each attempt costs nothing: no gate, no execution, just the
+                # message below. The iteration cap still bounds the request.
+                if _tool_fail_total.get(tc.name, 0) >= _REPEAT_FAIL_LIMIT:
+                    _prior = _tool_last_error.get(tc.name, "")
+                    _msg = (
+                        f"'{tc.name}' already failed {_tool_fail_total[tc.name]} "
+                        f"times in this request: {_prior} "
+                        f"Do not call it again. Tell the user plainly what failed "
+                        f"and what they need to fix."
+                    )
+                    _log.info("[REPEAT] suppressed %s after %d failures",
+                              tc.name, _tool_fail_total[tc.name])
+                    tool_results.append((tc, _msg))
+                    if event_cb:
+                        event_cb({"type": "tool_end", "name": tc.name,
+                                  "result": _msg[:200], "ok": False})
+                    continue
+
                 _trusted = _approval.is_trusted(user_id, tc.name, tc.args)
 
                 # ── Admin tool policy (approval-time; distinct from RBAC) ──
@@ -1568,7 +1690,7 @@ class Orchestrator:
                 t_start = time.perf_counter()
                 result  = await self.registry.execute(tc.name, tc.args)
                 elapsed_ms = round((time.perf_counter() - t_start) * 1000)
-                _tool_ok = not str(result).startswith("Error")
+                _tool_ok = not _is_tool_failure(result)
 
                 # ── Output guard — sanitize the RESULT before it reaches either
                 # the model context or the UI. Redacts secrets, annotates injected
@@ -1618,10 +1740,12 @@ class Orchestrator:
             # several unproductive rounds all signal the current tier is out of its
             # depth — escalate rather than let it thrash to the iteration cap.
             # (Denied actions read as non-errors, so user denials don't escalate.)
-            _round_ok = any(not str(r).startswith("Error") for _, r in tool_results)
+            _round_ok = any(not _is_tool_failure(r) for _, r in tool_results)
             for _tc, _r in tool_results:
-                if str(_r).startswith("Error"):
+                if _is_tool_failure(_r):
                     _tool_fail_counts[_tc.name] = _tool_fail_counts.get(_tc.name, 0) + 1
+                    _tool_fail_total[_tc.name] = _tool_fail_total.get(_tc.name, 0) + 1
+                    _tool_last_error[_tc.name] = str(_r)[:200]
             _rounds_without_success = 0 if _round_ok else _rounds_without_success + 1
 
             _repeated_tool_error = any(v >= 2 for v in _tool_fail_counts.values())
