@@ -90,7 +90,16 @@ SCHEMA = {
         "type": "object",
         "properties": {
             "content": {"type": "string", "description": "The text content to put in the PDF"},
-            "path":    {"type": "string", "description": "Full file path for the PDF"},
+            # "Full file path" is what invited the model to invent a directory —
+            # it produced C:/Users/yourusername/Desktop once and /home/user/
+            # Desktop another time, on the same Windows box. SUNI picks the
+            # directory itself, so asking for a filename is both accurate and a
+            # smaller thing to get wrong.
+            "path":    {"type": "string",
+                        "description": ("Filename for the PDF, e.g. 'coimbra.pdf'. "
+                                        "SUNI decides which directory to save it in — "
+                                        "do not invent a path. Give a full path only if "
+                                        "the user named a specific existing folder.")},
             "title":   {"type": "string", "description": "Optional document title"},
         },
         "required": ["content", "path"],

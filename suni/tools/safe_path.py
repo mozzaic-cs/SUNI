@@ -19,8 +19,11 @@ character reachable.
 """
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
+
+log = logging.getLogger("suni.tools.safe_path")
 
 # Characters that cannot appear in a Windows filename. Separators are in here
 # too, which is safe only because the path is split on them first.
@@ -60,6 +63,73 @@ def resolve_output_path(path: str, ext: str, user_id: str = "") -> str:
     if not out_dir:
         return cleaned
     return str(Path(out_dir) / Path(cleaned).name)
+
+
+def resolve_attachment_path(path: str, user_id: str = "") -> str:
+    """Find a file the model named but could not locate. The mirror image of
+    resolve_output_path.
+
+    From live use, and the reason this exists. create_pdf reported exactly where
+    it wrote:
+
+        [TOOL] create_pdf   PDF created: C:/Users/<the real user>/Desktop/coimbra_info.pdf
+
+    and the model then asked to attach:
+
+        [TOOL] send_email   Attachment(s) not found: /home/user/Desktop/coimbra_info.pdf
+
+    A POSIX path invented on a Windows box, for a file it had just been told the
+    real location of. Telling the model harder does not fix this — a 7B merges
+    the shape of a path it has seen a thousand times in training with the one in
+    front of it. The filename, though, it got right, and the file is somewhere
+    SUNI itself chose to put it.
+
+    So: an existing path is honoured untouched, because a user who says
+    "attach D:/reports/q3.pdf" means that file. Only on a miss is the basename
+    looked for, and only in the two directories SUNI writes to. Deliberately not
+    a wider search — a hunt across the disk would let a hallucinated filename
+    attach a document nobody asked to send.
+
+    Returns the original path unchanged when nothing matches, so the caller
+    still reports a genuine "not found" rather than silently sending nothing.
+    """
+    raw = str(path or "")
+    if not raw:
+        return raw
+    try:
+        if Path(raw).is_file():
+            return raw
+    except OSError:
+        pass                      # malformed for this platform: fall through
+
+    # Split by hand. Path() would misparse a colon as a drive separator before
+    # .name ever ran — the same trap documented at the top of this file.
+    name = raw.replace("\\", "/").rpartition("/")[2]
+    if not name:
+        return raw
+
+    candidates = []
+    try:
+        from ..user_settings import resolve_output_dir
+        out_dir = resolve_output_dir(user_id)
+        if out_dir:
+            candidates.append(Path(out_dir))
+    except Exception:             # noqa: BLE001
+        pass
+    try:
+        candidates.append(Path.home() / "Desktop")
+    except (OSError, RuntimeError):
+        pass
+
+    for directory in candidates:
+        try:
+            found = directory / name
+            if found.is_file():
+                log.info("[ATTACH] path substituted: %s -> %s", raw, found)
+                return str(found)
+        except OSError:
+            continue
+    return raw
 
 
 def safe_output_path(path: str, ext: str) -> str:

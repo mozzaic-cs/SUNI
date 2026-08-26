@@ -47,6 +47,15 @@ async def handler(
 ) -> str:
     # _user_id is injected by the registry — send from this user's own mail
     # account when they have configured one, else the system account.
+    #
+    # Attachments are resolved first because the model routinely invents the
+    # directory: it was told create_pdf wrote to C:/Users/.../Desktop and asked
+    # to attach /home/user/Desktop/... anyway. Both arguments go through it —
+    # fixing one and leaving the other is how half a fix ships.
+    from .safe_path import resolve_attachment_path
+    attachment_path = resolve_attachment_path(attachment_path, _user_id)
+    attachment_paths = [resolve_attachment_path(p, _user_id)
+                        for p in (attachment_paths or [])]
     return _send(to, subject, body, attachment_path, attachment_paths,
                  user_id=_user_id)
 

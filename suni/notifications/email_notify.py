@@ -223,7 +223,7 @@ def send_email(
         for p in all_paths:
             if not p.exists():
                 missing.append(str(p))
-            elif not _validate_attachment(p):
+            elif not _validate_attachment(p, user_id):
                 blocked.append(str(p))
             else:
                 outer.attach(_make_attachment(p))
@@ -246,25 +246,44 @@ def send_email(
         return f"Failed to send email: {e}"
 
 
-_SAFE_ATTACH_ROOTS = [
-    Path.home() / "Desktop",
-    Path.home() / "Downloads",
-    Path.home() / "Documents",
-    Path("memory"),
-]
+def _safe_attach_roots(user_id: str = "") -> list[Path]:
+    """Directories an attachment may come from.
+
+    Resolved per call, not at import. As a module-level list this silently
+    excluded global_output_dir: an operator who pointed generated files at
+    D:/suni_out would find create_pdf writing there happily and send_email
+    refusing to attach anything it produced — SUNI blocking its own output,
+    with "not in allowed directories" as the only clue. It works on this
+    instance solely because the directory falls back to Desktop, which is on
+    the list by luck rather than design.
+    """
+    roots = [
+        Path.home() / "Desktop",
+        Path.home() / "Downloads",
+        Path.home() / "Documents",
+        Path("memory"),
+    ]
+    try:
+        from ..user_settings import resolve_output_dir
+        out_dir = resolve_output_dir(user_id)
+        if out_dir:
+            roots.append(Path(out_dir))
+    except Exception:                      # noqa: BLE001 — never block a send
+        pass
+    return roots
 _BLOCKED_EXTENSIONS = {
     ".exe", ".dll", ".bat", ".cmd", ".ps1", ".vbs", ".msi",
     ".pem", ".key", ".pfx", ".p12", ".env", ".reg",
 }
 
-def _validate_attachment(p: Path) -> bool:
+def _validate_attachment(p: Path, user_id: str = "") -> bool:
     """Return True only if the file is in an allowed directory with a safe extension."""
     if p.suffix.lower() in _BLOCKED_EXTENSIONS:
         return False
     resolved = p.resolve()
     return any(
         str(resolved).lower().startswith(str(root.resolve()).lower())
-        for root in _SAFE_ATTACH_ROOTS
+        for root in _safe_attach_roots(user_id)
     )
 
 
