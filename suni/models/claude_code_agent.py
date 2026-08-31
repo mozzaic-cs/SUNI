@@ -110,6 +110,12 @@ class ClaudeCodeAgent(BaseAgent):
         # argument routes it through the Windows cmd.exe shim, whose ~8191-char
         # command-line limit overflows on large prompts ("The command line is too
         # long"). stdin has no such cap and preserves newlines, so no flattening.
+        # Audit: the CLI chooses its own model, so the honest record is the
+        # delegation itself — recorded BEFORE the subprocess runs, because a run
+        # that times out must still show that work left for Claude Code.
+        from .. import usage as _usage
+        _usage.record_model("claude-code (CLI, model chosen by the CLI)")
+
         args = [
             "--print",
             "--output-format", "json",

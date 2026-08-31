@@ -60,6 +60,15 @@ _CANNED: dict[str, dict[str, str]] = {
         "es-ES": "No encontré una dirección de correo en su solicitud. "
                  "Indique a quién debo enviarlo.",
     },
+    # Written into the conversation when a human hits stop mid-run (AI Act Art
+    # 14(4)(e)). It is persisted as the assistant turn, so it has to be in the
+    # user's language like every other reply composed in Python.
+    "stopped_by_user": {
+        "en": "— Stopped by you. Anything already done was not undone.",
+        "pt-PT": "— Interrompido por si. O que já foi feito não foi desfeito.",
+        "pt-BR": "— Interrompido por você. O que já foi feito não foi desfeito.",
+        "es-ES": "— Detenido por usted. Lo que ya se hizo no se deshizo.",
+    },
     "plan_cancelled": {
         "en": "Plan cancelled. What would you like to do instead?",
         "pt-PT": "Plano cancelado. O que prefere fazer em vez disso?",

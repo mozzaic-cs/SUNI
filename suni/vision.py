@@ -111,6 +111,7 @@ async def describe(image_paths: list[str], prompt: str) -> str:
         from . import usage as _usage
         usage = data.get("usage") or {}
         _usage.record(usage.get("prompt_tokens"), usage.get("completion_tokens"))
+        _usage.record_model(f"vision:{model}" if model else "vision")
     except Exception:
         pass
 

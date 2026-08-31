@@ -123,6 +123,7 @@ class OpenAICompatAgent(BaseAgent):
         gen_tok    = getattr(usage, "completion_tokens", None) if usage else None
         from .. import usage as _usage
         _usage.record(prompt_tok, gen_tok)
+        _usage.record_model(self.model)
         telemetry.record(ok=True, latency_ms=_latency_ms,
                          prompt_tok=prompt_tok, gen_tok=gen_tok)
 

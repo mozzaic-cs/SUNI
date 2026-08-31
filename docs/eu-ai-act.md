@@ -105,11 +105,13 @@ records this per request, in an append-only SQLite table (`suni/audit.py`,
 | `route`, `mode` | which path handled it — assistant, task, read-only, collaborate |
 | `tools_called`, `tool_errors` | **which tools actually ran, and whether they failed** |
 | `approved_by` | **who authorised a consequential action** |
+| `models` | **which model(s) actually answered, in call order** — a tier escalation reads as `qwen2.5:7b,qwen2.5:32b` |
+| `agent_slug` | which named agent profile handled it, if any |
 | `duration_s`, `prompt_tokens`, `gen_tokens` | cost and latency attribution per user |
 
-`tools_called` and `approved_by` are the two that matter most for oversight: they
-turn "the assistant did something" into "this user asked this, that tool ran, and
-this person approved it." Governance decisions are recorded through the same table
+`tools_called`, `approved_by` and `models` are the three that matter most for
+oversight: they turn "the assistant did something" into "this user asked this,
+that model answered, that tool ran, and this person approved it." Governance decisions are recorded through the same table
 via `log_event()`, so approvals and rejections sit in one timeline with the
 requests that caused them. There is a CSV export (`export_csv`) and an Audit tab
 in the admin panel.
@@ -215,27 +217,164 @@ limitations block the erasure preview shows.
 
 ---
 
-## Existing controls mapped to high-risk themes
+## Articles 8–15 — the high-risk requirements
 
-SUNI is not a high-risk system and has not been through a conformity assessment.
-These are noted because the foundations happen to align with the themes, which
-shortens the work if a deployment ever does fall under Annex III:
+**They do not currently apply, and that is the least useful true thing to say
+about them.** Articles 8–15 are conditional: Article 8 binds a system only once
+it is classified high-risk under Article 6 — an Annex III use case, or a safety
+component under Annex I. SUNI as shipped is a general productivity assistant, so
+its own obligations are Article 50, Article 4, and GDPR.
 
-| Control | File | Theme |
+The reason this section exists anyway is that **the classification follows the
+use, not the software**, and several ordinary SMB uses are in Annex III:
+shortlisting CVs, deciding promotions or task allocation, assessing
+creditworthiness, determining eligibility for essential services. An SMB that
+points SUNI at HR screening has a high-risk deployment on its hands whether or
+not anyone decided to create one. Nothing in the software detects this.
+
+So the honest statement is: **as shipped, out of scope; if you deploy it into an
+Annex III use today, it would fail Articles 9, 11 and 13 outright.** Below is
+what exists, what does not, and where the sharp edges are.
+
+| Art | Requirement | Where SUNI stands |
 |---|---|---|
-| Append-only audit log, per user, with tools called and approver | `suni/audit.py` | Art 12 — record-keeping |
-| In-chat approval gate (Allow / Deny before consequential tool calls) | `suni/approval.py` | Art 14 — human oversight |
-| RBAC, per-user roles and tool policies | `suni/rbac.py`, `suni/policy.py` | Art 14 — bounded autonomy |
-| Shell denylist, `UNTRUSTED` content markers, MCP tools defaulting to approval | `suni/policy.py`, `suni/approval.py` | Art 15 — robustness |
-| Intent review before work starts, output guard before the answer leaves | `suni/core/` | Art 15 — accuracy controls |
+| **8** | Compliance with the section | Conditional — not triggered as shipped |
+| **9** | Risk management system | **Absent.** No risk register, no foreseeable-misuse analysis, no post-market monitoring. `suni/benchmarks/suites/safety.py` and `toxicity.py` are raw material for the *testing* limb only — a test suite is not a risk management system |
+| **10** | Data and data governance | **Mostly out of scope, and cheaply closed.** SUNI trains nothing; it runs stock models. Art 10(6) says that for a system not developed by training a model, paragraphs 2–5 apply **only to the testing data sets**. That reduces the article to documenting the benchmark suites |
+| **11** | Technical documentation | **Absent as a structured document.** Annex IV is a numbered list; SUNI has the material scattered across `README.md`, this file, and `suni/web/architecture.html`, in no particular shape |
+| **12** | Record-keeping | **The strongest, and now less gapped** — see below |
+| **13** | Instructions for use | **Absent as a document.** Needs declared accuracy, robustness and cybersecurity metrics, known limitations, input specifications, and the oversight measures. The 33-metric registry is unusually good raw material for the metrics limb — see below |
+| **14** | Human oversight | **Partial, and the best-covered in code** — see below |
+| **15** | Accuracy, robustness, cybersecurity | **Weak by default** — see below |
+
+### Article 12 — which model answered
+
+The audit trail described above recorded who asked, which tools ran and who
+approved them, and never recorded **which model produced the output**. A request
+fans out across tiers and can escalate mid-run, so "the configured model" was not
+the answer either — reading the log, the question simply could not be answered.
+It is the first question any incident review asks.
+
+`audit_log.models` now holds the models that actually served the request, in call
+order (`suni/usage.py`, `record_model()`). It rides the existing per-request
+accumulator, so a tier escalation appears as what it is: `qwen2.5:7b,qwen2.5:32b`.
+The delegating agents record too — Claude Code as `claude-code (CLI, model chosen
+by the CLI)`, because the CLI picks its own model and claiming a specific one
+would be a fabricated record.
+
+`tests/test_ai_act_oversight.py` asserts on the **audit row** of a real request,
+not on the helper. A test that `record_model()` exists and is callable would pass
+with the column never written — which is precisely how two earlier controls in
+this repo were believed to work while reaching nothing.
+
+### Article 14 — human oversight
+
+What was already here and holds up:
+
+| Control | File |
+|---|---|
+| In-chat approval gate before consequential tool calls | `suni/approval.py` |
+| RBAC (which tools a role can see) and call-time policies (allow/deny/ask on arguments) | `suni/rbac.py`, `suni/policy.py` |
+| Two-floor precedence: policy `deny` and heuristic `block` never de-escalate | `suni/core/orchestrator.py` |
+| Unattended runs: delivery destination fixed by the human who created the schedule, never chosen by the model | `suni/schedules.py` |
+
+That last one deserves naming, because it is the case where oversight usually
+leaks. A scheduled run has no approver present, so the model is not allowed to
+pick recipients at all — the runner sends, the model only writes. A gated call in
+an unattended run fails closed on the approval timeout rather than proceeding.
+
+**Article 14(4)(e) — the stop button — was missing entirely, and now exists.**
+`POST /api/chat/stop` cancels the caller's in-flight run; the send button becomes
+a stop control while a run is in progress, in **all three UIs**, because by this
+document's own standard a control covering one code path is not a control. It is
+deliberately not rate-limited: a safety control that answers 429 is not a safety
+control. The interruption is written to the audit trail as `chat.stopped` —
+oversight is only evidenced if the intervention itself is in the log.
+
+Three limits, stated because a stop button that overpromises is worse than none:
+
+- **It halts, it does not reverse.** No further tool call is made; an email
+  already sent stays sent. Art 14(4)(d) also asks for the ability to *reverse* an
+  output, and SUNI does not have that.
+- **It cannot kill the Claude Code / Codex subprocess.** Those agents shell out
+  to a CLI. Cancelling the awaiting coroutine returns control to the user; the
+  child process runs to its own completion.
+- **A client disconnect is not a stop.** Both arrive as the same
+  `CancelledError`, and the handler distinguishes them explicitly — treating a
+  disconnect as a stop would mean streaming the rest of a reply into a socket
+  nobody is holding.
+
+Still open under Art 14: the "always allow" trust rule accepts the pattern `*`,
+an unconditional per-tool bypass (audited as `approved_by="always-allow"`, so it
+is at least traceable), and the approval gate covers a **configurable set** of
+tool names — an allowlist, which by construction does not check its own
+completeness.
+
+### Article 15 — accuracy, robustness, cybersecurity
+
+The one control that maps most directly is **off by default**. `output_guard`
+(`suni/output_guard.py`, config `output_guard`, default `False`) redacts secrets
+and annotates injected instructions in tool *results*, and its own docstring
+records that the Claude Code delegation path returns before the tool loop and is
+therefore not covered. It cannot honestly be cited as a shipped control until
+both are addressed.
+
+What does hold:
+
+- **The feedback loop is mitigated.** Promotion to shared memory makes output
+  into future input, which is the loop Art 15 is concerned with.
+  `suni/sensitivity.py` classifies deterministically — check digits, not shapes —
+  and the review queue puts a human between the two.
+- **Cybersecurity:** authentication, RBAC, TLS by default, a shell denylist,
+  `UNTRUSTED` content markers, MCP tools defaulting to approval.
+- **Accuracy has measurements, with their provenance attached.** The 33-metric
+  registry (`suni/benchmarks/metrics.py`) labels every number `live`,
+  `on_demand`, `estimated` or `na`-with-a-reason. That discipline — never showing
+  an estimate as a measurement — is most of what Art 13 asks for when it demands
+  declared accuracy metrics.
+
+No adversarial robustness testing exists, which Art 15 asks for by name.
+
+### What would have to be built
+
+In the order that makes the rest cheaper:
+
+1. **Art 11 and Art 13 documents.** Mostly assembly: the material exists, the
+   Annex IV structure does not. These are also what an SMB customer needs in
+   order to build their own compliance file.
+2. **Art 9 risk management system.** The genuinely new work — a risk register,
+   foreseeable-misuse analysis, and post-market monitoring tied to metrics.
+3. **`output_guard` on by default, with the Claude Code path covered.**
+4. **Art 14(4)(d) reversal**, and closing the always-allow bypass.
 
 ---
+
+## What applies to every SMB deployment, high-risk or not
+
+Two obligations bind regardless of classification, and neither is about the
+software's features:
+
+- **Article 4 — AI literacy.** Providers *and deployers* must take measures to
+  ensure the people operating an AI system on their behalf have a sufficient
+  understanding of it. For an SMB running SUNI that is a training obligation on
+  the employer, and it applies now.
+- **Article 5 — prohibited practices.** Some uses are banned outright regardless
+  of how carefully the system is deployed. SUNI does not detect these either.
+
+**Roles decide who carries what.** Running SUNI yourself generally makes you the
+deployer. Modifying it, putting it on the market, or putting it into service
+under your own name can make you the provider — and changing the intended purpose
+to a high-risk one is the change most likely to do it. Confirm the role split for
+your own deployment before relying on any of the above; it determines who owes
+Articles 9, 11 and 13.
 
 ## What this does not claim
 
 - **Not a conformity assessment.** No notified body has looked at this.
 - **Not a compliance guarantee for your deployment.** What you do with SUNI
-  determines most of your obligations, and the software cannot know that.
+  determines most of your obligations, and the software cannot know that In
+  particular, nothing here detects that your use case has become an Annex III
+  one.
 - **Not full GDPR coverage.** Erasure now has a mechanism (see below), but the
   rest of the regulation — lawful basis, DPIAs, processor agreements, subject
   access — is yours, not the software's.

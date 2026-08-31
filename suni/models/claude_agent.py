@@ -41,6 +41,10 @@ class ClaudeAgent(BaseAgent):
 
         response = await self.client.messages.create(**kwargs)
 
+        # Audit: which model actually answered (see usage.record_model).
+        from .. import usage as _usage
+        _usage.record_model(self.model)
+
         text_parts: list[str] = []
         tool_calls: list[ToolCall] = []
 

@@ -470,6 +470,17 @@ def create_app() -> FastAPI:
     _sessions: dict = {}   # sid -> (Context, asyncio.Lock, last_used_ts)
     _SESSION_TTL = 7200  # 2 hours of inactivity before expiry
 
+    # In-flight orchestrator runs, so a human can interrupt one — AI Act Art
+    # 14(4)(e), the "stop button that brings the system to a halt in a safe
+    # state". Keyed "{user_id}:{session_id}" so one user can never cancel
+    # another's run, the same scoping the approval gate uses.
+    #
+    # The entry carries `stopped_by` rather than relying on task.cancelled(),
+    # because a client disconnect ALSO cancels work and surfaces as the same
+    # CancelledError. Swallowing that one would leave the handler streaming into
+    # a dead socket. Only an explicit stop sets this flag.
+    _active_runs: dict[str, dict] = {}
+
     def _get_context(session_id: str, default_mode: str = "assistant"):
         """Return (Context, Lock, mode) for the given session."""
         now = time.time()
@@ -2022,6 +2033,12 @@ def create_app() -> FastAPI:
 
         async def generate():
             t0 = time.time()
+            _run_key = f"{user['id']}:{session_id}"
+            _run_entry: dict | None = None
+            _was_stopped = False
+            # Module-level helper, not a method on the orchestrator instance.
+            from ..core.orchestrator import _say as _orch_say
+            t_stop_note = _orch_say("stopped_by_user", _resp_lang)
             # Per-request token accumulator — chat() calls sum into this; totals
             # go onto the audit row below (mutable object so nested calls update it).
             from .. import usage as _usage
@@ -2066,6 +2083,8 @@ def create_app() -> FastAPI:
                         claude_api_key=_claude_api_key,
                         images=_image_paths,
                     ))
+                    _run_entry = {"task": _run_task, "stopped_by": None}
+                    _active_runs[_run_key] = _run_entry
                     while True:
                         try:
                             evt = await asyncio.wait_for(_evt_queue.get(), timeout=0.25)
@@ -2073,7 +2092,26 @@ def create_app() -> FastAPI:
                         except asyncio.TimeoutError:
                             if _run_task.done():
                                 break
-                    response = await _run_task   # re-raises any run error to the handler
+                    try:
+                        response = await _run_task   # re-raises any run error to the handler
+                    except asyncio.CancelledError:
+                        # Two different things cancel this task and both land here.
+                        # Only an explicit stop sets `stopped_by`; anything else is
+                        # a client disconnect, which must keep propagating — turning
+                        # it into a tidy "stopped" reply would mean streaming the
+                        # rest of this response into a socket nobody is holding.
+                        _stopped_by = (_active_runs.get(_run_key) or {}).get("stopped_by")
+                        if not _stopped_by:
+                            raise
+                        _was_stopped = True
+                        response = t_stop_note
+                        yield f"data: {json.dumps({'type': 'stopped'})}\n\n"
+                        # Fall through deliberately: the turn is persisted and
+                        # audited below on exactly the SAME path as a completed
+                        # one, rather than in a shortcut of its own. An
+                        # interrupted run that skipped persistence would leave the
+                        # live session holding a user turn the database never saw,
+                        # and the next reload would silently lose it.
                 # Flush any events queued between the last drain and completion
                 async for evt_line in _drain_events():
                     yield evt_line
@@ -2110,12 +2148,32 @@ def create_app() -> FastAPI:
                     prompt_tokens=_usage_acc.prompt,
                     gen_tokens=_usage_acc.gen,
                     agent_slug=(_agent_profile or {}).get("slug", ""),
+                    models=_usage_acc.models,
                 )
+                if _was_stopped:
+                    # A separate governance row, alongside the request row above:
+                    # the request record says what ran, this one says a human
+                    # halted it. Art 14 oversight is only evidenced if the
+                    # intervention itself is in the log.
+                    _audit.log_event(
+                        user["id"], user["username"], "chat.stopped",
+                        detail=f"interrupted after {round(time.time() - t0, 1)}s",
+                        target_id=session_id,
+                    )
             except Exception as e:
                 _log.error("[CHAT_ERR] %s", e, exc_info=True)
                 yield f"data: {json.dumps({'type': 'error', 'text': str(e)})}\n\n"
             finally:
                 _usage.reset(_usage_tok)
+                # Remove OUR entry, not whatever is under the key. Two requests
+                # can share "{user}:{session}" — ui.html and face.html take the
+                # session id from localStorage, so a second tab reuses it. They
+                # serialise on the context lock, but this cleanup runs seconds
+                # later (token streaming), by which time a newer run may have
+                # registered. An unconditional pop would deregister that one and
+                # leave it unstoppable.
+                if _active_runs.get(_run_key) is _run_entry:
+                    _active_runs.pop(_run_key, None)
                 # Cancel any approvals this user left pending (covers disconnect)
                 from .. import approval as _ap
                 cancelled = _ap.cancel_all_for_user(user["id"])
@@ -2128,6 +2186,40 @@ def create_app() -> FastAPI:
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
+
+    @app.post("/api/chat/stop")
+    async def chat_stop(request: Request, user: dict = Depends(get_current_user)):
+        """Interrupt this user's in-flight run — AI Act Art 14(4)(e).
+
+        Deliberately NOT rate-limited: a safety control that answers 429 is not a
+        safety control. It is cheap (a dict lookup and a cancel) and can only ever
+        reach the caller's own runs.
+
+        What it does and does not do, stated plainly because the difference
+        matters: it halts the run at the next await point, so no FURTHER tool
+        call is made. It does not reverse what already completed — a sent email
+        stays sent — and it cannot kill the Claude Code / Codex CLI subprocess,
+        which keeps running to its own completion. Art 14(4)(d) reversal is a
+        separate thing SUNI does not have.
+        """
+        body = {}
+        try:
+            body = await request.json()
+        except Exception:
+            pass
+        session_id = (body.get("conversation_id") or body.get("session_id")
+                      or user["id"])
+        entry = _active_runs.get(f"{user['id']}:{session_id}")
+        if not entry or entry["task"].done():
+            return JSONResponse({"stopped": False, "reason": "no run in progress"})
+        # Flag BEFORE cancelling: the handler reads this to tell a deliberate
+        # stop apart from a client disconnect, and cancel() can schedule the
+        # wake-up immediately.
+        entry["stopped_by"] = user["username"] or user["id"]
+        entry["task"].cancel()
+        _log.info("[STOP] %s interrupted their run in session %s",
+                  user["username"], session_id)
+        return JSONResponse({"stopped": True})
 
     @app.post("/whatsapp")
     async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):

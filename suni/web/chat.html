@@ -224,6 +224,12 @@ select option,select optgroup{background:var(--bg2);color:var(--text)}
 #send-btn:disabled{opacity:.3;cursor:not-allowed;filter:none}
 #send-btn.thinking{background:rgba(0,212,255,.15);color:var(--cyan);
   border:1px solid rgba(0,212,255,.3);letter-spacing:.18em;font-size:9px;}
+/* Must follow .thinking: both classes are set together and specificity is
+   equal, so source order is what decides. The stop state wins. */
+#send-btn.stopping{background:rgba(255,90,90,.18);color:#ff8080;
+  border:1px solid rgba(255,90,90,.45);cursor:pointer;letter-spacing:.12em;
+  font-size:11px;}
+#send-btn.stopping:hover{background:rgba(255,90,90,.3);filter:none}
 
 /* ══ SETTINGS MODAL ══ */
 .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:100;
@@ -1598,6 +1604,25 @@ function _injectDownloadLinks(container) {
 }
 
 // ══════════════════════════════════════════════════════════════════
+//  STOP — human interrupt of an in-flight run (AI Act Art 14(4)(e))
+// ══════════════════════════════════════════════════════════════════
+// Server-side cancellation, not a client-side abort: dropping the fetch would
+// leave the orchestrator running on the server with nobody watching, which is
+// the opposite of a stop. The server ends the run and the stream closes itself.
+async function _stopRun() {
+  const sendBtn = document.getElementById('send-btn');
+  sendBtn.textContent = '…';
+  try {
+    await _apiFetch('/api/chat/stop', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversation_id: _currentConvId }),
+    });
+  } catch (e) {
+    _toast('Could not stop the run');
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  SEND
 // ══════════════════════════════════════════════════════════════════
 async function _send() {
@@ -1624,7 +1649,11 @@ async function _send() {
 
   _isSending = true;
   inputEl.value = ''; _autoResize(inputEl);
-  sendBtn.disabled = true; sendBtn.textContent = '…'; sendBtn.classList.add('thinking');
+  // The send button becomes the STOP control while a run is in flight (AI Act
+  // Art 14(4)(e)). It stays enabled — a disabled button is not a stop button.
+  sendBtn.disabled = false; sendBtn.textContent = t('chat.stop');
+  sendBtn.title = t('chat.stop_title');
+  sendBtn.classList.add('thinking', 'stopping');
   inputEl.disabled = true;
 
   const fileIds = _attachedFiles.map(f => f.file_id);
@@ -1678,6 +1707,8 @@ async function _send() {
           });
           const upd = _convList.find(c => c.id === _currentConvId);
           if (upd) document.getElementById('conv-title-bar').textContent = upd.title;
+        } else if (ev.type === 'stopped') {
+          _afHide();
         } else if (ev.type === 'error') {
           _finalMsg(suniWrap, `— ${ev.text}`);
           _afHide();
@@ -1692,7 +1723,8 @@ async function _send() {
     _finalMsg(suniWrap, `Connection error: ${e.message}`);
   } finally {
     _isSending = false;
-    sendBtn.disabled = false; sendBtn.textContent = t('chat.send'); sendBtn.classList.remove('thinking');
+    sendBtn.disabled = false; sendBtn.textContent = t('chat.send'); sendBtn.title = '';
+    sendBtn.classList.remove('thinking', 'stopping');
     inputEl.disabled = false; inputEl.focus();
   }
 }
@@ -1900,7 +1932,9 @@ const _inputEl = document.getElementById('user-input');
 function _autoResize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,140)+'px'; }
 _inputEl.addEventListener('input', () => _autoResize(_inputEl));
 _inputEl.addEventListener('keydown', e => { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); _send(); } });
-document.getElementById('send-btn').addEventListener('click', _send);
+document.getElementById('send-btn').addEventListener('click', () => {
+  if (_isSending) _stopRun(); else _send();
+});
 
 // ══════════════════════════════════════════════════════════════════
 //  UTILS

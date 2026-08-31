@@ -157,6 +157,10 @@ class CodexAgent(BaseAgent):
 
         from .. import config as _cfg
         timeout = int(_cfg.get("codex_timeout", 300) or 300)
+        # Audit before the call: a run that times out or dies still has to show
+        # up in the log as having been delegated to Codex.
+        from .. import usage as _usage
+        _usage.record_model(f"codex:{self.model}" if self.model else "codex")
         rc, final, stderr = await _run_codex(
             task, timeout=timeout, model=self.model, api_key=self._api_key)
 

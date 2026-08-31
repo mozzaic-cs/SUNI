@@ -60,6 +60,13 @@ def init_db() -> None:
         # tool set — is indistinguishable in the log from an ordinary one.
         if "agent_slug" not in cols:
             c.execute("ALTER TABLE audit_log ADD COLUMN agent_slug TEXT DEFAULT ''")
+        # Which model(s) actually answered, in call order. A request fans out
+        # across tiers and can escalate mid-run, so the configured model is not
+        # the answer — only the ones called are. Without this, "which model
+        # produced this output" is unanswerable from the log, and that is the
+        # first question any incident review asks (AI Act Art 12).
+        if "models" not in cols:
+            c.execute("ALTER TABLE audit_log ADD COLUMN models TEXT DEFAULT ''")
 
 
 def log(
@@ -77,21 +84,24 @@ def log(
     prompt_tokens: int = 0,
     gen_tokens:    int = 0,
     agent_slug:    str = "",
+    models:        list[str] | None = None,
 ) -> None:
     tools_str = ",".join(tools_called) if tools_called else ""
+    models_str = ",".join(models) if models else ""
     with _conn() as c:
         c.execute(
             """INSERT INTO audit_log
                (ts, user_id, username, session_id, ip_address, query_preview,
                 route, mode, tools_called, tool_errors, duration_s, approved_by,
-                prompt_tokens, gen_tokens, agent_slug)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                prompt_tokens, gen_tokens, agent_slug, models)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 datetime.now(timezone.utc).isoformat(),
                 user_id, username, session_id, ip_address,
                 query_preview[:100],
                 route, mode, tools_str, tool_errors, duration_s, approved_by,
                 int(prompt_tokens or 0), int(gen_tokens or 0), agent_slug,
+                models_str,
             ),
         )
 

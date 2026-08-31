@@ -21,7 +21,7 @@ collaborate on one answer**. Runs on your own hardware; your data stays yours.
 - **Memory + knowledge base** — episodic + collective memory, document RAG, and a **learned-skills** store (procedural memory) that grows as you use it.
 - **Pluggable models** — local Ollama/vLLM **plus** Claude, OpenAI, Gemini, and **no-key subscription CLIs** (Claude Code, Codex).
 - **Governance** — RBAC, intent judge, output guard, tool policies, approval previews, OIDC/SSO, rate limiting, audit log.
-- **EU AI Act transparency, implemented** — Article 50 disclosure in every UI, and synthetic output marked **machine-readably** (PDF `/Info`, RFC 3834 email headers), not just visibly. See [`docs/eu-ai-act.md`](docs/eu-ai-act.md).
+- **EU AI Act transparency, implemented** — Article 50 disclosure in every UI, and synthetic output marked **machine-readably** (PDF `/Info`, RFC 3834 email headers), not just visibly. Plus per-request model traceability and a stop button that halts a run in progress. See [`docs/eu-ai-act.md`](docs/eu-ai-act.md).
 - **Named agents** — save a prompt, a model and a narrowed tool set as an agent, then ask SUNI to hand work to it. An agent can only ever *reduce* what the person running it could already do.
 - **Panel agents** *(nothing else has this)* — an agent whose "model" is a **panel**: several capable models answer independently, critique each other, and one merges the result, spoken in that agent's voice.
 - **Scheduled runs** — "email me a calendar digest every morning at 8" becomes a recurring job that replays through SUNI, as you, with your permissions **at the time it fires**.
@@ -112,8 +112,15 @@ that *other software* can detect it — PDF `/Info` metadata alongside the visib
 footer, and RFC 3834 `Auto-Submitted` headers on outgoing mail alongside the
 visible body notice. The machine-readable half is the part that is easy to skip
 and awkward to retrofit, because it has to happen everywhere output leaves the
-system. [`docs/eu-ai-act.md`](docs/eu-ai-act.md) sets out what is implemented,
-what the risk posture is, and — just as importantly — what none of it claims.
+system. Every request also records **which model actually answered** it, and any
+run can be stopped mid-flight by the person who started it — Article 12
+traceability and the Article 14(4)(e) stop control.
+
+[`docs/eu-ai-act.md`](docs/eu-ai-act.md) sets out what is implemented, what the
+risk posture is, a candid Articles 8–15 gap analysis for anyone whose use case
+falls under Annex III, and — just as importantly — what none of it claims. If you
+are deploying SUNI in a business, start with the Article 4 AI-literacy note
+there: it binds deployers regardless of risk classification.
 
 ---
 

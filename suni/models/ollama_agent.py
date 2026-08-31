@@ -82,6 +82,7 @@ class OllamaAgent(BaseAgent):
         # written to the audit row by the request handler.
         from .. import usage as _usage
         _usage.record(prompt_tok, gen_tok)
+        _usage.record_model(self.model)
 
         # Feed the passive telemetry ring buffer (live dashboard metrics).
         telemetry.record(

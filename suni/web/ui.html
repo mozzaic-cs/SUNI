@@ -210,6 +210,9 @@ header{
 #send-btn:hover{filter:brightness(1.2)}
 #send-btn:active{transform:scale(.97)}
 #send-btn:disabled{opacity:.35;cursor:not-allowed;filter:none}
+#send-btn.stopping{background:rgba(255,90,90,.18);color:#ff8080;
+  border:1px solid rgba(255,90,90,.45);cursor:pointer}
+#send-btn.stopping:hover{background:rgba(255,90,90,.3);filter:none}
 
 #tts-btn{
   background:transparent;border:1px solid rgba(0,212,255,.18);
@@ -966,6 +969,22 @@ const msgsEl  = document.getElementById('messages');
 const inputEl = document.getElementById('user-input');
 const sendBtn = document.getElementById('send-btn');
 
+// ── STOP: human interrupt of an in-flight run (AI Act Art 14(4)(e)) ──
+// Server-side cancellation, not a client-side abort: dropping the fetch would
+// leave the orchestrator running with nobody watching, which is the opposite
+// of a stop.
+let _isRunning = false;
+async function _stopRun() {
+  sendBtn.textContent = '...';
+  try {
+    await _apiFetch('/api/chat/stop', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: _sessionId }),
+    });
+  } catch (e) { /* the stream ends on its own either way */ }
+}
+
+
 function addMsg(role, text = '', streaming = false) {
   const wrap = document.createElement('div');
   wrap.className = `msg ${role}`;
@@ -1136,10 +1155,14 @@ window.addEventListener('drop', async e => {
 async function send() {
   const text = inputEl.value.trim();
   const fileIds = _attachedFiles.map(f => f.file_id);
-  if ((!text && !fileIds.length) || sendBtn.disabled) return;
+  if ((!text && !fileIds.length) || _isRunning) return;
   const displayText = text || `[${_attachedFiles.map(f => f.filename).join(', ')}]`;
   _clearFileChips();
-  inputEl.value = ''; sendBtn.disabled = true; inputEl.disabled = true;
+  inputEl.value = ''; inputEl.disabled = true;
+  // The send button becomes STOP while the run is in flight. It stays
+  // enabled — a disabled button is not a stop button.
+  _isRunning = true; sendBtn.textContent = t('chat.stop');
+  sendBtn.title = t('chat.stop_title'); sendBtn.classList.add('stopping');
 
   addMsg('user', displayText);
   setState('thinking');
@@ -1195,6 +1218,8 @@ async function send() {
           } else {
             setState('idle');
           }
+        } else if (ev.type === 'stopped') {
+          setState('idle');
         } else if (ev.type === 'error') {
           finalMsg(suniWrap, `— ${ev.text}`); setState('idle');
         } else if (ev.type === 'tool_start') {
@@ -1220,11 +1245,14 @@ async function send() {
     finalMsg(suniWrap, `Connection error: ${e.message}`);
     setState('idle');
   } finally {
-    sendBtn.disabled = false; inputEl.disabled = false; inputEl.focus();
+    _isRunning = false; sendBtn.disabled = false;
+    sendBtn.textContent = t('chat.send'); sendBtn.title = '';
+    sendBtn.classList.remove('stopping');
+    inputEl.disabled = false; inputEl.focus();
   }
 }
 
-sendBtn.addEventListener('click', send);
+sendBtn.addEventListener('click', () => { if (_isRunning) _stopRun(); else send(); });
 inputEl.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
 });
