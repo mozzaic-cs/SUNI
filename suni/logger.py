@@ -119,6 +119,81 @@ def start_shipping() -> dict:
         return {"enabled": False, "type": "", "level": "", "detail": ""}
 
 
+# ── asyncio client-disconnect noise ──────────────────────────────────────────
+# On Windows, a client that drops a connection abruptly makes the proactor event
+# loop raise ConnectionResetError from _ProactorBasePipeTransport._call_connection_lost,
+# and asyncio's default handler prints a six-line traceback for every one. This
+# is a known CPython wart (bpo-39010), not a fault in SUNI, and nothing can be
+# done about the disconnect — the peer is already gone.
+#
+# It is filtered because of what it COST, not because it is untidy. A browser tab
+# left open on the Face page holds a few keep-alive sockets, and the browser
+# recycles them every few minutes; that is roughly 19 tracebacks an hour from an
+# IDLE tab, doing nothing. logs/startup.log reached 19,328 of them — 97% of the
+# file — and when SUNI stopped on 28 Aug 2026 the shutdown left no trace anyone
+# could find in the noise. A log nobody can read is not a log.
+#
+# Suppressed, never discarded: the count is kept and reported periodically, so
+# an unusual RATE (a client in a reconnect loop, a proxy flapping) is still
+# visible — which the flood of individual tracebacks actually obscured.
+_disconnect_noise = 0
+_NOISE_REPORT_EVERY = 500
+
+
+def suppressed_disconnect_count() -> int:
+    """How many client-disconnect tracebacks have been filtered this run."""
+    return _disconnect_noise
+
+
+def _is_client_disconnect(context: dict) -> bool:
+    """Match the known-benign shape ONLY.
+
+    Deliberately narrow: the exception type alone is not enough, because a
+    ConnectionResetError raised anywhere else in the loop is a real event that
+    must still be reported. It is the pairing with _call_connection_lost — the
+    teardown of a socket whose peer has already gone — that makes it noise.
+    """
+    exc = context.get("exception")
+    if not isinstance(exc, (ConnectionResetError, ConnectionAbortedError)):
+        return False
+    where = f"{context.get('handle', '')}{context.get('transport', '')}"
+    return "_call_connection_lost" in where
+
+
+def install_disconnect_noise_filter(loop=None) -> bool:
+    """Filter client-disconnect tracebacks out of the event loop's handler.
+
+    Chains to whatever handler was already installed rather than replacing it,
+    so anything else that wanted to see loop exceptions still does. Returns
+    False if there is no running loop to attach to.
+    """
+    import asyncio
+    try:
+        loop = loop or asyncio.get_running_loop()
+    except RuntimeError:
+        return False
+
+    previous = loop.get_exception_handler()
+    log = get_logger("suni.asyncio")
+
+    def _handler(loop_, context):
+        global _disconnect_noise
+        if _is_client_disconnect(context):
+            _disconnect_noise += 1
+            if _disconnect_noise % _NOISE_REPORT_EVERY == 0:
+                log.info("[NET] %d client disconnects filtered so far "
+                         "(browser tabs recycling idle connections)",
+                         _disconnect_noise)
+            return
+        if previous is not None:
+            previous(loop_, context)
+        else:
+            loop_.default_exception_handler(context)
+
+    loop.set_exception_handler(_handler)
+    return True
+
+
 def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(f"suni.{name}" if not name.startswith("suni") else name)
 

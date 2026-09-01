@@ -783,6 +783,10 @@ def create_app() -> FastAPI:
         # answer can appear. See suni/runstate.py.
         from .. import runstate as _runstate
         _runstate.mark_started()
+        # Filter the Windows client-disconnect traceback flood out of the event
+        # loop handler. Must happen here: the loop only exists once we are in it.
+        from ..logger import install_disconnect_noise_filter as _quiet_disconnects
+        _quiet_disconnects()
         # Pre-warm nomic-embed-text so the first user request doesn't pay model load time
         try:
             from ..memory.manager import embed_nomic as _warm_nomic
