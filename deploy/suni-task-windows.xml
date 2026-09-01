@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-16"?>
+<!--
+  SUNI as a Windows scheduled task - the counterpart of deploy/suni.service.
+
+  Import:
+    schtasks /Create /TN SUNI /XML deploy\suni-task-windows.xml
+  or, in PowerShell:
+    Register-ScheduledTask -TaskName SUNI -Xml (Get-Content deploy\suni-task-windows.xml -Raw)
+
+  EDIT FIRST. Every <UserId> and <Author> reads REPLACE-WITH-YOUR-USER, and
+  <Command> reads REPLACE-WITH-YOUR-SUNI-PATH. Windows will refuse the
+  import until the user is a real account on the machine, and the task will
+  do nothing useful until the path points at your clone. Nothing here is
+  hardcoded to one install directory, for the same reason start_suni.bat
+  resolves its own location: a clone lives wherever its owner put it.
+
+  THE THREE SETTINGS THAT MATTER, and why. All three were wrong on the machine
+  this was taken from, and together they produced a THREE-DAY silent outage on
+  28 Aug 2026.
+
+  1. A REPEATING TIME TRIGGER, every 10 minutes.
+     Restart-on-failure does NOT apply to a task that was TERMINATED rather than
+     crashed, and logon/boot triggers never fire again on a machine that simply
+     stays up. With only those two triggers nothing was ever going to bring SUNI
+     back; it stayed down until a human happened to ask. This trigger is what
+     bounds an outage at ten minutes instead of "until somebody notices".
+
+     Firing it while SUNI is already running is safe because start_suni.bat
+     declines when the port is already bound. Without that guard a repeating
+     trigger would start a second instance over the same memory/ directory -
+     two writers on one set of SQLite files, and whichever loses the port bind
+     dies noisily while the operator sees a task that "ran fine".
+
+  2. ExecutionTimeLimit = PT0S (no limit).
+     The Windows default of PT72H TERMINATES a long-running server every three
+     days, forever, on a schedule. It did not cause the outage above - that run
+     was 28 hours old - but it guarantees a future one.
+
+  3. StopOnIdleEnd = false.
+     Only honoured when RunOnlyIfIdle is true, so it is usually inert. "Usually
+     inert" is not a property worth relying on for a setting that stops a server
+     when somebody touches the keyboard.
+
+  One more thing, worth doing on the host and NOT expressible in this file:
+
+    wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true
+
+  That log is disabled by default. Without it a task termination cannot be
+  attributed to anything afterwards - which is precisely the wall the 28 Aug
+  investigation hit: the task's LastTaskResult proved it had been terminated,
+  and nothing anywhere could say by what.
+-->
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Date>2026-09-01T00:00:00</Date>
+    <Author>REPLACE-WITH-YOUR-USER</Author>
+    <URI>\SUNI</URI>
+  </RegistrationInfo>
+  <Principals>
+    <Principal id="Author">
+      <UserId>REPLACE-WITH-YOUR-USER</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>HighestAvailable</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Hidden>true</Hidden>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <RestartOnFailure>
+      <Count>5</Count>
+      <Interval>PT1M</Interval>
+    </RestartOnFailure>
+    <IdleSettings>
+      <Duration>PT10M</Duration>
+      <WaitTimeout>PT1H</WaitTimeout>
+      <StopOnIdleEnd>false</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+  </Settings>
+  <Triggers>
+    <LogonTrigger>
+      <StartBoundary>2026-04-20T16:48:00</StartBoundary>
+    </LogonTrigger>
+    <BootTrigger>
+      <Delay>PT2M</Delay>
+    </BootTrigger>
+    <TimeTrigger>
+      <StartBoundary>2026-09-01T00:01:00+01:00</StartBoundary>
+      <Repetition>
+        <Interval>PT10M</Interval>
+        <StopAtDurationEnd>true</StopAtDurationEnd>
+      </Repetition>
+    </TimeTrigger>
+  </Triggers>
+  <Actions Context="Author">
+    <Exec>
+      <Command>REPLACE-WITH-YOUR-SUNI-PATH\start_suni.bat</Command>
+    </Exec>
+  </Actions>
+</Task>

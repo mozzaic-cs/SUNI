@@ -116,6 +116,11 @@ system. Every request also records **which model actually answered** it, and any
 run can be stopped mid-flight by the person who started it — Article 12
 traceability and the Article 14(4)(e) stop control.
 
+Running it as an always-on service is `deploy/suni-task-windows.xml` on Windows
+and `deploy/suni.service` (plus `deploy/suni-watchdog.timer`) on Linux. Both
+carry the settings that decide whether an outage lasts ten minutes or three
+days, and the reasoning for each.
+
 [`docs/eu-ai-act.md`](docs/eu-ai-act.md) sets out what is implemented, what the
 risk posture is, a candid Articles 8–15 gap analysis for anyone whose use case
 falls under Annex III, and — just as importantly — what none of it claims. If you
