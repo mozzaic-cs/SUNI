@@ -142,4 +142,7 @@ def test_it_holds_nothing_about_any_user():
     runstate.heartbeat()
     keys = set(_state())
     assert keys <= {"status", "pid", "started_at", "last_heartbeat",
-                    "reason", "stopped_at"}, f"unexpected field: {keys}"
+                    "reason", "stopped_at",
+                    # whether the accept loop is alive — about the PROCESS,
+                    # not about any person
+                    "listening"}, f"unexpected field: {keys}"

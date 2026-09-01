@@ -693,6 +693,16 @@ def create_app() -> FastAPI:
         from .. import schedules as _sched
         from .. import agents as _agents
         from ..notifications import email_notify as _mail
+        import logging as _logging
+        import os as _os
+        from .. import listener_watchdog as _lw
+
+        # None disables the check entirely (config `listener_watchdog`).
+        _watchdog_port = int(_os.environ.get("SUNI_PORT", 8765))
+        _watchdog = (_lw.ListenerWatchdog()
+                     if suni_config.get("listener_watchdog", True) else None)
+        if _watchdog is None:
+            _log.info("[WATCHDOG] listener check disabled by config")
         # Wait before the first pass. The first due() call creates schedules.db,
         # and doing that while the app is still warming up put a ~800ms outlier
         # on the very first request. Nothing is lost: an entry due at startup
@@ -714,12 +724,38 @@ def create_app() -> FastAPI:
                 elif _ret["reason"].startswith(("purge failed", "could not read")):
                     _log.warning("[AUDIT] retention: %s", _ret["reason"])
 
-                # "Still alive, now." Rides this loop rather than adding a
-                # task of its own; the 30s tick is the resolution of the death
-                # timestamp, which is far finer than the three days it took to
-                # notice the last outage.
+                # "Still alive, now" — and, crucially, "still LISTENING".
+                # Rides this loop rather than adding a task of its own; the 30s
+                # tick is the resolution of the death timestamp, which is far
+                # finer than the three days it took to notice the last outage.
+                #
+                # The probe is the part that earns its keep. A dead accept loop
+                # leaves everything else running — this loop included — so a
+                # heartbeat alone reports perfect health from a server that
+                # answers nobody. See suni/listener_watchdog.py.
                 from .. import runstate as _runstate
-                _runstate.heartbeat()
+                _listening = None
+                if _watchdog is not None:
+                    _listening = _lw.probe(_watchdog_port)
+                    _verdict = _watchdog.check(_listening)
+                    if _verdict == "exit":
+                        _log.critical(
+                            "[WATCHDOG] no connection accepted on port %s for %d "
+                            "consecutive checks — the accept loop is gone while "
+                            "this process is otherwise healthy. Exiting so the "
+                            "service manager restarts a server that can answer.",
+                            _watchdog_port, _watchdog.failures_before_exit)
+                        # Record the reason BEFORE dying: after os._exit nothing
+                        # runs, and an exit with no reason reads on the next
+                        # start as an unexplained kill.
+                        _runstate.heartbeat(listening=False)
+                        _runstate.mark_stopped(
+                            f"listener lost — no accept on port {_watchdog_port}")
+                        for _h in list(_logging.getLogger().handlers):
+                            try: _h.flush()
+                            except Exception: pass
+                        _os._exit(1)
+                _runstate.heartbeat(listening=_listening)
 
                 for s in _sched.due():
                     owner = _auth.get_user(s["owner_id"])

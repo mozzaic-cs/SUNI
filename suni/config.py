@@ -204,6 +204,10 @@ DEFAULTS: dict[str, Any] = {
     # ── Intent judge (tool-call security review) ──────────────────────────
     "intent_judge":       False,  # LLM reviews tool calls for off-intent / injected steering (additive-only)
     "intent_judge_model": "",     # model for the judge; "" = use main `model`
+    # Exit if the accept loop dies so a supervisor restarts us. A process that
+    # is alive but no longer listening looks healthy to every other signal —
+    # see suni/listener_watchdog.py. Off means SUNI can go deaf and stay deaf.
+    "listener_watchdog":  True,
     "output_guard":       False,  # scan tool RESULTS: redact secrets + annotate injection before they reach the model
     # ── Backend circuit breaker (Ollama liveness) ─────────────────────────
     "backend_breaker":           True,  # fast-fail + auto-recover when the local model backend is down

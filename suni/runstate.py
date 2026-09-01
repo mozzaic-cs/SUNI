@@ -99,6 +99,7 @@ def previous_run() -> dict:
         "started_at": prev.get("started_at", ""),
         "pid":        prev.get("pid", 0),
         "reason":     prev.get("reason", ""),
+        "listening":  prev.get("listening"),
         "ran_for":    _describe_gap(prev.get("started_at", ""),
                                     prev.get("last_heartbeat", "")),
     }
@@ -131,12 +132,20 @@ def mark_started() -> dict:
         "started_at":     now,
         "last_heartbeat": now,
         "reason":         "",
+        "listening":      None,      # unknown until the first probe
     })
     return prev
 
 
-def heartbeat() -> None:
-    """Say "still alive, now". Cheap enough for the 30s scheduler tick.
+def heartbeat(listening: bool | None = None) -> None:
+    """Say "still alive, now" — and, if known, whether we are still SERVING.
+
+    `listening` is the distinction that matters. A process can keep this
+    heartbeat perfectly current while answering nobody, because its accept loop
+    died and everything else kept running; that state was reproduced on
+    01/09/2026 and every other signal SUNI had called it healthy. Recording it
+    here means "alive but deaf" is answerable from the black box afterwards,
+    rather than only by probing the port while it is still happening.
 
     Rewrites the whole file rather than patching it: it is a few hundred bytes,
     and a partial update is how a black box ends up describing a state that
@@ -146,6 +155,8 @@ def heartbeat() -> None:
     if not state:
         return                                    # mark_started() never ran
     state["last_heartbeat"] = _now()
+    if listening is not None:
+        state["listening"] = bool(listening)
     _write(state)
 
 
