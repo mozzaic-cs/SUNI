@@ -23,6 +23,11 @@ Wants=network-online.target ollama.service
 # (bad config, missing dependency) that retrying will not fix. These belong in
 # [Unit], not [Service] — systemd ignores them there, which would silently
 # leave the service restarting forever.
+#
+# The cost of giving up is that a TRANSIENT fault also parks the unit in
+# `failed`, where systemd will never retry it and it stays down until a human
+# looks. Install deploy/suni-watchdog.timer alongside this unit to bound that
+# at ten minutes; it acts only on `failed`, so `systemctl stop` is still obeyed.
 StartLimitBurst=5
 StartLimitIntervalSec=300
 

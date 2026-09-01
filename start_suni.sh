@@ -21,7 +21,8 @@ mkdir -p logs
 # web.py itself loads), else the 8765 default — so the check follows the port
 # the server will really use rather than a guess.
 if [ -z "${SUNI_PORT:-}" ] && [ -f .env ]; then
-    SUNI_PORT="$(sed -n 's/^[[:space:]]*SUNI_PORT[[:space:]]*=[[:space:]]*//p' .env | tail -n1 | tr -d '\"'"'"' ')"
+    SUNI_PORT="$(sed -n 's/^[[:space:]]*SUNI_PORT[[:space:]]*=[[:space:]]*//p' .env | tail -n1 | tr -d '
+\"'"'"' ')"
 fi
 SUNI_PORT="${SUNI_PORT:-8765}"
 
@@ -70,6 +71,13 @@ fi
 #
 # The port is the check because it is the thing that is actually exclusive.
 # /dev/tcp is bash-native, so this needs no ss, lsof or netstat to be installed.
+#
+# Exit 0, not an error, when the port is taken. Under systemd a non-zero exit
+# would make the unit restart in a loop against an instance that is running
+# perfectly well. This branch should never be reached under systemd anyway --
+# it stops the old process fully before starting the new one -- so reaching it
+# means something outside the unit holds the port, which is a situation to
+# report rather than to fight.
 if (exec 3<>/dev/tcp/127.0.0.1/"$SUNI_PORT") 2>/dev/null; then
     exec 3<&-
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Already listening on $SUNI_PORT - not starting a second instance" >> logs/launcher.log

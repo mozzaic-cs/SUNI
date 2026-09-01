@@ -1,0 +1,22 @@
+[Unit]
+# Ten minutes is the Linux half of the same decision made on the Windows side,
+# where the scheduled task now retries on a ten-minute repeating trigger. It
+# bounds an outage at "ten minutes" instead of "until somebody notices", while
+# being slow enough that a genuinely broken install is not hammered.
+Description=Periodically recover SUNI if it has failed
+Documentation=file:///opt/suni/README.md
+
+[Timer]
+# Not immediately at boot: suni.service has its own boot ordering and a start
+# can legitimately take minutes on a large document corpus (TimeoutStartSec=300).
+# Checking too early would see a perfectly healthy slow start.
+OnBootSec=6min
+OnUnitActiveSec=10min
+
+# Survive a suspended or powered-off machine: run once on resume if the window
+# was missed, rather than waiting for the next tick.
+Persistent=true
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

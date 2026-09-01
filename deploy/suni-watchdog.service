@@ -1,0 +1,43 @@
+[Unit]
+# Recovers SUNI from the one state systemd will not recover from on its own:
+# `failed` after the start limit is exhausted.
+#
+# suni.service restarts on failure, but StartLimitBurst=5 / StartLimitIntervalSec=300
+# deliberately give up after five restarts in five minutes — a crash loop usually
+# means a real fault, and hammering it helps nobody. The cost of that choice is
+# that a TRANSIENT fault (Ollama not up yet, the disk briefly full, a network
+# mount still coming back) also parks the unit in `failed`, where it stays until
+# a human looks. On 28 Aug 2026 the Windows counterpart of this sat down for
+# THREE DAYS for exactly that reason, and was found only because someone asked
+# whether it was running.
+#
+# So: keep the crash-loop guard, and retry on a slow cadence instead. A genuinely
+# broken install fails every ten minutes, cheaply and visibly in the journal. A
+# transient one comes back by itself.
+#
+# Install (alongside suni.service):
+#   sudo cp deploy/suni-watchdog.{service,timer} /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now suni-watchdog.timer
+#
+# Check:  systemctl list-timers suni-watchdog.timer
+# Logs:   journalctl -u suni-watchdog -f
+Description=Restart SUNI if it has failed and given up
+Documentation=file:///opt/suni/README.md
+
+[Service]
+Type=oneshot
+
+# `is-failed` is the whole design. It is true ONLY when the unit gave up, so:
+#
+#   • crash-looped past the start limit  -> failed    -> restarted here
+#   • `systemctl stop suni`              -> inactive  -> LEFT ALONE
+#
+# An admin who stops SUNI for maintenance must not find it running again ten
+# minutes later. Anything that starts a service the operator deliberately
+# stopped is a bug, not a watchdog.
+#
+# reset-failed first, because a unit parked by the start limit refuses
+# `systemctl start` until the failure state is cleared — without it this whole
+# unit would run every ten minutes and achieve nothing.
+ExecStart=/bin/sh -c 'if systemctl is-failed --quiet suni.service; then echo "suni.service is failed - clearing and restarting"; systemctl reset-failed suni.service; systemctl start suni.service; else exit 0; fi'
