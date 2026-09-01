@@ -714,6 +714,13 @@ def create_app() -> FastAPI:
                 elif _ret["reason"].startswith(("purge failed", "could not read")):
                     _log.warning("[AUDIT] retention: %s", _ret["reason"])
 
+                # "Still alive, now." Rides this loop rather than adding a
+                # task of its own; the 30s tick is the resolution of the death
+                # timestamp, which is far finer than the three days it took to
+                # notice the last outage.
+                from .. import runstate as _runstate
+                _runstate.heartbeat()
+
                 for s in _sched.due():
                     owner = _auth.get_user(s["owner_id"])
                     if not owner or not owner.get("active", True):
@@ -771,6 +778,11 @@ def create_app() -> FastAPI:
         _auth.init_db()
         _audit.init_db()
         _conversations.init_db()
+        # Before anything else: say whether the LAST run stopped cleanly. A
+        # killed process cannot log its own death, so this is the only place the
+        # answer can appear. See suni/runstate.py.
+        from .. import runstate as _runstate
+        _runstate.mark_started()
         # Pre-warm nomic-embed-text so the first user request doesn't pay model load time
         try:
             from ..memory.manager import embed_nomic as _warm_nomic
@@ -843,6 +855,8 @@ def create_app() -> FastAPI:
     @app.on_event("shutdown")
     async def _shutdown():
         _log.info("[SHUTDOWN] SUNI stopping")
+        from .. import runstate as _runstate
+        _runstate.mark_stopped("clean shutdown")
         stop_event.set()
         # Stop channel gateways (they use their own per-channel stop events).
         for _ch in list(_channel_tasks):
