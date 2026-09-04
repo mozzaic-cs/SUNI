@@ -1416,10 +1416,44 @@ if (window.visualViewport) {
 // Server injects a fresh access token here when the session cookie is valid,
 // so a cleared localStorage never triggers a redirect loop.
 (function(){ const t='__SUNI_JWT__'; if(t && !t.startsWith('__')) localStorage.setItem('suni_jwt',t); })();
-const _ST = localStorage.getItem('suni_jwt') || '';
-function _apiFetch(url, opts={}){
+let _ST = localStorage.getItem('suni_jwt') || '';   // let: _apiFetch replaces it on refresh
+// An access token lasts 8 hours. This page is left open for DAYS — it is the
+// ambient one, running on a screen in the corner — so the token expiring is the
+// NORMAL case here, not an edge case. Without a refresh every call quietly
+// returns 401, the interface goes inert, and it looks exactly like the server
+// being down. It was read that way more than once.
+//
+// chat.html has done this since it was written; this page and the other one
+// simply never got it. The refresh token is already in localStorage (both pages
+// clear it on logout) and /api/auth/refresh already exists — nothing new is
+// needed, the call just has to be made.
+//
+// Redirect only when the refresh ALSO fails, which means the refresh token is
+// gone or expired too and there is genuinely nothing left to do but sign in.
+async function _apiFetch(url, opts={}){
   opts.headers = {...(opts.headers||{}),"Authorization":"Bearer "+_ST};
-  return fetch(url, opts);
+  let res = await fetch(url, opts);
+  if (res.status !== 401) return res;
+
+  const refresh = localStorage.getItem('suni_refresh_token');
+  if (refresh) {
+    try {
+      const r = await fetch('/api/auth/refresh', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({refresh_token: refresh}),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        _ST = d.access_token;                       // why _ST is let, not const
+        localStorage.setItem('suni_jwt', _ST);
+        opts.headers['Authorization'] = 'Bearer ' + _ST;
+        return await fetch(url, opts);              // replay the original call
+      }
+    } catch (e) { /* fall through to the login redirect */ }
+  }
+  localStorage.removeItem('suni_jwt');
+  location.href = '/login?next=/face';
+  return res;
 }
 // Auth check + mode selector init
 let _sessionMode = 'assistant';
