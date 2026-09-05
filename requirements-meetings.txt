@@ -1,0 +1,17 @@
+# Meeting recording — local, CPU-only transcription.
+#
+# Optional, like requirements-imagegen.txt. Without it SUNI still records and
+# stores meetings; it just cannot turn them into text, and says so.
+#
+#   pip install -r requirements-meetings.txt
+#
+# CPU on purpose: the GPU holds a 7B model in 8 GB of shared VRAM, and a
+# transcription pass that evicted it would make every chat slow for as long as
+# the meeting takes to process. Nothing waits on a meeting that has ended.
+#
+# Downloads a model on first use (~150 MB for `base`, ~500 MB for `small`),
+# cached under ~/.cache/huggingface. Set meeting_whisper_model to choose.
+#
+# ffmpeg must also be on PATH for capture — it is a system package, not a pip
+# one (Windows: choco install ffmpeg / winget install ffmpeg).
+faster-whisper==1.0.3

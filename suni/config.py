@@ -204,6 +204,18 @@ DEFAULTS: dict[str, Any] = {
     # ── Intent judge (tool-call security review) ──────────────────────────
     "intent_judge":       False,  # LLM reviews tool calls for off-intent / injected steering (additive-only)
     "intent_judge_model": "",     # model for the judge; "" = use main `model`
+    # ── Meeting recording (see suni/meetings.py) ─────────────────────────────
+    # Off by default: a feature that records people does not switch itself on.
+    # Note this only DISABLES — there is no setting that grants consent, and
+    # start_recording() refuses without an explicit human statement every time.
+    "meetings_enabled":     False,
+    # Both halves of the conversation: the loopback carries the people on the
+    # call, the microphone carries the people in the room. Names must match
+    # ffmpeg's exactly — GET /api/meetings/devices lists them.
+    "meeting_devices":      [],
+    # base = ~150 MB, fast on CPU. small = ~500 MB, better on accented speech.
+    "meeting_whisper_model": "base",
+
     # Exit if the accept loop dies so a supervisor restarts us. A process that
     # is alive but no longer listening looks healthy to every other signal —
     # see suni/listener_watchdog.py. Off means SUNI can go deaf and stay deaf.

@@ -38,7 +38,7 @@ from ..models.ollama_agent import OllamaAgent
 from ..models.claude_code_agent import ClaudeCodeAgent
 from ..memory.manager import MemoryManager
 from ..tools.registry import ToolRegistry
-from ..tools import shell_tool, file_tool, claude_code_tool, claude_code_advanced, web_tool, email_tool, pdf_tool, document_tool, download_tool, kb_tool, skills_tool, contacts_tool, monitor_tool, task_tool, project_tool, database_tool, calendar_tool, articles_tool, image_tool
+from ..tools import shell_tool, file_tool, claude_code_tool, claude_code_advanced, web_tool, email_tool, pdf_tool, document_tool, download_tool, kb_tool, skills_tool, contacts_tool, monitor_tool, task_tool, project_tool, database_tool, calendar_tool, articles_tool, image_tool, meeting_tool
 from ..skills import SkillStore
 from ..tools.mcp_bridge import MCPBridge, CLAUDE_DESKTOP_CONFIG
 from ..ingestion.watcher import watch
@@ -324,6 +324,12 @@ def _build_orchestrator(
     registry.register(database_tool.SCHEMA_SCHEMA,  database_tool.schema_handler)
     registry.register(database_tool.QUERY_SCHEMA,   database_tool.query_handler)
     registry.register(database_tool.EXECUTE_SCHEMA, database_tool.execute_handler)
+    # Meeting recording. start_ is in _CONSEQUENTIAL, so it reaches a human
+    # before anything records.
+    registry.register(meeting_tool.START_SCHEMA,      meeting_tool.start_handler)
+    registry.register(meeting_tool.STOP_SCHEMA,       meeting_tool.stop_handler)
+    registry.register(meeting_tool.LIST_SCHEMA,       meeting_tool.list_handler)
+    registry.register(meeting_tool.TRANSCRIBE_SCHEMA, meeting_tool.transcribe_handler)
     registry.register(calendar_tool.LIST_EVENTS_SCHEMA,   calendar_tool.list_events_handler)
     registry.register(calendar_tool.CREATE_EVENT_SCHEMA,  calendar_tool.create_event_handler)
     registry.register(calendar_tool.FREE_SLOTS_SCHEMA,    calendar_tool.free_slots_handler)

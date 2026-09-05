@@ -227,6 +227,7 @@ body.simple .section-gap{height:6px!important}
     <span class="badge phase">Phase 9 · voice-first persona (retractable dock + live caption) · opt-in webcam presence/head-tracking + vision snapshot · language-aware TTS + streaming prefetch pipeline · face colour selector · drag-drop upload on all UIs · Claude Code prompt-via-stdin (Windows cmd.exe limit) · 2026-07-24</span>
     <span class="badge phase">Phase 10 · messaging channels — Telegram (long-poll) · Discord (Gateway WS) · Slack (Socket Mode), all connect-out/no-public-URL, allow-list fail-closed + role standard, live start/stop supervisor · per-channel memory isolation (task-local fix) · Codex provider (no-key ChatGPT sub) · multi-model "collaborate" mode (Mode 2: draft → cross-critique → synthesise) with live phase streaming · 2026-07-26</span>
     <span class="badge phase">Phase 11 &middot; supervision &amp; reachability &mdash; runstate black box (heartbeat + unclean-stop detection, a killed process cannot log its own death) &middot; listener watchdog (alive-but-deaf accept loop &rarr; exit for supervisor restart) &middot; repeating scheduled task / systemd watchdog timer + port-guarded launchers &middot; client-disconnect noise filter (19,328 tracebacks were 97% of the log) &middot; AI Act Art 12 model traceability + Art 14(4)(e) stop button &middot; token refresh in every UI &middot; certificate SANs from the host (reachable by LAN IP) &middot; per-user output isolation &middot; 2026-09-05</span>
+    <span class="badge phase">Phase 12 &middot; meeting recording &mdash; SUNI does NOT join Teams/Meet/Zoom; it records this machine's loopback + microphone alongside whoever is in the call, so it is platform-agnostic, never in a participant list, and the audio never leaves the box &middot; local CPU faster-whisper (no GPU contention with qwen) &middot; consent is a hard gate, not a setting &middot; 2026-09-05</span>
   </div>
 </header>
 
@@ -1036,6 +1037,15 @@ body.simple .section-gap{height:6px!important}
     <span style="font-size:9px;color:var(--muted);font-weight:400;letter-spacing:.04em">always running · asyncio tasks</span>
   </div>
   <div class="svc-row" id="n-services">
+    <div class="svc">
+      <div class="svc-name">Meeting Recorder <span class="new-badge">new</span></div>
+      <div class="svc-detail">meetings.py &middot; ffmpeg dshow &rarr; 16 kHz mono WAV<br>
+        Loopback (people on the call) + mic (people in the room), amix<br>
+        <span style="color:var(--purple)">Writes into the user's OWN output dir &mdash; same isolation as any generated file</span><br>
+        <span style="color:var(--gold)">Consent is a GATE: start refuses without participants_informed=True, no config can default it, and the tool is approval-gated. No audit row &rarr; no recording</span><br>
+        <span style="color:var(--purple)">transcription.py &middot; faster-whisper on CPU, chunked on segment boundaries (an hour overflows num_ctx 8192)</span>
+      </div>
+    </div>
     <div class="svc">
       <div class="svc-name">Runstate Black Box <span class="new-badge">new</span></div>
       <div class="svc-detail">runstate.py &middot; memory/runstate.json<br>

@@ -122,6 +122,10 @@ _CONSEQUENTIAL: dict[str, list[str]] = {
     # preview shows the cadence and where results are sent.
     "create_schedule":       ["name", "cadence", "email_to"],
     "delete_schedule":       ["schedule_id"],
+    # Records people. The model cannot know whether anyone was told, so the
+    # approval card is where a human takes responsibility for that — the
+    # participants_informed flag alone would be the model's word for it.
+    "start_meeting_recording": ["title", "participants_informed"],
 }
 
 # Pending approvals: {approval_id: {"user_id": str, "future": Future, "tool": str, ...}}
