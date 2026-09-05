@@ -20,6 +20,7 @@ Keys (all optional):
 """
 from __future__ import annotations
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -160,40 +161,89 @@ def resolve_email(user_id: str = "") -> dict | None:
 
 
 _DESKTOP_FALLBACK = str(Path.home() / "Desktop")
+# Inside the install, not in anyone's personal folder. Relative, so it
+# follows the working directory the way every other SUNI store does.
+_DEFAULT_OUTPUT_ROOT = Path("files") / "output"
+
+
+def output_root() -> Path:
+    """The one directory every generated file lives under.
+
+    Defaults to `files/output` INSIDE the install rather than the Desktop of
+    whichever account happens to run SUNI. The Desktop default was written when
+    SUNI was a single-user tool on one person's machine; the moment other people
+    reach it over the network, "generated files land in the operator's personal
+    folder" stops being convenient and starts being a leak.
+    """
+    from . import config as _cfg
+    raw = (_cfg.get("global_output_dir") or "").strip()
+    return Path(raw) if raw else _DEFAULT_OUTPUT_ROOT
+
+
+def user_folder_name(user_id: str) -> str:
+    """A readable, unique, filesystem-safe folder name for one user.
+
+    The username makes it possible to find your own files by looking; the id
+    suffix makes collisions impossible, because two different usernames can
+    sanitise to the same string and quietly share a folder — which is exactly
+    the isolation this is here to provide.
+    """
+    name = ""
+    try:
+        from . import auth as _auth
+        u = _auth.get_user(user_id)
+        if u:
+            name = str(u.get("username") or "")
+    except Exception:                      # noqa: BLE001 — never block a write
+        pass
+    safe = re.sub(r"[^A-Za-z0-9._-]", "_", name).strip("._-")[:40]
+    short = re.sub(r"[^A-Za-z0-9]", "", str(user_id))[:8] or "anon"
+    return f"{safe}-{short}" if safe else short
 
 
 def resolve_output_dir(user_id: str = "") -> str:
-    """Return the effective output directory for generated files.
+    """Where this user's generated files go.
 
-    Priority: user's output_dir (validated under global_output_dir)
-              → global_output_dir
-              → Desktop fallback.
+    Every user gets their OWN subdirectory of the root. Before, everyone shared
+    one directory, so on a networked instance each person's documents sat beside
+    everybody else's and the file-serve endpoint would hand any of them to any
+    account that asked.
 
-    Security: a user's output_dir is only honoured when it is a subdirectory
-    of global_output_dir.  This prevents users from reading arbitrary paths via
-    the file-serve endpoint by setting output_dir to an arbitrary location.
+    A user may still set their own `output_dir`, and it is still only honoured
+    when it resolves inside the root — otherwise it would be a way to point the
+    serve endpoint at any path on the machine.
     """
-    from . import config as _cfg
-    global_raw = (_cfg.get("global_output_dir") or "").strip()
+    root = output_root()
+    try:
+        root_p = root.resolve()
+        root_p.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return _DESKTOP_FALLBACK           # unwritable root: better than nothing
 
-    if user_id:
-        user_raw = get(user_id).get("output_dir", "").strip()
-        if user_raw and global_raw:
-            try:
-                user_p   = Path(user_raw).resolve()
-                global_p = Path(global_raw).resolve()
-                user_p.relative_to(global_p)   # raises ValueError if not under global
-                user_p.mkdir(parents=True, exist_ok=True)
-                return str(user_p)
-            except (ValueError, OSError):
-                pass  # fall through to global
-
-    if global_raw:
+    if not user_id:
+        # Scheduled runs and channel gateways with no signed-in user. Kept out
+        # of every real user's folder rather than dropped in the root, where it
+        # would be served to whoever asked.
+        shared = root_p / "_system"
         try:
-            global_p = Path(global_raw).resolve()
-            global_p.mkdir(parents=True, exist_ok=True)
-            return str(global_p)
+            shared.mkdir(parents=True, exist_ok=True)
+            return str(shared)
         except OSError:
-            pass
+            return str(root_p)
 
-    return _DESKTOP_FALLBACK
+    user_raw = get(user_id).get("output_dir", "").strip()
+    if user_raw:
+        try:
+            user_p = Path(user_raw).resolve()
+            user_p.relative_to(root_p)     # ValueError if it escapes the root
+            user_p.mkdir(parents=True, exist_ok=True)
+            return str(user_p)
+        except (ValueError, OSError):
+            pass                           # outside the root, or unusable
+
+    own = root_p / user_folder_name(user_id)
+    try:
+        own.mkdir(parents=True, exist_ok=True)
+        return str(own)
+    except OSError:
+        return str(root_p)

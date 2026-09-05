@@ -277,7 +277,8 @@ body.simple .section-gap{height:6px!important}
         Skills tab: browse / edit / delete learned skills<br>
         <span style="color:var(--teal)">Ollama Endpoints panel · Model Tiers inventory</span><br>
         <span style="color:var(--teal)">Per-user API key field (Fernet encrypted)</span><br>
-        <span style="color:var(--teal)">Files &amp; Output → global_output_dir</span>
+        <span style="color:var(--teal)">Files &amp; Output &rarr; global_output_dir (default files/output)</span><br>
+        <span style="color:var(--gold)">per-user subfolder &middot; serve scoped to the caller</span>
       </div>
     </div>
     <div class="node c-navy" style="min-width:185px;opacity:.7">
@@ -966,7 +967,8 @@ body.simple .section-gap{height:6px!important}
         allowed_mcp_servers (list | null)<br>
         <span style="color:var(--teal)">anthropic_api_key (Fernet encrypted · crypto_utils.py)</span><br>
         <span style="color:var(--teal)">Auto-configured from conversation (A-cfg)</span><br>
-        <span style="color:var(--teal)">output_dir (must be under global_output_dir)</span>
+        <span style="color:var(--teal)">output_dir (must be under global_output_dir)</span><br>
+        <span style="color:var(--gold)">default: &lt;root&gt;/&lt;username&gt;-&lt;id8&gt; &middot; one folder per user</span>
       </div>
     </div>
     <div class="node" style="border-color:rgba(255,69,96,.15);min-width:195px">

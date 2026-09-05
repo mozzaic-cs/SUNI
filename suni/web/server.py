@@ -1865,12 +1865,14 @@ def create_app() -> FastAPI:
     _BLOCKED_DL_EXTS = {".pem", ".key", ".pfx", ".p12", ".env", ".reg", ".exe", ".dll", ".bat", ".cmd", ".ps1"}
     _SUNI_FILES_DIR = Path("files")
     _SUNI_FILES_DIR.mkdir(parents=True, exist_ok=True)
+    # Deliberately NOT ~/Desktop, ~/Downloads or ~/Documents. Those are the
+    # personal folders of whoever runs SUNI, and they were readable by every
+    # authenticated account — verified, not assumed: a READ-ONLY user fetched a
+    # canary file out of ~/Documents through this endpoint. Harmless while SUNI
+    # is one person on their own machine; a data leak the moment colleagues can
+    # reach it. The caller's own output directory is added per request below.
     _ALLOWED_DL_ROOTS = [
-        Path.home() / "Desktop",
-        Path.home() / "Downloads",
-        Path.home() / "Documents",
         _SUNI_FILES_DIR,
-        _UPLOAD_DIR,
     ]
 
     # Regex to find /api/files/serve URLs in model responses
@@ -1942,19 +1944,34 @@ def create_app() -> FastAPI:
             raise HTTPException(403, "File type not allowed for download")
         # Build the per-request allowed roots: static base + global output dir + user output dir
         # Read config at request time so admin changes take effect without a restart.
+        # The caller's OWN directories, never the shared root. Adding the root
+        # itself would let any account walk into a sibling's folder, which is
+        # the isolation this is supposed to provide.
+        #
+        # Resolved through resolve_output_dir() at request time so an admin
+        # changing the root takes effect without a restart, and so this can
+        # never drift from where the writer actually puts things.
         allowed = list(_ALLOWED_DL_ROOTS) + [_UPLOAD_DIR / user["id"]]
-        global_out = suni_config.get("global_output_dir", "").strip()
-        if global_out:
-            allowed.append(Path(global_out).resolve())
-        # Per-user output_dir: re-validate containment at serve time (don't trust stored value alone)
-        user_out_raw = _user_settings.get(user["id"]).get("output_dir", "").strip()
-        if user_out_raw and global_out:
-            try:
-                user_out_p = Path(user_out_raw).resolve()
-                user_out_p.relative_to(Path(global_out).resolve())
-                allowed.append(user_out_p)
-            except ValueError:
-                pass  # stored value no longer valid — silently ignore
+        own_out = None
+        try:
+            own_out = Path(_user_settings.resolve_output_dir(user["id"])).resolve()
+            allowed.append(own_out)
+        except Exception:                       # noqa: BLE001 — deny, don't crash
+            pass
+
+        # DENY before allow, for anything inside the shared output root that is
+        # not this caller's own folder. An allow-list alone is not sufficient:
+        # the root defaults to files/output, which sits INSIDE files/ — itself an
+        # allowed root — so a purely additive check handed every user's output
+        # to everyone. Caught by the test, not by reading the code.
+        try:
+            root_p = _user_settings.output_root().resolve()
+            if own_out is not None and p.is_relative_to(root_p)                     and not p.is_relative_to(own_out):
+                raise HTTPException(403, "Not your file")
+        except HTTPException:
+            raise
+        except Exception:                       # noqa: BLE001 — resolution issues
+            pass
         if not any(p.is_relative_to(r.resolve()) for r in allowed):
             raise HTTPException(403, "Path not in an allowed download directory")
         # Extra guard: block sensitive filenames regardless of location

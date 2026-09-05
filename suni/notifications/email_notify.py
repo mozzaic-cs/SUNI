@@ -257,11 +257,13 @@ def _safe_attach_roots(user_id: str = "") -> list[Path]:
     instance solely because the directory falls back to Desktop, which is on
     the list by luck rather than design.
     """
+    # The operator's personal folders are NOT here, for the same reason they
+    # were removed from the download roots: "attach the file from my Desktop"
+    # is a convenience for one person on one machine, and a way to post someone
+    # else's private documents out of the building on a shared instance.
     roots = [
-        Path.home() / "Desktop",
-        Path.home() / "Downloads",
-        Path.home() / "Documents",
         Path("memory"),
+        Path("files"),
     ]
     try:
         from ..user_settings import resolve_output_dir
