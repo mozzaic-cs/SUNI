@@ -80,6 +80,50 @@ def _describe_gap(started: str, last: str) -> str:
         return "unknown"
 
 
+# How long after a planned-stop marker a death still counts as planned. The
+# heartbeat ticks every 30s, and stopping a service takes seconds — so if the
+# process was still beating minutes later, the marker was stale and whatever
+# killed it afterwards was NOT the planned stop.
+_PLANNED_GRACE_S = 180
+
+
+def mark_planned_stop(reason: str = "planned restart") -> None:
+    """Say a stop is about to happen, so the next start does not cry wolf.
+
+    Task Scheduler and `systemctl stop` TERMINATE the process; no handler runs,
+    so SUNI cannot record its own planned shutdown from the inside. Without this
+    every deliberate restart logged "ended WITHOUT a clean shutdown" — accurate
+    in the letter, and corrosive: a warning that fires on routine operations is
+    one people learn to skip, which is exactly the failure the unclean-stop
+    warning exists to prevent.
+
+    Status stays "running" on purpose. If the stop then does not happen, nothing
+    has been falsified — the marker simply ages out of the grace window and the
+    next real crash is reported as a crash.
+    """
+    state = _read()
+    if not state:
+        return
+    state["planned_stop_at"] = _now()
+    state["planned_stop_reason"] = str(reason)[:200]
+    _write(state)
+    _log.info("[RUNSTATE] planned stop noted (%s)", reason)
+
+
+def _was_planned(prev: dict) -> bool:
+    """Did a planned-stop marker actually precede this death?"""
+    marker = prev.get("planned_stop_at")
+    last   = prev.get("last_heartbeat")
+    if not marker or not last:
+        return False
+    try:
+        gap = (datetime.fromisoformat(last)
+               - datetime.fromisoformat(marker)).total_seconds()
+    except Exception:
+        return False
+    return gap <= _PLANNED_GRACE_S
+
+
 def previous_run() -> dict:
     """What the last run left behind, before this one overwrites it.
 
@@ -91,15 +135,18 @@ def previous_run() -> dict:
     prev = _read()
     if not prev:
         return {"unclean": False, "first_run": True}
-    status = prev.get("status", "")
+    status  = prev.get("status", "")
+    planned = _was_planned(prev)
     return {
-        "unclean":    status == "running",
+        "unclean":    status == "running" and not planned,
+        "planned":    planned,
         "first_run":  False,
         "last_seen":  prev.get("last_heartbeat", ""),
         "started_at": prev.get("started_at", ""),
         "pid":        prev.get("pid", 0),
         "reason":     prev.get("reason", ""),
         "listening":  prev.get("listening"),
+        "planned_reason": prev.get("planned_stop_reason", ""),
         "ran_for":    _describe_gap(prev.get("started_at", ""),
                                     prev.get("last_heartbeat", "")),
     }
@@ -121,6 +168,10 @@ def mark_started() -> dict:
             prev.get("pid") or "?", prev.get("last_seen") or "unknown",
             prev.get("ran_for"),
         )
+    elif prev.get("planned"):
+        _log.info("[RUNSTATE] previous run (pid %s) was stopped deliberately "
+                  "after %s (%s)", prev.get("pid") or "?", prev.get("ran_for"),
+                  prev.get("planned_reason") or "planned restart")
     elif not prev.get("first_run"):
         _log.info("[RUNSTATE] previous run stopped cleanly (%s)",
                   prev.get("reason") or "no reason recorded")

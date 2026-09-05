@@ -146,3 +146,68 @@ def test_it_holds_nothing_about_any_user():
                     # whether the accept loop is alive — about the PROCESS,
                     # not about any person
                     "listening"}, f"unexpected field: {keys}"
+
+
+# ── a planned restart must not read as a crash ──────────────────────────────
+# Task Scheduler and `systemctl stop` terminate rather than signal, so SUNI
+# cannot record its own planned shutdown from the inside. Without a marker,
+# every deliberate restart logged "ended WITHOUT a clean shutdown" — and a
+# warning that fires on routine operations is one people stop reading, which
+# defeats the whole point of the unclean-stop warning.
+
+def test_a_marked_stop_is_reported_as_deliberate(caplog):
+    runstate.mark_started()
+    runstate.heartbeat()
+    runstate.mark_planned_stop("restart for new code")
+    # …terminated here. No shutdown handler runs.
+
+    with caplog.at_level(logging.WARNING):
+        prev = runstate.mark_started()
+
+    assert prev["planned"] is True
+    assert prev["unclean"] is False, "a planned restart still cried wolf"
+    assert prev["planned_reason"] == "restart for new code"
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+def test_an_unmarked_kill_is_still_reported_as_unclean(caplog):
+    """The warning must survive: this is the case it exists for."""
+    runstate.mark_started()
+    runstate.heartbeat()
+    with caplog.at_level(logging.WARNING):
+        prev = runstate.mark_started()
+    assert prev["unclean"] is True and prev["planned"] is False
+    assert any("WITHOUT a clean shutdown" in r.message for r in caplog.records)
+
+
+def test_a_stale_marker_does_not_excuse_a_later_crash(caplog):
+    """Someone marks a stop, changes their mind, and SUNI runs on for hours
+    before dying for real. That must read as a crash, not as the restart nobody
+    ended up doing."""
+    import datetime as _dt
+    runstate.mark_started()
+    runstate.mark_planned_stop("restart I abandoned")
+
+    state = json.loads(runstate._PATH.read_text(encoding="utf-8"))
+    later = (_dt.datetime.now(_dt.timezone.utc)
+             + _dt.timedelta(seconds=runstate._PLANNED_GRACE_S + 600)).isoformat()
+    state["last_heartbeat"] = later          # kept beating long after the marker
+    runstate._PATH.write_text(json.dumps(state), encoding="utf-8")
+
+    with caplog.at_level(logging.WARNING):
+        prev = runstate.mark_started()
+    assert prev["planned"] is False, "a stale marker excused a real crash"
+    assert prev["unclean"] is True
+
+
+def test_the_marker_does_not_claim_the_process_stopped():
+    """If the stop fails and SUNI carries on, nothing may have been falsified."""
+    runstate.mark_started()
+    runstate.mark_planned_stop("about to restart")
+    state = json.loads(runstate._PATH.read_text(encoding="utf-8"))
+    assert state["status"] == "running", "the marker pre-declared a stop"
+
+
+def test_marking_before_any_start_does_nothing():
+    runstate.mark_planned_stop("nothing running")
+    assert not runstate._PATH.exists()
