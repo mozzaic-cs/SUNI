@@ -39,9 +39,13 @@ dependencies = { file = ["requirements.txt"] }
 #   embeddings  torch + sentence-transformers (~2.5GB) for doc-KB search
 #   imagegen    torch + diffusers for local image generation
 #   articles    pyodbc, which also needs the unixODBC system library
+#   meetings    faster-whisper for local transcription. Also needs ffmpeg, which
+#               is a SYSTEM package -- pip cannot supply it, so install.py checks
+#               for it and says so rather than letting recording fail silently.
 optional-dependencies.embeddings = { file = ["requirements-embeddings.txt"] }
 optional-dependencies.imagegen   = { file = ["requirements-imagegen.txt"] }
 optional-dependencies.articles   = { file = ["requirements-articles.txt"] }
+optional-dependencies.meetings   = { file = ["requirements-meetings.txt"] }
 
 [tool.setuptools.packages.find]
 include = ["suni*"]

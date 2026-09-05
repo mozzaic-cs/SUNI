@@ -5,8 +5,12 @@ Deliberately CPU-only. The GPU already holds a 7B model in 8 GB of shared VRAM,
 and a transcription pass that evicts it would make every chat slow for as long
 as the meeting takes to process. A meeting is finished by the time this runs, so
 nothing is waiting on it — trading speed for not disturbing the assistant is the
-right way round. Expect roughly real-time-ish on a `base` model: a one-hour
-meeting takes minutes, not seconds.
+right way round.
+
+Measured on this hardware (16-core desktop, `base`, int8, VAD on): **4.4x faster
+than real time**, so a 60-minute meeting transcribes in roughly 14 minutes. Model
+load is ~2-5s from the local cache, and the first ever run additionally
+downloads ~150 MB.
 
 `faster-whisper` is an OPTIONAL dependency (requirements-meetings.txt), in the
 same way image generation is. If it is absent the caller is told exactly that,
@@ -60,7 +64,20 @@ def _load():
     except Exception as exc:    # noqa: BLE001
         raise TranscriptionError(f"{_INSTALL_HINT}\n({exc})")
     log.info("[TRANSCRIBE] loading whisper model %r on CPU (int8)", name)
-    _model = WhisperModel(name, device="cpu", compute_type="int8")
+    # Try the local cache FIRST. Without this, every load contacts the Hugging
+    # Face hub to check the model is current — measured at ~174s on this machine
+    # against ~2s from disk. SUNI has been bitten by exactly this before: local
+    # image generation went from 208s to 29s per load for the same reason.
+    #
+    # The fallback is the download path, so a first run still works; it is only
+    # the repeated cost that is removed.
+    try:
+        _model = WhisperModel(name, device="cpu", compute_type="int8",
+                              local_files_only=True)
+        log.info("[TRANSCRIBE] loaded %r from the local cache", name)
+    except Exception:                       # noqa: BLE001 — not cached yet
+        log.info("[TRANSCRIBE] %r not cached; downloading it once", name)
+        _model = WhisperModel(name, device="cpu", compute_type="int8")
     _model_name = name
     return _model
 

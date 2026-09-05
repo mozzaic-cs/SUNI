@@ -7,7 +7,8 @@ SUNI installer — prepare a clean environment to run SUNI.
 What it does:
   1. Checks Python >= 3.10.
   2. Creates a virtual environment (.venv).
-  3. Installs the pinned core dependencies (requirements.txt).
+  3. Installs the pinned core dependencies (requirements.txt), plus meeting
+     transcription unless --no-meetings is passed.
   4. Ensures a .env exists (copied from .env.example for you to fill in).
   5. Checks whether Ollama is reachable and the default model is present.
   6. Prints how to start SUNI and finish setup in your browser.
@@ -18,6 +19,13 @@ open it — so this installer only prepares the environment; it never handles se
 
 Optional: for the document knowledge base, also install requirements-embeddings.txt
 (it pulls PyTorch — large and hardware-specific; SUNI runs fine without it).
+
+Meeting transcription IS installed by default. It is small next to PyTorch and
+the feature is unusable without it, so leaving it out meant every operator hit
+the same "install this first" wall the moment they tried to record a meeting.
+`python install.py --no-meetings` skips it. The whisper model itself is not
+downloaded here — that happens on the first transcription, so an install does
+not pull hundreds of megabytes nobody has asked for yet.
 """
 from __future__ import annotations
 import os
@@ -69,6 +77,40 @@ def main() -> int:
     subprocess.check_call([str(vpy), "-m", "pip", "install", "-q", "-r", str(ROOT / "requirements.txt")])
     info("dependencies installed")
 
+    if "--no-meetings" in sys.argv:
+        info("skipping meeting transcription (--no-meetings)")
+    else:
+        step("Installing meeting transcription (faster-whisper)")
+        req = ROOT / "requirements-meetings.txt"
+        try:
+            # NOT check_call: this is an optional feature, and a wheel that will
+            # not build on some platform must leave the operator with a working
+            # SUNI rather than a failed install. Everything else is already done
+            # by this point.
+            rc = subprocess.call([str(vpy), "-m", "pip", "install", "-q", "-r", str(req)])
+            if rc == 0:
+                info("meeting transcription ready (the model downloads on first use)")
+            else:
+                info("could not install faster-whisper — SUNI works without it.")
+                info(f"retry later with:  {vpy} -m pip install -r {req.name}")
+        except Exception as exc:                       # noqa: BLE001
+            info(f"skipped meeting transcription ({exc})")
+
+    step("Checking ffmpeg (needed to record meetings)")
+    if shutil.which("ffmpeg"):
+        info("ffmpeg found")
+    else:
+        # pip cannot supply this one. Without it recording fails at the moment
+        # somebody tries to use it, in a meeting, which is the worst possible
+        # time to discover a missing system package.
+        info("ffmpeg NOT found — meeting recording will not work without it.")
+        if sys.platform == "win32":
+            info("install with:  winget install ffmpeg    (or: choco install ffmpeg)")
+        elif sys.platform == "darwin":
+            info("install with:  brew install ffmpeg")
+        else:
+            info("install with:  sudo apt install ffmpeg   (or your package manager)")
+
     step("Preparing config + folders")
     env, example = ROOT / ".env", ROOT / ".env.example"
     if not env.exists() and example.exists():
@@ -106,6 +148,10 @@ def main() -> int:
 
   Optional — document knowledge base (heavy, pulls PyTorch):
       see requirements-embeddings.txt
+
+  Meeting recording is installed but OFF until an admin enables it:
+      Configuration → meetings_enabled, and set meeting_devices
+      (usually the system loopback plus your microphone)
 """)
     return 0
 
