@@ -226,6 +226,7 @@ body.simple .section-gap{height:6px!important}
     <span class="badge phase">Phase 8 · dual-mode backend (Ollama⇄vLLM) + capability fleet (STT · vision · TTS) · security hardening (intent judge · output guard · tool policies) · OIDC · circuit breaker · token accounting · 2026-07-16</span>
     <span class="badge phase">Phase 9 · voice-first persona (retractable dock + live caption) · opt-in webcam presence/head-tracking + vision snapshot · language-aware TTS + streaming prefetch pipeline · face colour selector · drag-drop upload on all UIs · Claude Code prompt-via-stdin (Windows cmd.exe limit) · 2026-07-24</span>
     <span class="badge phase">Phase 10 · messaging channels — Telegram (long-poll) · Discord (Gateway WS) · Slack (Socket Mode), all connect-out/no-public-URL, allow-list fail-closed + role standard, live start/stop supervisor · per-channel memory isolation (task-local fix) · Codex provider (no-key ChatGPT sub) · multi-model "collaborate" mode (Mode 2: draft → cross-critique → synthesise) with live phase streaming · 2026-07-26</span>
+    <span class="badge phase">Phase 11 &middot; supervision &amp; reachability &mdash; runstate black box (heartbeat + unclean-stop detection, a killed process cannot log its own death) &middot; listener watchdog (alive-but-deaf accept loop &rarr; exit for supervisor restart) &middot; repeating scheduled task / systemd watchdog timer + port-guarded launchers &middot; client-disconnect noise filter (19,328 tracebacks were 97% of the log) &middot; AI Act Art 12 model traceability + Art 14(4)(e) stop button &middot; token refresh in every UI &middot; certificate SANs from the host (reachable by LAN IP) &middot; per-user output isolation &middot; 2026-09-05</span>
   </div>
 </header>
 
@@ -371,7 +372,8 @@ body.simple .section-gap{height:6px!important}
         <span class="tool-pill new">/api/skills GET·POST · /api/skills/{slug}</span>
         <span class="tool-pill new">/api/memory/stats · /api/memory/promote · /api/memory/consolidate</span>
         <span class="tool-pill new">/api/knowledge/compress</span>
-        <span class="tool-pill new">/api/files/upload · /api/files/serve?token= (JWT clickable links)</span>
+        <span class="tool-pill new">/api/files/upload &middot; /api/files/serve?token= (JWT clickable links &middot; scoped to the caller's own output)</span>
+        <span class="tool-pill new">/api/chat/stop &mdash; human interrupt, AI Act Art 14(4)(e) (not rate limited)</span>
         <span class="tool-pill">/api/mcp/servers CRUD · /api/mcp/catalog</span>
         <span class="tool-pill new">/api/models/inventory (admin) · /api/session/info</span>
         <span class="tool-pill">/api/users · /api/roles · /api/audit</span>
@@ -940,6 +942,7 @@ body.simple .section-gap{height:6px!important}
       <div class="node-title" style="color:var(--red)">JWT Auth</div>
       <div class="node-detail"><span>memory/users.db · bcrypt 12 rounds</span>
         JWT access 8h + refresh token 30d httpOnly<br>
+        <span style="color:var(--red)">Every UI refreshes on 401 and replays the call. Two of the three did not, so a tab left open past 8h went inert &mdash; indistinguishable from the server being down</span><br>
         Per-user API tokens · static service token<br>
         Roles: read-only · standard · power-user · admin
       </div>
@@ -976,6 +979,7 @@ body.simple .section-gap{height:6px!important}
       <div class="node-detail"><span>memory/audit.db · append-only</span>
         Every chat: user · query · route · tools · ms<br>
         <span style="color:var(--teal)">prompt_tokens + gen_tokens per request (usage.py accumulator)<br>GET /api/usage — per-user token totals (SMB cost view)</span><br>
+        <span style="color:var(--gold)">models &mdash; which model(s) actually answered, in call order (a tier escalation reads qwen2.5:7b,qwen2.5:32b)<br>route="chat.stopped" &mdash; a human interrupted the run</span><br>
         <span style="color:var(--teal)">route="approval": allow · deny · timeout · cancelled</span>
       </div>
     </div>
@@ -1032,6 +1036,21 @@ body.simple .section-gap{height:6px!important}
     <span style="font-size:9px;color:var(--muted);font-weight:400;letter-spacing:.04em">always running · asyncio tasks</span>
   </div>
   <div class="svc-row" id="n-services">
+    <div class="svc">
+      <div class="svc-name">Runstate Black Box <span class="new-badge">new</span></div>
+      <div class="svc-detail">runstate.py &middot; memory/runstate.json<br>
+        Heartbeat + listening flag on the 30s tick<br>
+        <span style="color:var(--purple)">A killed process cannot log its own death, so the NEXT start reports it: status still "running" = died unclean, with the last-alive time</span>
+      </div>
+    </div>
+    <div class="svc">
+      <div class="svc-name">Listener Watchdog <span class="new-badge">new</span></div>
+      <div class="svc-detail">listener_watchdog.py &middot; config listener_watchdog<br>
+        Probes the port each tick; exits after 3 consecutive misses so a supervisor restarts<br>
+        <span style="color:var(--purple)">Catches alive-but-deaf: the accept loop dies, everything else keeps running and every other signal reads healthy</span><br>
+        <span style="color:var(--purple)">Will not act until a probe has SUCCEEDED once &mdash; otherwise the probe is what is broken</span>
+      </div>
+    </div>
     <div class="svc">
       <div class="svc-name">Session Watcher</div>
       <div class="svc-detail">Polls Claude Code JSONL every 60s<br>Ingests → Tier 2a episodic memory</div>
@@ -1546,7 +1565,8 @@ body.simple .section-gap{height:6px!important}
         Both quickstarts say to open https://localhost:8765 — nothing used to
         create a certificate, so that URL failed and users fell back to http,
         creating the admin password over cleartext<br>
-        <span style="color:var(--cyan)">SUNI_NO_TLS=1 opts out, for a proxy that terminates TLS itself</span>
+        <span style="color:var(--cyan)">SANs are built from the host &mdash; hostname, FQDN and every non-loopback address &mdash; so SUNI is reachable by LAN IP. Hardcoding localhost/127.0.0.1 made every remote client a name mismatch, which browsers often will not let you past</span><br>
+        <span style="color:var(--cyan)">SUNI_CERT_HOSTS adds a NAT/VPN address the host cannot see &middot; SUNI_NO_TLS=1 opts out, for a proxy that terminates TLS itself</span>
       </div>
     </div>
 
