@@ -41,7 +41,29 @@
      inert" is not a property worth relying on for a setting that stops a server
      when somebody touches the keyboard.
 
-  One more thing, worth doing on the host and NOT expressible in this file:
+  Two more things, worth doing on the host and NOT expressible in this file.
+
+  1. Let other machines reach SUNI. It binds 0.0.0.0, but Windows still has to
+     allow the port inbound. Scope it by SOURCE ADDRESS rather than by firewall
+     profile: a rule limited to the Private profile silently stops working the
+     day Windows reclassifies the network as Public, and that failure looks
+     exactly like the server being down.
+
+       New-NetFirewallRule -DisplayName "SUNI (HTTPS 8765) - private networks" `
+         -Direction Inbound -Protocol TCP -LocalPort 8765 -Action Allow `
+         -Profile Any -RemoteAddress 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+
+     Private ranges rather than one subnet, because VPN clients often arrive
+     from a different one than the LAN. Narrow it if you know yours.
+
+     Note Windows gives an explicit BLOCK precedence over an ALLOW. A leftover
+     "block python.exe" rule -- Windows creates one whenever somebody dismisses
+     the firewall prompt -- will override the rule above on whichever profile it
+     covers. Check with:
+
+       Get-NetFirewallRule -Direction Inbound -Action Block -Enabled True
+
+  2. Make a task termination attributable after the fact:
 
     wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true
 
