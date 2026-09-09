@@ -1305,7 +1305,13 @@ if (SR) {
 
   let listening     = false;
   let silenceTimer  = null;
-  let accTranscript = '';
+  let flushTimer    = null;
+  let pendingSend   = false;
+  // Visible build marker: lets a phone report WHICH js it is running, so
+  // "didn't work" can be told apart from "didn't load" in one message.
+  const STT_BUILD = 'stt-v4';
+  let accTranscript = '';    // completed text from PREVIOUS restarted sessions
+  let finalTranscript = '';  // text finalised within the CURRENT session
   let SILENCE_MS    = 2500;
 
   // Read language: user settings override global config
@@ -1324,9 +1330,21 @@ if (SR) {
     clearTimeout(silenceTimer);
     if (!listening) return;
     listening = false;
-    recognition.stop();
+    pendingSend = true;
     micBtn.classList.remove('listening');
     inputEl.placeholder = 'Speak your mind. I shall observe.';
+    // stop() still delivers a final result for the trailing audio, which used
+    // to arrive AFTER send() had already fired — that is how the tail of a
+    // sentence went missing. Send from onend instead, once the final landed.
+    try { recognition.stop(); } catch (err) { _flushSend(); return; }
+    clearTimeout(flushTimer);
+    flushTimer = setTimeout(_flushSend, 1200);   // floor, if onend never fires
+  }
+
+  function _flushSend() {
+    if (!pendingSend) return;
+    pendingSend = false;
+    clearTimeout(flushTimer);
     if (inputEl.value.trim()) send();
   }
 
@@ -1335,14 +1353,52 @@ if (SR) {
     micBtn.classList.add('listening');
     if (!accTranscript) {
       inputEl.value = '';
-      inputEl.placeholder = 'Listening…';
+      inputEl.placeholder = 'Listening… ' + STT_BUILD;
     }
   };
 
+
+  // Merge text across a browser-initiated restart. Some engines re-report the
+  // WHOLE utterance in the new session, so blindly appending produced
+  // "Ola Ola Ola Ola Sunny Ola Sunny...". Overlap is compared at WORD
+  // boundaries: a character scan would fuse "Ola Sunny" + "nny Qual" on a
+  // 3-char coincidence, and could silently eat a genuine repeat like "nao nao".
+  function _mergeTranscript(prev, next) {
+    const a = (prev || '').trim(), b = (next || '').trim();
+    if (!a) return b;
+    if (!b) return a;
+    // Fast path, and the case this engine actually produces: b restates all of a.
+    if (b.toLowerCase().startsWith(a.toLowerCase())) return b;
+    const aw = a.split(/\s+/), bw = b.split(/\s+/);
+    for (let n = Math.min(aw.length, bw.length); n > 0; n--) {
+      if (aw.slice(-n).join(' ').toLowerCase() === bw.slice(0, n).join(' ').toLowerCase()) {
+        return aw.concat(bw.slice(n)).join(' ');
+      }
+    }
+    return a + ' ' + b;
+  }
+
   recognition.onresult = e => {
-    let text = '';
-    for (let i = 0; i < e.results.length; i++) text += e.results[i][0].transcript;
-    inputEl.value = accTranscript ? (accTranscript + ' ' + text).trim() : text;
+    // Finals accumulate; the interim is the LATEST one and is never concatenated.
+    // Some engines emit every interim as a NEW result index holding the whole
+    // utterance so far, so the old "concatenate every result" loop glued each
+    // cumulative prefix together — "OlaOla SunnyOla Sunny Qual e a previ".
+    // REBUILD the session's text from scratch every event, scanning from 0 and
+    // combining with _mergeTranscript. Merging into a PERSISTED accumulator
+    // looked equivalent and is not: an engine that re-delivers earlier results
+    // then merges a short old prefix back into the long current string and
+    // appends it ('Ola Sunny' + 'Ola' -> 'Ola Sunny Ola'). Rebuilding is
+    // idempotent no matter how the engine indexes or repeats itself.
+    let interim = '', finals = '';
+    for (let i = 0; i < e.results.length; i++) {
+      const r = e.results[i];
+      if (r.isFinal) finals = _mergeTranscript(finals, r[0].transcript);
+      else interim = r[0].transcript;   // latest interim only, never concatenated
+    }
+    finalTranscript = finals;
+    const session = [finalTranscript, interim.trim()]
+      .filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+    inputEl.value = _mergeTranscript(accTranscript, session);
     // reset inactivity timer on every speech fragment
     clearTimeout(silenceTimer);
     silenceTimer = setTimeout(_stopAndSend, SILENCE_MS);
@@ -1350,16 +1406,31 @@ if (SR) {
 
   recognition.onend = () => {
     clearTimeout(silenceTimer);
+    if (pendingSend) { _flushSend(); return; }
     if (listening) {
       // browser closed the session on its own (long silence / network blip)
       // save what we have and restart transparently
       accTranscript = inputEl.value.trim();
-      try { recognition.start(); } catch(err) { _stopAndSend(); }
+      finalTranscript = '';   // MUST reset with the line above, or it double-counts
+      try { recognition.start(); } catch(err) { _stopAndSend(); return; }
+      // Re-arm the inactivity timer. It used to be set ONLY in onresult, so a
+      // browser-initiated end with no further speech cleared it for good and
+      // left the transcript stranded in the box — SUNI looking "stuck".
+      // Only when there IS something pending: re-arming on an empty restart
+      // would fire _stopAndSend on an empty box and switch the mic off under
+      // someone who simply had not started speaking yet.
+      clearTimeout(silenceTimer);
+      // Guard on the BOX, not accTranscript: with an engine whose interims never
+      // finalise, accTranscript is '' while real speech sits in the input.
+      if (inputEl.value.trim()) silenceTimer = setTimeout(_stopAndSend, SILENCE_MS);
     }
   };
 
   recognition.onerror = e => {
     clearTimeout(silenceTimer);
+    clearTimeout(flushTimer);
+    pendingSend = false;
+    finalTranscript = '';   // else dead text prepends the next utterance
     listening = false;
     micBtn.classList.remove('listening');
     inputEl.placeholder = 'Speak your mind. I shall observe.';
@@ -1375,6 +1446,7 @@ if (SR) {
   micBtn.addEventListener('click', () => {
     if (listening) { _stopAndSend(); return; }
     accTranscript = '';
+    finalTranscript = '';
     inputEl.value = '';
     try { recognition.start(); } catch(err) { console.warn('STT start:', err); }
   });
