@@ -224,7 +224,20 @@ _WEB_RE = re.compile(
     r'news|headlines|current|today|tonight|tomorrow|'
     r'price|stock|crypto|bitcoin|score|result|standings|'
     r'who won|did .{1,30} win|is .{1,30} open|'
-    r'happening|right now|at the moment|as of today)\b',
+    r'happening|right now|at the moment|as of today|'
+    # Portuguese, same categories as above. Without these a pt-PT user got NO
+    # prefetch at all: "Qual a previsão do tempo para amanhã?" matched nothing,
+    # so the local 7B answered a live question from memory. Matched at the
+    # English list's *specificity*, not its coverage — bare "agora" is excluded
+    # because bare "now" is absent above, and bare "tempo" because it also
+    # means "time".
+    r'previs[ãa]o|meteorolog\w*|temperatura|chuva|chove|chover|neve|nevar|vento|'
+    r'humidade|umidade|que tempo|o tempo est[áa]|'
+    r'not[íi]cias?|manchetes?|'
+    r'hoje|amanh[ãa]|esta noite|atualmente|neste momento|de momento|agora mesmo|'
+    r'pre[çc]os?|cota[çc][ãa]o|bolsa|cripto|'
+    r'resultados?|classifica[çc][ãa]o|'
+    r'quem ganhou|quem venceu|est[áa] aberto)\b',
     re.IGNORECASE,
 )
 
@@ -258,7 +271,12 @@ _IMAGE_REFINE_RE = re.compile(
 _SKIP_PREFETCH_RE = re.compile(
     r'\b(article|articles|published|wrote|written|post|posts|'
     r'suniverse|you wrote|you published|your article|your post|'
-    r'recent article|latest article|last article)\b',
+    r'recent article|latest article|last article|'
+    # Portuguese too — this is the BRAKE on _WEB_RE above. Once Portuguese
+    # started matching _WEB_RE, "qual o teu último artigo?" would have fired a
+    # pointless web search that the English wording correctly skips.
+    r'artigos?|publicaste|publicou|publicado|escreveste|escreveu|'
+    r'teu artigo|[úu]ltimo artigo)\b',
     re.IGNORECASE,
 )
 
