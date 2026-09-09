@@ -160,6 +160,19 @@ _MAX_BODY_BYTES = 65_536   # M2: 64 KB request body limit
 # ── Page-level auth (cookie-based) ─────────────────────────────────────────────
 _AUTH_COOKIE = "suni_auth"   # httpOnly cookie holding the refresh token (30 days)
 
+# Pages carry their JS inline, so a cached copy silently runs OLD code while the
+# server happily serves the new file (the routes read from disk every request).
+# Observed 2026-09-09: a phone ran patched-out JS for 8 minutes after the fix
+# landed. These responses previously set no Cache-Control at all, leaving it to
+# browser heuristics.
+_NO_STORE = {"Cache-Control": "no-store, must-revalidate", "Pragma": "no-cache"}
+
+
+def _page(html: str) -> HTMLResponse:
+    """An HTML page response that is never served from cache."""
+    return HTMLResponse(html, headers=_NO_STORE)
+
+
 def _set_auth_cookie(response: Response, refresh_token: str) -> None:
     """Attach the refresh token as an httpOnly session cookie."""
     response.set_cookie(
@@ -941,7 +954,7 @@ def create_app() -> FastAPI:
         if user.get("role") == "admin" and not suni_config.get("setup_completed", False):
             return RedirectResponse("/setup", status_code=302)
         html = _inject_token(UI_FILE.read_text(encoding="utf-8"))
-        return HTMLResponse(_inject_jwt(html, user))
+        return _page(_inject_jwt(html, user))
 
     # ── First-run wizard ────────────────────────────────────────────────────
     @app.get("/setup")
@@ -949,7 +962,7 @@ def create_app() -> FastAPI:
         user, redir = _check_page_auth(request, admin_required=True)
         if redir: return redir
         html = _inject_token(SETUP_FILE.read_text(encoding="utf-8"))
-        return HTMLResponse(_inject_jwt(html, user))
+        return _page(_inject_jwt(html, user))
 
     # ── Persona (animated head) page ─────────────────────────────────────────
     @app.get("/face")
@@ -957,7 +970,7 @@ def create_app() -> FastAPI:
         user, redir = _check_page_auth(request)
         if redir: return redir
         html = _inject_token(FACE_FILE.read_text(encoding="utf-8"))
-        return HTMLResponse(_inject_jwt(html, user))
+        return _page(_inject_jwt(html, user))
 
     # ── Login page ──────────────────────────────────────────────────────────
     @app.get("/login")
@@ -968,7 +981,7 @@ def create_app() -> FastAPI:
             uid = _auth.verify_refresh_token(token)
             if uid and _auth.get_user(uid):
                 return RedirectResponse("/", status_code=302)
-        return HTMLResponse(LOGIN_FILE.read_text(encoding="utf-8"))
+        return _page(LOGIN_FILE.read_text(encoding="utf-8"))
 
     # ── Auth endpoints ──────────────────────────────────────────────────────
     @app.post("/api/auth/setup")
@@ -2405,6 +2418,17 @@ def create_app() -> FastAPI:
         clean = re.sub(r'#{1,6}\s+', '', clean)
         clean = re.sub(r'`([^`]+)`', r'\1', clean)
         clean = re.sub(r'\n+', ' ', clean).strip()
+        # Never SPEAK a URL. edge-tts reads "https://..." out character by
+        # character, which is unlistenable — and since the web prefetch began
+        # feeding live sources into replies, links appear routinely. The visible
+        # text keeps its links; only the spoken copy is stripped.
+        # Markdown links first, so "[o IPMA](https://...)" still says "o IPMA".
+        clean = re.sub(r'\[([^\]]+)\]\([^)]*\)', r'\1', clean)
+        clean = re.sub(r'\(?(?:https?://|www\.)[^\s<>")]*[^\s<>")\.,;:!?]\)?',
+                       '', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'\(\s*\)', '', clean)          # leftover empty parens
+        clean = re.sub(r'\s+([,.;:!?])', r'\1', clean)  # space before punctuation
+        clean = re.sub(r'\s{2,}', ' ', clean).strip()
 
         _settings    = _user_settings.get(user["id"]) or {}
         _saved_voice = str(_settings.get("tts_voice") or "").strip()
@@ -2482,7 +2506,7 @@ def create_app() -> FastAPI:
     async def admin(request: Request):
         user, redir = _check_page_auth(request, admin_required=True)
         if redir: return redir
-        return HTMLResponse(_inject_token(ADMIN_FILE.read_text(encoding="utf-8")))
+        return _page(_inject_token(ADMIN_FILE.read_text(encoding="utf-8")))
 
     @app.get("/i18n.js")
     async def i18n_js():
@@ -2542,13 +2566,13 @@ def create_app() -> FastAPI:
     async def architecture(request: Request):
         user, redir = _check_page_auth(request)
         if redir: return redir
-        return HTMLResponse(_inject_token(ARCH_FILE.read_text(encoding="utf-8")))
+        return _page(_inject_token(ARCH_FILE.read_text(encoding="utf-8")))
 
     @app.get("/chat")
     async def chat_page(request: Request):
         user, redir = _check_page_auth(request)
         if redir: return redir
-        return HTMLResponse(_inject_jwt(CHAT_FILE.read_text(encoding="utf-8"), user))
+        return _page(_inject_jwt(CHAT_FILE.read_text(encoding="utf-8"), user))
 
     # ── Conversations (Chat UI) ─────────────────────────────────────────────
 
