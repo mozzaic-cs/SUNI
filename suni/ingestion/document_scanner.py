@@ -38,6 +38,7 @@ _STATE_PATH    = Path("memory/doc_scan.json")
 _DEBOUNCE_S    = 2.0             # seconds to wait after last event before processing
 _SAFETY_RESCAN = SAFETY_RESCAN_S # from system profile (24 h)
 _BATCH_EMBED   = EMBED_BATCH_SIZE # from system profile (RAM-derived)
+_SAVE_EVERY_S  = 5.0             # watcher: coalesce state saves to one per interval
 
 
 # ── State persistence ─────────────────────────────────────────────────────────
@@ -114,12 +115,14 @@ async def _ingest_file(
     _log.info("[SCAN] ingesting %s", file_path)
     loop = asyncio.get_event_loop()
 
-    pages = await loop.run_in_executor(None, load, file_path)
-    if not pages:
-        return 0
-
-    chunks = chunk_pages(pages)
+    pages  = await loop.run_in_executor(None, load, file_path)
+    chunks = chunk_pages(pages) if pages else []
     if not chunks:
+        # Remember files that yield no text (images without OCR, unreadable
+        # .doc) too. Left out of the state they looked NEW on every sighting:
+        # each startup re-read 58k of them, and a watcher flood re-read them all
+        # again while pinning the event loop. Re-read when mtime/size change.
+        state[file_path] = {"mtime": mtime, "size": size, "ids": [], "chunks": 0}
         return 0
 
     file_type = Path(file_path).suffix.lower().lstrip(".")
@@ -177,9 +180,24 @@ async def scan_once(
     state = _load_state()
 
     on_disk: dict[str, tuple[float, int]] = {}
+    # Deletion is only ever inferred UNDER a root we actually read. os.walk() on
+    # a missing path yields nothing and raises nothing, so an unmounted drive
+    # (VPN down, file server rebooting, a disk move that lost a mapped drive)
+    # used to look exactly like every file having been deleted — and the purge
+    # then rewrote the whole index once per file, blocking the server for hours.
+    # Observed 2026-09-15: 302 files purged before SUNI was stopped.
+    walked_roots: list[str] = []
+    unreadable:   list[str] = []   # subdirectories os.walk could not list
     for root in paths:
+        if not os.path.isdir(root):
+            _log.warning("[SCAN] %s is not reachable - skipped; its index entries are "
+                         "KEPT (a missing drive is not a deletion)", root)
+            continue
+        walked_roots.append(root)
         try:
-            for dirpath, _dirs, files in os.walk(root):
+            for dirpath, _dirs, files in os.walk(
+                root, onerror=lambda e: unreadable.append(getattr(e, "filename", "") or "")
+            ):
                 for fname in files:
                     fp  = os.path.join(dirpath, fname)
                     ext = Path(fp).suffix.lower()
@@ -201,7 +219,20 @@ async def scan_once(
             or on_disk[p][1] != state[p].get("size")
         )
     ]
-    deleted   = [p for p in state if p not in on_disk]
+    def _norm(p: str) -> str:
+        return os.path.normcase(os.path.abspath(p)).rstrip("\\/")
+
+    def _under(p: str, bases: list[str]) -> bool:
+        n = _norm(p)
+        return any(n == b or n.startswith(b + os.sep) for b in bases)
+
+    _read_roots = [_norm(r) for r in walked_roots]
+    _bad_dirs   = [_norm(u) for u in unreadable if u]
+    # An entry is deleted only if it lived under a root we read, outside any
+    # subdirectory we failed to list, and is no longer there. Entries under a
+    # root that is unreachable — or no longer configured — are left alone.
+    deleted   = [p for p in state
+                 if p not in on_disk and _under(p, _read_roots) and not _under(p, _bad_dirs)]
 
     chunks_added = chunks_modified = 0
 
@@ -299,8 +330,26 @@ async def _process_events(
     """
     pending: dict[str, asyncio.Task] = {}
     state = _load_state()
+    loop  = asyncio.get_running_loop()
+    dirty = False
+
+    # Saving once per event serialised the whole state (~2 MB, ~30 ms) ON the
+    # event loop every time: a 70k-event flood on 2026-09-21 held a chat turn
+    # for minutes. Coalesce to one save per interval, written off the loop.
+    async def _flush() -> None:
+        nonlocal dirty
+        if not dirty:
+            return
+        dirty = False
+        snap = dict(state)     # entries are replaced, never mutated in place
+        try:
+            await loop.run_in_executor(None, _save_state, snap)
+        except Exception as e:
+            dirty = True
+            _log.warning("[WATCH] state save failed (will retry): %s", e)
 
     async def _handle(action: str, path: str) -> None:
+        nonlocal dirty
         await asyncio.sleep(_DEBOUNCE_S)
         try:
             if action == "delete":
@@ -319,22 +368,33 @@ async def _process_events(
                 if path in state:
                     await _remove_file(path, doc_store, state)
                 await _ingest_file(path, mtime, size, doc_store, embed_fn, state)
-            _save_state(state)
+            dirty = True
         except Exception as e:
             _log.error("[WATCH] handler error %s: %s", path, e, exc_info=True)
         finally:
             pending.pop(path, None)
 
-    while not stop_event.is_set():
-        try:
-            action, path = await asyncio.wait_for(queue.get(), timeout=1.0)
-        except asyncio.TimeoutError:
-            continue
+    last_flush = time.monotonic()
+    try:
+        while not stop_event.is_set():
+            if time.monotonic() - last_flush >= _SAVE_EVERY_S:
+                await _flush()
+                last_flush = time.monotonic()
+            try:
+                action, path = await asyncio.wait_for(queue.get(), timeout=1.0)
+            except asyncio.TimeoutError:
+                continue
 
-        # Cancel existing debounce task for this file and restart
-        if path in pending:
-            pending[path].cancel()
-        pending[path] = asyncio.create_task(_handle(action, path))
+            # Cancel existing debounce task for this file and restart
+            if path in pending:
+                pending[path].cancel()
+            pending[path] = asyncio.create_task(_handle(action, path))
+    finally:
+        if dirty:              # shutdown/cancel: one last synchronous save
+            try:
+                _save_state(state)
+            except Exception as e:
+                _log.warning("[WATCH] final state save failed: %s", e)
 
 
 # ── Main watcher ──────────────────────────────────────────────────────────────
