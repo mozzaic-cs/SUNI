@@ -21,7 +21,7 @@ import json
 import logging
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -341,11 +341,21 @@ class DocumentStore:
 
     def stats(self) -> dict:
         types: dict[str, int] = {}
+        recent: set[str] = set()
+        # indexed_at is written by add_chunks as a naive local isoformat string.
+        cutoff = datetime.now() - timedelta(hours=24)
         for m in self._meta.values():
             types[m["file_type"]] = types.get(m["file_type"], 0) + 1
+            try:
+                if datetime.fromisoformat(m["indexed_at"]) >= cutoff:
+                    recent.add(m["file_path"])
+            except (KeyError, TypeError, ValueError):
+                pass          # entries written before this field existed
         return {
             "total_chunks": self.count(),
             "total_files":  self.file_count(),
             "index_type":   self.index_type(),
             "by_type":      types,
+            # Files, not chunks — the daily briefing reports documents.
+            "recent_24h":   len(recent),
         }

@@ -95,8 +95,10 @@ def _section_kb() -> str:
     """Knowledge base items ingested in the last 24 h."""
     try:
         from .memory.document_store import DocumentStore
-        from pathlib import Path
-        ds = DocumentStore(Path("memory"))
+        # Both paths, as the store takes them. It was called with one argument
+        # ("memory"), which raised TypeError straight into the except below — so
+        # this section has been silently absent from every briefing ever sent.
+        ds = DocumentStore("memory/doc_index.faiss", "memory/doc_meta.json")
         stats = ds.stats()
         recent = stats.get("recent_24h", 0)
         if not recent:
