@@ -19,6 +19,7 @@ Files:
 from __future__ import annotations
 import json
 import logging
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -37,6 +38,12 @@ _PQ_NBITS  = 8     # bits per code
 _PQ_NPROBE = 32    # cells to visit at search time (accuracy vs speed)
 _PQ_MIN_TRAIN = _PQ_NLIST * 40   # minimum vectors needed to train (10 240)
 
+# Write batching: flush at whichever comes first. Chosen so a bulk scan writes
+# per batch rather than per file, while an idle-ish trickle of watcher events
+# still reaches disk promptly.
+_FLUSH_EVERY_N = 250     # files added or removed since the last write
+_FLUSH_EVERY_S = 60.0    # seconds since the last write
+
 
 class DocumentStore:
 
@@ -48,6 +55,10 @@ class DocumentStore:
         self._meta: dict[int, dict] = {}    # vector_id → metadata
         self._next_id: int = 0
         self._index: faiss.Index = self._make_flat_index()
+        # Write batching — see _save() and flush()
+        self._dirty: bool = False
+        self._pending: int = 0
+        self._last_flush: float = time.monotonic()
         self._load()
 
     # ── Index factories ────────────────────────────────────────────────────
@@ -105,7 +116,7 @@ class DocumentStore:
             except Exception:
                 self._meta = {}
 
-    def _save(self) -> None:
+    def _write_to_disk(self) -> None:
         # Backup existing index before overwriting (E10 — recovery on corrupt write)
         if self.index_path.exists():
             import shutil as _shutil
@@ -117,6 +128,47 @@ class DocumentStore:
             encoding="utf-8",
         )
         tmp.replace(self.meta_path)
+        self._pending = 0
+        self._dirty = False
+        self._last_flush = time.monotonic()
+
+    def _save(self) -> None:
+        """Record a change. The disk write happens on flush(), not here.
+
+        One write is the whole index plus the whole metadata file — measured at
+        1.5s for 77k chunks, and it was run once per ingested FILE from inside
+        the async ingest path, so a scan of a large tree spent minutes of event
+        loop time re-writing what it had just written. Callers now flush when
+        they reach a safe point; see the ordering note on flush().
+        """
+        self._dirty = True
+        self._pending += 1
+        # A bulk scan must not be able to lose everything on a crash, so the
+        # deferral is bounded by count and by age. Both are generous: the point
+        # is to write once per batch of work, not once per file.
+        if (self._pending >= _FLUSH_EVERY_N
+                or (time.monotonic() - self._last_flush) >= _FLUSH_EVERY_S):
+            self._write_to_disk()
+
+    def flush(self) -> bool:
+        """Persist pending changes. Returns True if it wrote anything.
+
+        ORDERING: the scanner records the vector ids it was given in its own
+        state file, so the index must reach disk BEFORE that state does.
+        Flushed the other way round, a crash in between would leave the scanner
+        believing a file is indexed by ids the index never persisted, and
+        nothing would re-ingest it. The reverse — vectors on disk that the
+        scanner state does not mention — costs a re-ingest and is self-healing,
+        since deleting by path clears whatever is there first.
+        """
+        if not self._dirty:
+            return False
+        self._write_to_disk()
+        return True
+
+    @property
+    def dirty(self) -> bool:
+        return self._dirty
 
     # ── Write ─────────────────────────────────────────────────────────────
 
@@ -259,9 +311,11 @@ class DocumentStore:
         ivfpq.train(vecs)
         new_index.add_with_ids(vecs, all_ids)
 
-        # Swap and persist (backup of original made by _save)
+        # Swap and persist (backup of original made by the write). Written
+        # immediately, not deferred: an operator asked for this one and the
+        # rebuilt index is the whole point of the call.
         self._index = new_index
-        self._save()
+        self._write_to_disk()
 
         size_before = _DIM * 4 * n        # float32 FlatIP bytes (approx)
         size_after  = m * (nbits // 8) * n  # PQ bytes (approx)

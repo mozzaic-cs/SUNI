@@ -13,11 +13,18 @@ from suni.ingestion import document_scanner as ds
 
 
 class FakeStore:
+    dirty = False
+
     def delete_by_path(self, path):
         return 0
 
     def add_chunks(self, entries):
         return list(range(len(entries)))
+
+    def flush(self):
+        # The store batches its writes; the watcher flushes it before saving
+        # scanner state, so the double answers this too.
+        return False
 
 
 def _write(path, text="x"):

@@ -156,13 +156,17 @@ async def _ingest_file(
         for c, emb in zip(chunks, embeddings)
     ]
 
-    ids = doc_store.add_chunks(entries)
+    # In a thread: adding to the FAISS index may also trigger the store's
+    # batched write, and neither belongs on the loop that serves chat.
+    ids = await loop.run_in_executor(None, doc_store.add_chunks, entries)
     state[file_path] = {"mtime": mtime, "size": size, "ids": ids, "chunks": len(ids)}
     return len(ids)
 
 
 async def _remove_file(file_path: str, doc_store: DocumentStore, state: dict) -> int:
-    n = doc_store.delete_by_path(file_path)
+    # Also threaded: this walks every metadata entry to find the file's ids.
+    n = await asyncio.get_running_loop().run_in_executor(
+        None, doc_store.delete_by_path, file_path)
     state.pop(file_path, None)
     if n:
         _log.info("[SCAN] removed %d chunks for %s", n, file_path)
@@ -171,21 +175,20 @@ async def _remove_file(file_path: str, doc_store: DocumentStore, state: dict) ->
 
 # ── Full delta scan ───────────────────────────────────────────────────────────
 
-async def scan_once(
-    paths: list[str],
-    doc_store: DocumentStore,
-    embed_fn: Callable,
-) -> dict:
-    """Walk all paths, compare to saved state, ingest/remove deltas."""
-    state = _load_state()
+def _walk(paths: list[str]) -> tuple[dict[str, tuple[float, int]], list[str], list[str]]:
+    """Every supported file under `paths`, with its mtime and size.
 
+    Synchronous and slow by nature (one stat per file, over a network share for
+    the tree here), so scan_once runs it in a thread.
+
+    Returns (on_disk, walked_roots, unreadable). The two lists are what keeps a
+    missing drive from being read as a mass deletion: os.walk() on a path that
+    is not there yields nothing and raises nothing, so an unmounted root used to
+    look exactly like every file under it having been deleted — and the purge
+    then rewrote the whole index once per file, blocking the server for hours.
+    Observed 2026-09-15: 302 files purged before SUNI was stopped.
+    """
     on_disk: dict[str, tuple[float, int]] = {}
-    # Deletion is only ever inferred UNDER a root we actually read. os.walk() on
-    # a missing path yields nothing and raises nothing, so an unmounted drive
-    # (VPN down, file server rebooting, a disk move that lost a mapped drive)
-    # used to look exactly like every file having been deleted — and the purge
-    # then rewrote the whole index once per file, blocking the server for hours.
-    # Observed 2026-09-15: 302 files purged before SUNI was stopped.
     walked_roots: list[str] = []
     unreadable:   list[str] = []   # subdirectories os.walk could not list
     for root in paths:
@@ -210,6 +213,22 @@ async def scan_once(
                         pass
         except Exception as e:
             _log.warning("[SCAN] walk failed for %s: %s", root, e)
+    return on_disk, walked_roots, unreadable
+
+
+async def scan_once(
+    paths: list[str],
+    doc_store: DocumentStore,
+    embed_fn: Callable,
+) -> dict:
+    """Walk all paths, compare to saved state, ingest/remove deltas."""
+    # Both of these are slow and blocking — 71k files on a network share took
+    # 41s, and the state file is megabytes of JSON — and this coroutine runs on
+    # the event loop that serves chat. Measured 2026-09-25: a request waited
+    # 38.8s inside a scan that ingested nothing at all.
+    loop = asyncio.get_running_loop()
+    state = await loop.run_in_executor(None, _load_state)
+    on_disk, walked_roots, unreadable = await loop.run_in_executor(None, _walk, paths)
 
     new_paths = [p for p in on_disk if p not in state]
     modified  = [
@@ -263,8 +282,14 @@ async def scan_once(
         except Exception as e:
             _log.error("[SCAN] ingest error %s: %s", fp, e, exc_info=True)
 
-    # E5: if state save fails, roll back all newly added chunks to prevent duplicates
+    # E5: if the index or state save fails, roll back all newly added chunks to
+    # prevent duplicates. The INDEX goes first: our state names the ids it gave
+    # us, so state that reaches disk before them would claim an index that does
+    # not exist yet (see DocumentStore.flush).
     try:
+        # In a thread: one write is ~1.5s of disk I/O at this index size, and
+        # this runs on the event loop that also serves chat.
+        await loop.run_in_executor(None, doc_store.flush)
         _save_state(state)
     except Exception as e:
         _log.error("[SCAN] state save failed — rolling back %d ingested files: %s",
@@ -343,6 +368,10 @@ async def _process_events(
         dirty = False
         snap = dict(state)     # entries are replaced, never mutated in place
         try:
+            # Index first, then the state that names its ids — a crash between
+            # the two must not leave state pointing at vectors that were never
+            # written (see DocumentStore.flush).
+            await loop.run_in_executor(None, doc_store.flush)
             await loop.run_in_executor(None, _save_state, snap)
         except Exception as e:
             dirty = True
@@ -390,8 +419,9 @@ async def _process_events(
                 pending[path].cancel()
             pending[path] = asyncio.create_task(_handle(action, path))
     finally:
-        if dirty:              # shutdown/cancel: one last synchronous save
+        if dirty or doc_store.dirty:   # shutdown/cancel: one last save, in order
             try:
+                doc_store.flush()
                 _save_state(state)
             except Exception as e:
                 _log.warning("[WATCH] final state save failed: %s", e)

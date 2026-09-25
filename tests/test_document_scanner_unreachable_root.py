@@ -15,6 +15,14 @@ from suni.ingestion import document_scanner as ds
 class FakeStore:
     def __init__(self):
         self.deleted = []
+        self.flushes = 0
+        self.dirty = False
+
+    def flush(self):
+        # The store batches writes now; the scanner flushes it before saving
+        # its own state, so a double has to answer this too.
+        self.flushes += 1
+        return False
 
     def delete_by_path(self, path):
         self.deleted.append(path)
