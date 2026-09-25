@@ -15,7 +15,9 @@ from __future__ import annotations
 
 from suni.models.claude_code_agent import _task_suffix, _cc_persona
 
-OUT = "C:/Users/someone/Documents/SUNI"
+# Not a path under C:\Users: the release gate rejects that shape on sight, and it
+# is right to — it cannot tell a placeholder name from a real one.
+OUT = "D:/SUNI/output"
 
 
 def _reporting_block(s: str) -> str:
