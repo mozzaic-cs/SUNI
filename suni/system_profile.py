@@ -97,6 +97,26 @@ NUM_HISTORY: int = min(60 + max(0, int((RAM_GB - 8) // 32)) * 10, 200)
 # 4800 baseline; scale up with num_ctx headroom (keep ~40% free for generation)
 COMPRESS_THRESHOLD: int = int(NUM_CTX * 0.58)
 
+
+def effective_num_ctx() -> int:
+    """The context size every Ollama caller uses: config `num_ctx`, else NUM_CTX.
+
+    NUM_CTX is sized for a model whose weights live on the card. A large MoE
+    that mostly runs from system RAM (gpt-oss:120b) needs more room than that
+    derivation allows, so the configured value wins. Resolved per call because
+    the admin panel edits it at runtime.
+    """
+    try:
+        from . import config as _c
+        return int(_c.get("num_ctx", NUM_CTX) or NUM_CTX)
+    except Exception:      # noqa: BLE001
+        return NUM_CTX
+
+
+def compress_threshold() -> int:
+    """COMPRESS_THRESHOLD, scaled to the effective context rather than NUM_CTX."""
+    return int(effective_num_ctx() * 0.58)
+
 # Safety rescan interval for watchdog (seconds)
 # Same regardless of RAM — 24h is sufficient
 SAFETY_RESCAN_S: int = 86400

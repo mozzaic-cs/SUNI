@@ -33,7 +33,7 @@ from ..logger import get_logger
 console = Console(stderr=True)
 _log = get_logger(__name__)
 
-from ..system_profile import COMPRESS_THRESHOLD
+from ..system_profile import compress_threshold
 TOOL_SUMMARY_CHARS  = 1600   # chars (~400 tokens) above which a tool result is summarised
 KEEP_EXCHANGES      = 2      # recent USER/ASSISTANT exchanges preserved verbatim
 DEDUP_THRESHOLD     = 0.82   # Jaccard similarity above which a message is considered duplicate
@@ -73,7 +73,8 @@ class ContextCompressor:
         """
         msgs = context.history
         before = estimate_tokens(msgs)
-        if before <= COMPRESS_THRESHOLD:
+        threshold = compress_threshold()
+        if before <= threshold:
             return False
 
         ts = time.perf_counter()
@@ -96,7 +97,7 @@ class ContextCompressor:
         _log.info("[COMPRESS] after tool-result summarisation: ~%d tokens", after_s1)
 
         # Stage 2: roll up old conversation if still over threshold
-        if after_s1 > COMPRESS_THRESHOLD:
+        if after_s1 > threshold:
             await self._roll_up(context, agent)
             after_s2 = estimate_tokens(context.history)
             _log.info("[COMPRESS] after roll-up: ~%d tokens", after_s2)

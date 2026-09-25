@@ -28,8 +28,9 @@ class OllamaAgent(BaseAgent):
         # evaluated at import, which no configuration can move afterwards.
         self.host = host or _cfg.ollama_host()
         self.client = ollama.AsyncClient(host=self.host)
-        from ..system_profile import NUM_CTX
-        self.num_ctx = NUM_CTX
+        # None = follow config num_ctx per call; set explicitly (admin panel's
+        # live apply) it pins the value.
+        self.num_ctx: int | None = None
 
     async def chat(
         self,
@@ -42,7 +43,10 @@ class OllamaAgent(BaseAgent):
         if tools:
             kwargs["tools"] = tools
 
-        kwargs["options"] = {"num_ctx": self.num_ctx, "num_batch": 1024}
+        # Must match the judge and the consolidator: a differing context makes
+        # Ollama evict and reload the model.
+        from ..system_profile import effective_num_ctx
+        kwargs["options"] = {"num_ctx": self.num_ctx or effective_num_ctx(), "num_batch": 1024}
         kwargs["keep_alive"] = -1  # keep model resident between requests
 
         # Circuit breaker: if the backend is known-down, fail fast instead of

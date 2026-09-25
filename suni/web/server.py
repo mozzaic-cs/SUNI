@@ -423,7 +423,15 @@ def _make_backend_agents(tier_map):
                     _e.get("base_url", ""), _e.get("api_key", ""), resolve_system_prompt())
                 suni = _p
                 tier_agents[DEFAULT_TIER] = _p
-                _log.info("[CHAIN] primary → %s / %s (model-chain routing on)",
+                # The chain model is the only local model. Leaving the inventory
+                # tiers in place let complexity scoring and escalation swap it
+                # for whatever sits at tier 3 (qwen3-coder:30b here) — a weaker
+                # model that also evicts it from the card. Escalation now goes
+                # from the chain model straight to Claude Code, as in vLLM mode.
+                for _t in [t for t in tier_agents if t not in (DEFAULT_TIER, _CC_TIER)]:
+                    del tier_agents[_t]
+                _log.info("[CHAIN] primary → %s / %s (model-chain routing on; "
+                          "local tiers collapsed to it)",
                           _e.get("provider"), _e.get("model") or "(default)")
             except Exception as _cx:
                 _log.warning("[CHAIN] primary build failed — keeping default: %s", _cx)
