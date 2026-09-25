@@ -957,6 +957,12 @@ function parseOBJ(text){
       }
       if(m.eyeL&&m.eyeR){
         eyeBaseL=m.eyeL.slice(); eyeBaseR=m.eyeR.slice(); applyEyes(); modelEyes=true;
+        console.log('[EYE_BUILD] procedural eyes ACTIVE — the IRIS_DEG shader is what you see');
+      } else {
+        /* drawEyeballs() is gated on modelEyes, so without the named eye groups
+           nothing in the iris shader reaches the screen and editing it is a no-op. */
+        console.warn('[EYE_BUILD] procedural eyes INACTIVE — no Eyes_*_Eye_Ball groups in the OBJ; '
+                     + 'IRIS_DEG/EB changes will do NOTHING');
       }
       /* solid mesh loaded separately (decimated) via loadSolid() */
     })
@@ -1131,11 +1137,25 @@ function drawBackground(){
    curvature so the edges RECEDE behind the eyelids — the face then cleanly
    occludes the boundary, no coplanar z-fighting/tearing). dz recesses it into the
    socket so it doesn't protrude. No polygon-offset needed. Browser-verified
-   (2026-07-17). */
+   (2026-07-17).
+
+   2026-09-18: DO NOT SHRINK ex/ey. Tried 1.58/1.22 to make the eyes smaller and
+   more almond; it opened a hole at the outer corner of the right eye — you could
+   see into the back of the eyeball. These values are a FLOOR, not a preference:
+   the lid opening belongs to the head mesh, and the sclera has to reach its
+   corners or there is nothing behind it to occlude. Reverted to the 2026-07-17
+   browser-verified pair.
+
+   So "the eyes look too big" cannot be fixed here. This is the EYE SIZE knob and
+   the iris is an angular cap on the ball (IRIS_DEG), which means it scales WITH
+   the ball: the white:iris ratio is invariant under ex/ey/r. Shrinking the ball
+   never shows less white per unit of iris — it just makes a smaller eye with a
+   hole in it. The ratio is IRIS_DEG's job, and that is where it was fixed.
+   Live: window.EB.ex = 1.6 (read every frame) if you want to re-test the floor. */
 let EB = { sx:1.0, dy:0.015, dz:-0.075, r:0.105, gaze:0.10, lx:0.0, rx:0.0, ex:1.72, ey:1.45, ez:0.95, pf:0.0, pu:0.0 };
 window.EB = EB;
 let eyeReady=false, eyeDirs=null, eyeIdx=null, eyeIdxCount=0, bEdir=null, bEidx=null;
-let progEye=null, aEdir, uEmvp,uEcenter,uEr,uEgaze,uEiris,uEsclera,uEbri,uEsc;
+let progEye=null, aEdir, uEmvp,uEcenter,uEr,uEgaze,uEiris,uEsclera,uEbri,uEsc,uEirisR,uEirisTex,uElid,uElidUp,uElidDn,uElidCol,uElidW;
 /* Eye materialise, sequenced strictly after the head.
    The eyes used to be drawn unconditionally in the solid pass, so during the
    head sweep two fully-formed eyeballs floated in front of a wireframe skull —
@@ -1173,20 +1193,174 @@ function eyeIgnitionPoint(){
 const EYE_SCALE_FROM=0.88;
 function easeOutBack(x){ const c=1.15; return 1 + (c+1)*Math.pow(x-1,3) + c*Math.pow(x-1,2); }
 function eyeGrow(x){ return EYE_SCALE_FROM + (1 - EYE_SCALE_FROM) * easeOutBack(x); }
+/* Iris half-angle in DEGREES of arc from the gaze axis — how much of the ball
+   the coloured disc covers. Note this is the one thing the eyeball size does NOT
+   change: the iris is an angular cap, so it scales with the ball and the
+   white:iris RATIO stays put however big or small the eye is. Ratio lives here;
+   eye size lives in EB.
+
+   Was hardcoded as smoothstep(0.938,0.953,d) — a cosine threshold that works out
+   to ~19°, giving an iris 0.33 of the eyeball width. A real eye is a ~12mm ball
+   with an ~11.8mm iris: half-angle asin(5.9/12) ≈ 29.5°, iris 0.49 of the width.
+   At 19° there is half again too much sclera, which is what reads as doll-like.
+
+   Checked against a macro photograph (OIP.jpg, measured at the pupil row):
+       pupil 65px · iris 146px · lid opening 259 x 108px
+       pupil/iris 0.445 · iris/opening-width 0.564 · opening aspect 2.40
+   Note 0.564 is measured against the LID OPENING, not the eyeball. Our ball is
+   deliberately larger than the opening (its edges recede behind the lids), so the
+   visible ratio here always exceeds sin(IRIS_DEG) — at roughly 85% aperture-to-
+   ball, 29.5° lands near 0.58 and matches the photograph. Setting 34.3° (what
+   0.564 implies if opening == ball) would overshoot. Useful range 29–34.
+
+   The photo's real lesson is structural, not a number: iris diameter is 1.35x the
+   opening HEIGHT, i.e. the lids crop the top and bottom of the iris. A full iris
+   circle floating in white is the doll look; a cropped one reads human.
+
+   Everything below is a FRACTION of R, so this one knob moves pupil, limbal ring
+   and glow together and the proportions stay coherent at any size.
+   Live: window.setIris(deg) — same pattern as setEyes/setEyeCut. */
+let IRIS_DEG = 29.5;
+window.setIris = function(deg){ IRIS_DEG = deg; };
+/* Build marker — same purpose as STT_BUILD on the voice path: it separates "the
+   change didn't work" from "the change never loaded", which is otherwise
+   indistinguishable from the sofa. Three eye edits in a row looked identical in
+   the browser and there was no way to tell which of those two it was. Bump the
+   date when you change anything in here. */
+/* 0 = the old flat disc, 1 = the measured structure. Taste knob, live. */
+let IRIS_TEX = 1.0;
+window.setIrisDetail = function(x){ IRIS_TEX = x; };
+/* Painted eyelids, positioned as FRACTIONS OF THE IRIS RADIUS rather than as
+   absolute half-heights. This matters: the lid has to sit relative to the iris
+   rim, and the rim moves with IRIS_DEG. Absolute values (0.40/0.45) meant the lid
+   drifted off the iris edge whenever the iris was retuned, which is exactly how
+   a band of lid ended up sitting below the iris instead of starting at it.
+
+   1.00 puts the lid exactly ON the iris rim, so the socket's lower edge and the
+   iris's lower edge coincide and nothing shows between them. Below 1.00 the lid
+   cuts into the iris.
+
+   Measured on OIP.jpg at the pupil column: the upper lid sits at 0.86 of the iris
+   radius and the lower at 0.62 — a real lower lid rides well up over the iris.
+   The lower is kept at 1.00 here by preference, not by the photograph. */
+/* Lids default OFF. They were added to hide white above and below the iris, but
+   the white was the sclera being white — fixed at source by SCLERA_SHADE. With a
+   pale sclera there is nothing to hide, and the mask only made the eyeball look
+   shrunken inside its socket. Kept because the geometry is right if ever wanted. */
+let LID = 0.0, LID_UP_F = 0.86, LID_DN_F = 1.00, LID_SHADE = 0.34, LID_W = 0.62;
+/* Multiplier on the white sclera. 1.0 = white (the default). Lower only dims it;
+   it does not tint, because the sclera is white by decision rather than a shade
+   of the persona colour — see the uniform call in drawEyeballs. */
+let SCLERA_SHADE = 1.0;
+window.setSclera = function(x){ SCLERA_SHADE = x; };
+/* up/dn are fractions of the iris radius: 1.00 = on the rim, 0.62 = the
+   photograph's lower lid. setLid(1, 0.86, 1.00) is the default. */
+window.setLid = function(strength, up, dn){
+  LID = strength;
+  if (up !== undefined) LID_UP_F = up;
+  if (dn !== undefined) LID_DN_F = dn;
+};
+/* how dark the lid is against the face: 0 = black, 1 = full face brightness */
+window.setLidShade = function(x){ LID_SHADE = x; };
+/* half-width of the lid opening. Near the iris rim (0.49) the lids hug the iris;
+   toward 1.0 they flatten out and white reopens above and below. */
+window.setLidWidth = function(w){ LID_W = w; };
+const EYE_BUILD = '2026-09-18j';
+console.log('[EYE_BUILD]', EYE_BUILD, '| IRIS_DEG =', IRIS_DEG,
+            '| EB.ex/ey =', EB.ex + '/' + EB.ey, '| sclera', SCLERA_SHADE, '| lid', LID);
 const EYE_VS=`attribute vec3 a_dir; uniform mat4 u_mvp; uniform vec3 u_center,u_esc; uniform float u_r;
 varying vec3 v_dir; void main(){ v_dir=a_dir; gl_Position=u_mvp*vec4(u_center+a_dir*u_r*u_esc,1.0); }`;
+/* Worked in ANGLE space (acos) rather than raw cosine. The cosine constants were
+   unreadable — 0.938 vs 0.953 gives no hint that it means "19 degrees", and
+   pupil/ring/glow could not be kept in proportion by inspection. The acos costs a
+   transcendental per fragment on two small spheres, which is nothing here, and
+   buys constants that say what they are. */
 const EYE_FS=`precision mediump float;
-uniform vec3 u_iris,u_sclera,u_gaze; uniform float u_bright; varying vec3 v_dir;
+uniform vec3 u_iris,u_sclera,u_gaze; uniform float u_bright,u_irisR,u_irisTex,u_lid,u_lidUp,u_lidDn,u_lidW; uniform vec3 u_lidCol; varying vec3 v_dir;
 void main(){
-  vec3 n=normalize(v_dir); float d=dot(n,normalize(u_gaze));
-  float iris=smoothstep(0.938,0.953,d);       /* smaller, realistic iris   */
-  float ring=iris*(1.0-smoothstep(0.951,0.972,d)); /* darker limbal ring   */
-  float pupil=smoothstep(0.985,0.993,d);      /* proportional pupil        */
+  vec3 n=normalize(v_dir);
+  vec3 g=normalize(u_gaze);
+  float a=acos(clamp(dot(n,g),-1.0,1.0));      /* angle off the gaze axis */
+  float R=max(u_irisR,0.001);                  /* iris half-angle (radians) */
+  float soft=R*0.09;                           /* edge softness, scales with R */
+  float iris=1.0-smoothstep(R-soft,R+soft,a);
+  float ring=iris*smoothstep(R*0.72,R*0.96,a); /* darker limbal ring, outer band */
+  float pupil=1.0-smoothstep(R*0.36,R*0.41,a); /* pupil 0.385 of iris          */
+
+  /* ── iris structure, measured off OIP.jpg (see IRIS_DEG note) ───────────
+     A flat disc of colour is the single biggest thing that read as fake. A real
+     iris has a strong RADIAL profile: a dark pupillary ruff, a bright collarette
+     about 46% of the way out, then a slow fade to the limbus. Sampled ring by
+     ring off the photograph, luma ran 44 → 117 → 82, a 2.65x swing. */
+  float t=clamp((a/R-0.445)/0.555,0.0,1.0);    /* 0 at pupil rim, 1 at limbus */
+  float radial=mix(0.38,1.0,pow(clamp(t/0.46,0.0,1.0),0.8))   /* ruff → collarette */
+              *mix(1.0,0.70,smoothstep(0.46,1.0,t));          /* → limbus         */
+
+  /* Radial fibres. Measured contrast was sd/mean 0.174, rising 0.156 → 0.209
+     toward the limbus, so the streaks are weighted outward. Three incommensurate
+     harmonics rather than one sine — a single frequency reads as corduroy. The
+     phases drift with t so the streaks bend slightly instead of being dead-straight
+     spokes; at 47/23/89 they rendered as a coarse sunburst, 61/97/149 is finer. */
+  vec3 up=mix(vec3(0.0,1.0,0.0),vec3(1.0,0.0,0.0),step(0.9,abs(g.y)));
+  vec3 bx=normalize(cross(up,g)), by=cross(g,bx);
+  float ang=atan(dot(n,by),dot(n,bx));
+  float fib=sin(ang*61.0+t*2.3)*0.50+sin(ang*97.0-t*1.7)*0.32+sin(ang*149.0+2.1)*0.18;
+  radial*=1.0+fib*0.174*mix(0.35,1.15,t);      /* fade the fibres into the ruff */
+  radial=mix(1.0,radial/0.86,u_irisTex);       /* /0.86 keeps mean brightness */
+
+  vec3 ic=u_iris*radial;
+  /* Blue irises carry a warm collarette — the gold ring people read as depth.
+     Kept subtle; it is a tint on the existing colour, not a second hue. */
+  float coll=(1.0-smoothstep(0.10,0.55,t))*smoothstep(0.0,0.12,t);
+  ic=mix(ic,ic*vec3(1.45,1.15,0.62),coll*0.22*u_irisTex);
+
   vec3 col=u_sclera;                           /* white of the eye          */
-  col=mix(col,u_iris,iris);
-  col=mix(col,u_iris*0.35,ring*0.55);          /* limbal ring               */
-  col+=u_iris*smoothstep(0.908,0.965,d)*0.30;  /* iris inner glow           */
+  col=mix(col,ic,iris);
+  col=mix(col,u_iris*0.35,ring*0.45);          /* limbal ring (radial fade   */
+                                               /*  now does part of its job) */
+  /* Glow kept INSIDE the iris. At 1.31*R it spilled past the rim and washed the
+     sclera cyan; combined with a 36 deg iris (whose thin sclera ring the eyelids
+     then occluded) NO white pixel reached the screen — measured zero on
+     suni_eyes_2.png, brightest (76,255,255). The sclera was white throughout,
+     just covered. Together with IRIS_DEG 29.5 this is what puts white back. */
+  col+=u_iris*(1.0-smoothstep(R*0.72,R*1.02,a))*0.30;  /* iris inner glow   */
   col=mix(col,vec3(0.02,0.03,0.05),pupil);     /* dark pupil                */
+
+  /* ── eyelids, painted on ────────────────────────────────────────────────
+     Measured on OIP.jpg by scanning outward from the iris rim: 18 sclera px to
+     the inner side, 31 to the outer, and ZERO above and below — the lids meet
+     the iris top and bottom. Iris diameter is 1.35x the opening height.
+
+     That cannot be reached by resizing the ball. The iris is a circular cap, so
+     its projected radius is sin(R)*ball_radius: iris and ball scale together and
+     white either rings the iris or the iris swallows the opening. Getting white
+     at the SIDES ONLY needs an almond OPENING, and the opening belongs to the
+     head mesh — we cannot reshape it, and shrinking the ball to fake it just
+     punched a hole through the corner (see EB).
+
+     So the lids are drawn here instead, as a dark almond mask on the ball. The
+     ball stays whole, so there is nothing to see through; the masked band reads
+     as lash line and lid shadow, which is what is there on a real eye anyway.
+
+     u_lidCol is the HEAD's own colour, dimmed — not a constant. A fixed dark blue
+     was tried first and read as two black bars punched above and below the iris,
+     because it matched nothing around it. The head is shaded
+     u_color*(0.12+0.50*diff) (see the solid shader), so a shadowed lid is that
+     same state colour at roughly a third brightness, and the band then continues
+     the face instead of interrupting it. */
+  float px=dot(n,bx), py=dot(n,by);            /* position in the eye's own plane */
+  /* How fast the lid arcs down toward the corners. The lid is an ellipse of
+     half-width u_lidW; at 0.99 (the ball's own width) the arc is far FLATTER than
+     the iris circle, so the lid only meets the iris at the exact centre column and
+     white reopens either side of it. Pulling u_lidW in toward the iris rim (0.49)
+     makes the lid hug the iris across its width, leaving white at the corners
+     only — which is where a real eye has it. */
+  float taper=sqrt(max(0.0,1.0-min(px*px/(u_lidW*u_lidW),1.0)));
+  float hUp=u_lidUp*taper, hDn=u_lidDn*taper;  /* upper lid sits lower, as in life */
+  float edge=0.030;
+  float lid=(1.0-smoothstep(hUp-edge,hUp+edge,py))
+           *(1.0-smoothstep(hDn-edge,hDn+edge,-py));
+  col=mix(u_lidCol,col,mix(1.0,lid,u_lid));
   gl_FragColor=vec4(col*u_bright,1.0);
 }`;
 function ensureEye(){
@@ -1204,7 +1378,7 @@ function ensureEye(){
     if(!gl.getProgramParameter(progEye,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(progEye));
     aEdir=gl.getAttribLocation(progEye,'a_dir');
     uEmvp=gl.getUniformLocation(progEye,'u_mvp'); uEcenter=gl.getUniformLocation(progEye,'u_center'); uEr=gl.getUniformLocation(progEye,'u_r'); uEsc=gl.getUniformLocation(progEye,'u_esc');
-    uEgaze=gl.getUniformLocation(progEye,'u_gaze'); uEiris=gl.getUniformLocation(progEye,'u_iris'); uEsclera=gl.getUniformLocation(progEye,'u_sclera'); uEbri=gl.getUniformLocation(progEye,'u_bright');
+    uEgaze=gl.getUniformLocation(progEye,'u_gaze'); uEiris=gl.getUniformLocation(progEye,'u_iris'); uEsclera=gl.getUniformLocation(progEye,'u_sclera'); uEbri=gl.getUniformLocation(progEye,'u_bright'); uEirisR=gl.getUniformLocation(progEye,'u_irisR'); uEirisTex=gl.getUniformLocation(progEye,'u_irisTex'); uElid=gl.getUniformLocation(progEye,'u_lid'); uElidUp=gl.getUniformLocation(progEye,'u_lidUp'); uElidDn=gl.getUniformLocation(progEye,'u_lidDn'); uElidCol=gl.getUniformLocation(progEye,'u_lidCol'); uElidW=gl.getUniformLocation(progEye,'u_lidW');
     bEdir=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,bEdir); gl.bufferData(gl.ARRAY_BUFFER,eyeDirs,gl.STATIC_DRAW);
     bEidx=gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,bEidx); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,eyeIdx,gl.STATIC_DRAW);
     eyeReady=true;
@@ -1223,10 +1397,28 @@ function drawEyeballs(mvp, act, reveal){
   gl.useProgram(progEye);
   gl.uniformMatrix4fv(uEmvp,false,mvp);
   gl.uniform1f(uEr, EB.r * grow); gl.uniform3f(uEsc, EB.ex, EB.ey, EB.ez);
+  gl.uniform1f(uEirisR, IRIS_DEG*0.0174532925);   /* degrees → radians */
+  gl.uniform1f(uEirisTex, IRIS_TEX);
+  /* the iris rim in the eye's own plane; the lids are placed against it */
+  const _rim = Math.sin(IRIS_DEG * 0.0174532925);
+  gl.uniform1f(uElid, LID);
+  gl.uniform1f(uElidUp, LID_UP_F * _rim);
+  gl.uniform1f(uElidDn, LID_DN_F * _rim);
+  gl.uniform1f(uElidW, LID_W);
+  /* the head's live state colour — both sclera and lid are tints of it, so the eye
+     belongs to the face and follows the colour picker and the state changes.
+     Declared HERE, above both uses: it was briefly below the lid-colour call,
+     which is a const in its own temporal dead zone — a ReferenceError thrown
+     every frame inside drawEyeballs. `node --check` parses that happily. */
+  const _lc = stateColor(stateSmooth);
+  gl.uniform3f(uElidCol, _lc[0]/255*LID_SHADE, _lc[1]/255*LID_SHADE, _lc[2]/255*LID_SHADE);
   gl.uniform3f(uEgaze, gazeX*EB.gaze, gazeY*EB.gaze-0.01, 1.0);
   /* iris cools from a hot white-cyan into its settled colour */
   gl.uniform3f(uEiris, 0.16+(0.62*(1-rv)), 0.62+(0.33*(1-rv)), 0.92+(0.08*(1-rv)));
-  gl.uniform3f(uEsclera, 0.94,0.97,1.0);
+  /* White, by decision. A pale tint of the persona colour was tried (cortana.jpg
+     has no white in the eye at all — its brightest point is 1.2x the skin, RGB
+     (45,193,233)) and rejected: SUNI's eye is white. SCLERA_SHADE only dims it. */
+  gl.uniform3f(uEsclera, 0.94*SCLERA_SHADE, 0.97*SCLERA_SHADE, 1.0*SCLERA_SHADE);
   gl.uniform1f(uEbri, 1.15+act*0.35+flash);
   gl.bindBuffer(gl.ARRAY_BUFFER,bEdir); gl.enableVertexAttribArray(aEdir); gl.vertexAttribPointer(aEdir,3,gl.FLOAT,false,0,0);
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,bEidx);
