@@ -58,6 +58,79 @@ _CC_HOME = os.path.expanduser("~")
 _CC_TOOLS = "Read,Glob,Grep,WebFetch,WebSearch,Bash"
 
 
+async def _stream_run(args: list[str], event_cb, timeout: int,
+                      task: str) -> tuple[int, str, str, dict]:
+    """Run the CLI in stream-json mode, reporting progress as it arrives.
+
+    Every assistant turn is classified by its stop_reason, which the CLI sends
+    on `message_delta`:
+      tool_use  — the model is narrating before it calls a tool. Progress, not
+                  the answer: it goes out as `cc_note`, so it is never appended
+                  to the reply and never reaches the text-to-speech queue.
+      end_turn  — the answer. Streamed as `token` events, the same shape the
+                  chat endpoint already sends, so the clients need no change.
+    The `result` line stays authoritative for what is displayed and persisted;
+    the streamed text is only what the user watches arrive.
+    """
+    import json as _json
+    from ..tools.claude_code_advanced import _run_claude_stream
+
+    state: dict = {"result": "", "session_id": ""}
+    cur: list[str] = []
+
+    def _flush_tokens(text: str) -> None:
+        # Word-sized events, matching what the chat endpoint emitted before, so
+        # the clients' caption and per-sentence TTS behave exactly as they did.
+        words = text.split(" ")
+        for i, w in enumerate(words):
+            chunk = w + (" " if i < len(words) - 1 else "")
+            if chunk:
+                event_cb({"type": "token", "text": chunk})
+
+    def _on_line(line: str) -> None:
+        try:
+            d = _json.loads(line)
+        except ValueError:
+            return
+        t = d.get("type")
+        if t == "system" and d.get("subtype") == "init":
+            state["session_id"] = d.get("session_id", "") or state["session_id"]
+        elif t == "result":
+            if d.get("session_id"):
+                state["session_id"] = d["session_id"]
+            if isinstance(d.get("result"), str):
+                state["result"] = d["result"]
+        elif t == "stream_event":
+            ev = d.get("event") or {}
+            et = ev.get("type")
+            if et == "message_start":
+                cur.clear()
+            elif et == "content_block_start":
+                blk = ev.get("content_block") or {}
+                if blk.get("type") == "tool_use" and blk.get("name"):
+                    event_cb({"type": "cc_note", "text": f"· {blk['name']}"})
+            elif et == "content_block_delta":
+                delta = ev.get("delta") or {}
+                # text_delta ONLY: thinking_delta and signature_delta ride the
+                # same channel and are not part of the reply.
+                if delta.get("type") == "text_delta":
+                    cur.append(delta.get("text", ""))
+            elif et == "message_delta":
+                stop = (ev.get("delta") or {}).get("stop_reason")
+                text = "".join(cur).strip()
+                cur.clear()
+                if not text:
+                    return
+                if stop == "end_turn":
+                    _flush_tokens(text)
+                else:
+                    event_cb({"type": "cc_note", "text": text})
+
+    rc, stdout, stderr = await _run_claude_stream(
+        args, _on_line, timeout=timeout, cwd=_CC_HOME, stdin_data=task)
+    return rc, stdout, stderr, (state if state.get("result") else {})
+
+
 class ClaudeCodeAgent(BaseAgent):
     def __init__(self, name: str = "claude-code"):
         super().__init__(name)
@@ -139,18 +212,35 @@ class ClaudeCodeAgent(BaseAgent):
         from .. import usage as _usage
         _usage.record_model("claude-code (CLI, model chosen by the CLI)")
 
+        from ..tools.claude_code_advanced import EVENT_CB_CTX, _run_claude_stream
+        _event_cb = EVENT_CB_CTX.get()
+
         args = [
             "--print",
             "--output-format", "json",
             "--system-prompt", _cc_persona(),
             "--allowedTools", _CC_TOOLS,
         ]
+        if _event_cb:
+            # Stream mode: the CLI reports as it goes, so a multi-minute run
+            # stops looking like a hang. --verbose is REQUIRED by the CLI
+            # alongside stream-json under --print.
+            args[1:3] = ["--output-format", "stream-json", "--verbose",
+                         "--include-partial-messages"]
         if cc_session_id:
             args += ["--resume", cc_session_id]
 
         from .. import config as _cfg
         _cc_timeout = int(_cfg.get("claude_code_timeout", 300) or 300)
-        rc, stdout, stderr = await _run_claude(args, timeout=_cc_timeout, cwd=_CC_HOME, stdin_data=task)
+
+        if _event_cb:
+            rc, stdout, stderr, _streamed = await _stream_run(
+                args, _event_cb, _cc_timeout, task
+            )
+        else:
+            _streamed = {}
+            rc, stdout, stderr = await _run_claude(
+                args, timeout=_cc_timeout, cwd=_CC_HOME, stdin_data=task)
 
         if rc != 0 and not stdout.strip():
             content = (
@@ -158,7 +248,7 @@ class ClaudeCodeAgent(BaseAgent):
                 f"{stderr.strip() or 'no output'}"
             )
         else:
-            parsed = _parse_json_output(stdout)
+            parsed = _streamed or _parse_json_output(stdout)
             content = parsed.get("result", parsed.get("content", stdout.strip()))
             new_sid = parsed.get("session_id", "")
             if new_sid:

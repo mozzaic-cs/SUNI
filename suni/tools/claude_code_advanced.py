@@ -19,6 +19,11 @@ from typing import Any
 # ContextVar: set by orchestrator to the resolved per-user API key (or '' for global)
 CLAUDE_API_KEY_CTX: ContextVar[str] = ContextVar("claude_api_key", default="")
 
+# ContextVar: set by the orchestrator to the request's SSE event callback, so the
+# Claude Code agent can stream progress while the CLI works instead of going
+# silent for the whole run. None = no live consumer; take the buffered path.
+EVENT_CB_CTX: ContextVar[Any] = ContextVar("event_cb", default=None)
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -74,6 +79,102 @@ async def _run_claude(args: list[str], timeout: int = 300, cwd: str | None = Non
         except asyncio.TimeoutError:
             proc.kill()
             return 1, "", f"Claude Code timed out after {timeout}s"
+    finally:
+        if _stdin is not None:
+            _stdin.close()
+        if _tmp_path is not None:
+            try:
+                os.unlink(_tmp_path)
+            except OSError:
+                pass
+
+
+async def _run_claude_stream(args: list[str], on_line, timeout: int = 300,
+                             cwd: str | None = None,
+                             stdin_data: str | None = None) -> tuple[int, str, str]:
+    """Like _run_claude, but hands each stdout LINE to `on_line` as it arrives.
+
+    A separate function rather than a flag on _run_claude: that one is used by
+    every other CLI tool here and its `communicate()` contract is what they
+    expect. Only the stdin delivery is shared, and it is shared verbatim —
+    a real file handle, because an asyncio stdin PIPE does not survive the
+    .cmd shim on Windows (see _run_claude for the full account).
+
+    `on_line` must not raise and must not block; it is called on the event loop.
+    """
+    cmd = _claude_cmd()
+    if not cmd:
+        return 1, "", "Claude Code CLI not found. Install with: npm install -g @anthropic-ai/claude-code"
+
+    env = os.environ.copy()
+    user_key = CLAUDE_API_KEY_CTX.get("")
+    if user_key:
+        env["ANTHROPIC_API_KEY"] = user_key
+    # The CLI writes JSON to stdout; without this, a non-ASCII reply can die on
+    # the Windows console codepage mid-stream.
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+
+    _tmp_path = None
+    _stdin = None
+    if stdin_data is not None:
+        _fd, _tmp_path = tempfile.mkstemp(suffix=".txt", prefix="suni_cc_")
+        with os.fdopen(_fd, "w", encoding="utf-8") as _f:
+            _f.write(stdin_data)
+        _stdin = open(_tmp_path, "rb")
+
+    out_parts: list[str] = []
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            cmd, *args,
+            stdin=_stdin,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env,
+            cwd=cwd,
+        )
+
+        async def _pump() -> None:
+            # Stream-json lines can exceed asyncio's 64 KiB readline limit (a big
+            # tool result on one line), and readline() then raises instead of
+            # returning the data. read(n) never does, so reassemble lines here.
+            buf = b""
+            while True:
+                chunk = await proc.stdout.read(65536)
+                if not chunk:
+                    break
+                buf += chunk
+                while b"\n" in buf:
+                    raw, buf = buf.split(b"\n", 1)
+                    line = raw.decode("utf-8", errors="replace").strip()
+                    if not line:
+                        continue
+                    out_parts.append(line)
+                    try:
+                        on_line(line)
+                    except Exception:      # noqa: BLE001 — a display callback never fails the run
+                        pass
+            if buf.strip():
+                line = buf.decode("utf-8", errors="replace").strip()
+                out_parts.append(line)
+                try:
+                    on_line(line)
+                except Exception:      # noqa: BLE001
+                    pass
+
+        try:
+            await asyncio.wait_for(_pump(), timeout=timeout)
+            await asyncio.wait_for(proc.wait(), timeout=30)
+        except asyncio.TimeoutError:
+            proc.kill()
+            return 1, "\n".join(out_parts), f"Claude Code timed out after {timeout}s"
+
+        stderr_b = b""
+        try:
+            stderr_b = await asyncio.wait_for(proc.stderr.read(), timeout=5)
+        except (asyncio.TimeoutError, Exception):      # noqa: BLE001
+            pass
+        return (proc.returncode, "\n".join(out_parts),
+                stderr_b.decode("utf-8", errors="replace"))
     finally:
         if _stdin is not None:
             _stdin.close()

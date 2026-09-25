@@ -2144,7 +2144,14 @@ def create_app() -> FastAPI:
             # Event queue: orchestrator pushes tool/skill events here while running
             _evt_queue: asyncio.Queue = asyncio.Queue()
 
+            # Set when the run has already streamed the reply as `token` events
+            # (Claude Code stream mode). The replay below is then skipped — it
+            # would print the whole answer a second time.
+            _streamed_tokens = {"seen": False}
+
             def _event_cb(evt: dict) -> None:
+                if evt.get("type") == "token":
+                    _streamed_tokens["seen"] = True
                 _evt_queue.put_nowait(evt)
 
             async def _drain_events():
@@ -2219,12 +2226,17 @@ def create_app() -> FastAPI:
                     _user_jwt = _auth.create_access_token(user)
                     response = _inject_dl_token(response, _user_jwt)
 
-                words = response.split(" ")
-                for i, word in enumerate(words):
-                    chunk = word + (" " if i < len(words) - 1 else "")
-                    payload = json.dumps({"type": "token", "text": chunk})
-                    yield f"data: {payload}\n\n"
-                    await asyncio.sleep(0.018)
+                # Paced replay for runs that produced the answer in one piece.
+                # When the answer already arrived as tokens while the run was
+                # working, it is on screen — replaying it would duplicate it,
+                # and `done` below carries the authoritative text either way.
+                if not _streamed_tokens["seen"]:
+                    words = response.split(" ")
+                    for i, word in enumerate(words):
+                        chunk = word + (" " if i < len(words) - 1 else "")
+                        payload = json.dumps({"type": "token", "text": chunk})
+                        yield f"data: {payload}\n\n"
+                        await asyncio.sleep(0.018)
                 yield f"data: {json.dumps({'type': 'done', 'text': response})}\n\n"
 
                 # Persist messages to conversations DB

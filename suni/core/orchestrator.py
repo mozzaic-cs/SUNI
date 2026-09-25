@@ -420,10 +420,13 @@ class Orchestrator:
         """Process a user message through the full agent-tool loop."""
         # Set per-request ContextVars so tool handlers can read them.
         # Both are reset in the finally block — covers early returns and exceptions.
-        from ..tools.claude_code_advanced import CLAUDE_API_KEY_CTX
+        from ..tools.claude_code_advanced import CLAUDE_API_KEY_CTX, EVENT_CB_CTX
         from ..tools import memory_tool as _memory_tool
         _key_token = CLAUDE_API_KEY_CTX.set(claude_api_key)
         _uid_token = USER_ID_CTX.set(user_id)
+        # The Claude Code agent streams progress through this when a live
+        # consumer (the SSE chat stream) is listening.
+        _evt_token = EVENT_CB_CTX.set(event_cb)
         # Role and resolved grants for this turn, so a nested invoke_agent can
         # intersect against what is actually in force rather than re-deriving
         # from the role and discarding the calling agent's narrowing.
@@ -441,6 +444,7 @@ class Orchestrator:
         finally:
             CLAUDE_API_KEY_CTX.reset(_key_token)
             USER_ID_CTX.reset(_uid_token)
+            EVENT_CB_CTX.reset(_evt_token)
             _ROLE_CTX.reset(_role_token)
             _memory_tool.reset(_mem_token)
 

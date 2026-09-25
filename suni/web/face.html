@@ -2577,6 +2577,11 @@ async function send() {
         } else if (ev.type === 'skill_used') {
           showSub('SKILL: ' + (ev.name || ''));
           setTimeout(() => { if (state==='thinking') hideSub(); }, 2500);
+        } else if (ev.type === 'cc_note') {
+          // Progress while Claude Code works. Subtitle only: it never enters the
+          // caption buffer and never reaches the speech queue.
+          const n = (ev.text || '').trim();
+          if (n) showSub(n.length > 90 ? n.slice(0, 90) + '…' : n);
         } else if (ev.type === 'approval_request') {
           // Without this the Face interface cannot answer, so every gated tool
           // — send_email, write_file, run_shell, claude_task — waited five

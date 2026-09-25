@@ -1264,6 +1264,12 @@ async function send() {
         } else if (ev.type === 'skill_used') {
           showSub('SKILL: ' + (ev.name || ''));
           setTimeout(() => { if (state==='thinking') hideSub(); }, 2500);
+        } else if (ev.type === 'cc_note') {
+          // Progress while Claude Code works — what it says before reaching for
+          // a tool. The subtitle line, never the reply: it is not the answer and
+          // must not be spoken.
+          const n = (ev.text || '').trim();
+          if (n) showSub(n.length > 90 ? n.slice(0, 90) + '…' : n);
         } else if (ev.type === 'approval_request') {
           // Without this the request blocks until it auto-denies, while the
           // interface shows nothing but "thinking" — the reported symptom.
