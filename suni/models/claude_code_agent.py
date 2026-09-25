@@ -19,6 +19,41 @@ def _cc_persona() -> str:
     from .. import config as _cfg
     return str(_cfg.get("claude_code_persona", "") or "").strip() or _SUNI_CC_PERSONA_DEFAULT
 
+
+def _task_suffix(out_dir: str) -> str:
+    """The operating notes appended to every Claude Code task.
+
+    Two of them hand over SUNI's own plumbing: where generated files belong, and
+    where the KB index lives. Those are the means, not the answer — so the third
+    block tells the CLI to keep them out of its reply.
+
+    It leaked once. Asked about a company it had no documents for, SUNI opened
+    with "Nada nos seus documentos indexados — procurei em doc_meta.json,
+    doc_scan.json e na memória", narrating internal layout at a user who wanted
+    a yes or no. The persona is the wrong place to fix that: it is overridable
+    from config, so an install with its own persona would never receive it. This
+    suffix is code and always applies.
+
+    The rule is behavioural rather than a list of filenames, deliberately. The
+    leak named `doc_scan.json`, which nothing here mentions — the CLI found it by
+    listing `memory/`. A denylist of the names we happen to inject would have
+    missed it, and spelling names out inside a prohibition invites echoing them.
+    """
+    return (
+        f"\n\n[File rule: Save any output files to {out_dir} — not to the SUNI "
+        "install directory.]"
+        "\n\n[Knowledge Base: indexed documents are catalogued in "
+        "memory/doc_meta.json (fields: file_path, file_name, page, excerpt, mtime). "
+        "Search it (e.g. grep) to find relevant files. All indexed source paths "
+        "are directly readable on this machine via Read/Bash — open or copy them directly, "
+        "do not ask the user to map a drive.]"
+        "\n\n[Reporting rule: the notes above are SUNI's internal plumbing, not part "
+        "of the answer. Report what you found, or that you found nothing — never "
+        "where you looked. Do not name or describe SUNI's internal files, indexes, "
+        "directories or install paths in your reply, and do not narrate your search "
+        "process.]"
+    )
+
 _CC_HOME = os.path.expanduser("~")
 _CC_TOOLS = "Read,Glob,Grep,WebFetch,WebSearch,Bash"
 
@@ -88,23 +123,11 @@ class ClaudeCodeAgent(BaseAgent):
         if prefix_parts:
             task = "\n\n".join(prefix_parts) + "\n\n" + task
 
-        # Append output-directory rule so generated files land in the right place
+        # Output directory + Knowledge Base notes, and the rule that keeps both
+        # out of the reply. See _task_suffix.
         from ..tools.registry import USER_ID_CTX as _UID_CTX
         from ..user_settings import resolve_output_dir as _rod
-        out_dir = _rod(_UID_CTX.get(""))
-        task = task + f"\n\n[File rule: Save any output files to {out_dir} — not to the SUNI install directory.]"
-
-        # Knowledge Base access: indexed documents are catalogued in
-        # memory/doc_meta.json (file_path, file_name, page, excerpt fields).
-        # Indexed source paths are directly readable on this machine —
-        # no drive mapping needed.
-        task = task + (
-            "\n\n[Knowledge Base: indexed documents are catalogued in "
-            "memory/doc_meta.json (fields: file_path, file_name, page, excerpt, mtime). "
-            "Search it (e.g. grep) to find relevant files. All indexed source paths "
-            "are directly readable on this machine via Read/Bash — open or copy them directly, "
-            "do not ask the user to map a drive.]"
-        )
+        task = task + _task_suffix(_rod(_UID_CTX.get("")))
 
         # The prompt goes through stdin (see _run_claude): passing it as a --print
         # argument routes it through the Windows cmd.exe shim, whose ~8191-char
