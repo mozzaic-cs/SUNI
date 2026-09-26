@@ -124,10 +124,88 @@ def _cap(nodes: list[dict], focus: str) -> list[dict]:
     return kept
 
 
+
+# ── hosts ────────────────────────────────────────────────────────────────────
+
+def _hostname() -> str:
+    import socket
+    try:
+        return socket.gethostname()
+    except Exception:      # noqa: BLE001
+        return "this machine"
+
+
+def _lan_ip() -> str:
+    """This machine's address on the LAN.
+
+    Found by asking the routing table which interface would be used to reach a
+    public address — no packet is sent, and gethostbyname(hostname) is no use
+    because it often answers 127.0.0.1.
+    """
+    import socket
+    s = None
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+    except Exception:      # noqa: BLE001
+        return ""
+    finally:
+        if s is not None:
+            try:
+                s.close()
+            except Exception:      # noqa: BLE001
+                pass
+
+
+def _host_of(url: str) -> str:
+    """The host in a URL or host[:port] string, with any credentials dropped.
+
+    Connection strings carry passwords. Everything here ends up on a screen, so
+    only ever the host survives.
+    """
+    text = str(url or "").strip()
+    if not text:
+        return ""
+    if "://" in text:
+        text = text.split("://", 1)[1]
+    text = text.split("/", 1)[0]
+    if "@" in text:                      # user:pass@host
+        text = text.rsplit("@", 1)[1]
+    return text.split(":", 1)[0] if text.count(":") == 1 else text
+
+
+def _neighbours() -> list[tuple[str, str]]:
+    """Machines this one has recently spoken to, from the local ARP cache.
+
+    The cache is READ, never filled: nothing here pings, sweeps or scans, so a
+    machine appears only because this one already talked to it. Off unless the
+    operator turns it on, because a list of everything on the network is a
+    different kind of information from a list of SUNI's own services.
+    """
+    import re
+    import subprocess
+    out = []
+    try:
+        raw = subprocess.run(["arp", "-a"], capture_output=True, text=True,
+                             timeout=6).stdout
+    except Exception:      # noqa: BLE001 — no arp, no neighbours, no error
+        return out
+    for line in raw.splitlines():
+        m = re.search(r"(\d{1,3}(?:\.\d{1,3}){3})\s+([0-9a-fA-F][0-9a-fA-F][-:][0-9a-fA-F:-]+)", line)
+        if not m:
+            continue
+        ip, mac = m.group(1), m.group(2)
+        if ip.endswith(".255") or ip.startswith("224.") or ip.startswith("239."):
+            continue                      # broadcast and multicast are not machines
+        out.append((ip, mac))
+    return out[:60]
+
+
 # ── the graph ────────────────────────────────────────────────────────────────
 
 def build(focus: str = "root", *, doc_store=None, registry=None, skill_store=None,
-          config=None) -> dict:
+          config=None, user_id: str = "", user_role: str = "") -> dict:
     """Nodes and edges for one focus, plus the trail back to the root."""
     focus = (focus or "root").strip() or "root"
     cfg = config or {}
@@ -143,6 +221,8 @@ def build(focus: str = "root", *, doc_store=None, registry=None, skill_store=Non
             _node("tools", f"{len(registry.names()) if registry else 0} tools", "tool"),
             _node("skills", "skills", "skill"),
             _node("channels", "channels", "channel"),
+            _node("agents", "agents & schedules", "skill"),
+            _node("network", _hostname(), "machine", detail=_lan_ip()),
         ]
         dirs, files = _tree(doc_store)
         if dirs or files:
@@ -183,6 +263,60 @@ def build(focus: str = "root", *, doc_store=None, registry=None, skill_store=Non
         primary = str(cfg.get("model") or "").strip()
         if primary and primary not in seen:
             nodes.insert(0, _node(f"model:{primary}", primary, "model", live=1))
+
+    elif focus == "agents":
+        trail.append({"id": "agents", "label": "agents & schedules"})
+        try:
+            from . import agents as _ag
+            for a in _ag.list_for_user(user_id or "", user_role or "admin"):
+                nodes.append(_node(f"agent:{a['slug']}", a.get("name") or a["slug"], "skill",
+                                   live=1 if a.get("enabled", True) else 0,
+                                   detail=a.get("model") or ""))
+        except Exception:      # noqa: BLE001 — a branch that cannot load is empty, not fatal
+            pass
+        try:
+            from . import schedules as _sc
+            for x in _sc.list_for_user(user_id or "", user_role or "admin"):
+                nodes.append(_node(f"sched:{x['id']}", x.get("name") or x["id"], "channel",
+                                   live=1 if x.get("enabled") else 0,
+                                   detail=x.get("cadence") or ""))
+        except Exception:      # noqa: BLE001
+            pass
+        nodes = _cap(nodes, focus)
+
+    elif focus == "network":
+        trail.append({"id": "network", "label": _hostname()})
+        # Hosts SUNI actually talks to, read from configuration. Credentials are
+        # stripped by _host_of: a connection string on a screen is a leak.
+        seen: set[str] = set()
+
+        def _host_node(host: str, what: str) -> None:
+            host = (host or "").strip()
+            if not host or host in seen:
+                return
+            seen.add(host)
+            local = host in ("localhost", "127.0.0.1", "::1")
+            nodes.append(_node(f"host:{host}", host, "machine",
+                               detail=what + (" · this machine" if local else "")))
+
+        _host_node(_host_of(cfg.get("ollama_host") or ""), "ollama")
+        for ep in (cfg.get("ollama_endpoints") or []):
+            _host_node(_host_of(ep if isinstance(ep, str) else ep.get("url", "")), "ollama")
+        for key, what in (("vllm_base_url", "vLLM"), ("embed_base_url", "embeddings"),
+                          ("stt_base_url", "speech in"), ("tts_base_url", "speech out"),
+                          ("vision_base_url", "vision"), ("smtp_host", "mail out"),
+                          ("imap_host", "mail in"), ("logship_host", "log shipping")):
+            _host_node(_host_of(cfg.get(key) or ""), what)
+        for tier in (cfg.get("model_chain") or []):
+            _host_node(_host_of(tier.get("base_url") or ""), "model tier")
+
+        if cfg.get("network_neighbours"):
+            for ip, mac in _neighbours():
+                if ip in seen:
+                    continue
+                seen.add(ip)
+                nodes.append(_node(f"host:{ip}", ip, "machine", detail=f"seen on the network · {mac}"))
+        nodes = _cap(nodes, focus)
 
     elif focus == "kb" or focus.startswith("dir:"):
         dirs, files = _tree(doc_store)

@@ -69,13 +69,16 @@
   const LVS = `
     attribute vec3 a_pos;
     attribute float a_shade;
+    attribute float a_t;          /* 0 at the hub end, 1 at the node end */
     uniform mat4 u_mvp;
     varying float v_shade;
     varying float v_depth;
+    varying float v_t;
     void main(){
       vec4 clip = u_mvp * vec4(a_pos, 1.0);
       gl_Position = clip;
       v_shade = a_shade;
+      v_t = a_t;
       v_depth = clamp(clip.w / 24.0, 0.0, 1.0);
     }`;
 
@@ -84,13 +87,23 @@
     uniform vec3  u_tint;
     uniform float u_focus;
     uniform float u_alpha;
+    uniform float u_time;
+    uniform float u_flow;         /* how much traffic to suggest, 0..1 */
     varying float v_shade;
     varying float v_depth;
+    varying float v_t;
     void main(){
       vec3 grey = vec3(0.50, 0.54, 0.60);
       vec3 col  = mix(grey, u_tint, u_focus);
       float fade = mix(1.0, 0.18, v_depth);
-      gl_FragColor = vec4(col, v_shade * u_alpha * fade);
+      /* A short bright run travelling from the hub outward. Deliberately one
+         short segment rather than a dashed line: dashes read as a border, a
+         single moving run reads as something being carried. */
+      float d = fract(v_t * 1.35 - u_time * 0.34);
+      float pulse = smoothstep(0.0, 0.05, d) * (1.0 - smoothstep(0.05, 0.22, d));
+      float a = v_shade + pulse * u_flow * (0.35 + 0.65 * u_focus);
+      col += pulse * u_flow * 0.5 * mix(vec3(0.8), u_tint, u_focus);
+      gl_FragColor = vec4(col, a * u_alpha * fade);
     }`;
 
   function compile(gl, type, src) {
@@ -157,6 +170,7 @@
 
       this.bPos = gl.createBuffer(); this.bSize = gl.createBuffer(); this.bShade = gl.createBuffer();
       this.bLine = gl.createBuffer(); this.bLineShade = gl.createBuffer();
+      this.bLineT = gl.createBuffer();
 
       this.a = {
         pos: gl.getAttribLocation(this.prog, 'a_pos'),
@@ -173,13 +187,17 @@
       this.la = {
         pos: gl.getAttribLocation(this.lprog, 'a_pos'),
         shade: gl.getAttribLocation(this.lprog, 'a_shade'),
+        t: gl.getAttribLocation(this.lprog, 'a_t'),
       };
       this.lu = {
         mvp: gl.getUniformLocation(this.lprog, 'u_mvp'),
         tint: gl.getUniformLocation(this.lprog, 'u_tint'),
         focus: gl.getUniformLocation(this.lprog, 'u_focus'),
         alpha: gl.getUniformLocation(this.lprog, 'u_alpha'),
+        time: gl.getUniformLocation(this.lprog, 'u_time'),
+        flow: gl.getUniformLocation(this.lprog, 'u_flow'),
       };
+      this.flow = 0.35;       // ambient traffic; the page raises it when busy
 
       this.nodes = [];        // {id,label,kind,pos:[x,y,z],home:[...],size,shade}
       this.count = 0;
@@ -262,6 +280,9 @@
         lp[i * 6 + 3] = b[0]; lp[i * 6 + 4] = b[1]; lp[i * 6 + 5] = b[2];
         ls[i * 2] = lk[2]; ls[i * 2 + 1] = lk[3];
       });
+      const lt = new Float32Array(this._links.length * 2);
+      for (let i = 0; i < this._links.length; i++) { lt[i * 2] = 0; lt[i * 2 + 1] = 1; }
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.bLineT); gl.bufferData(gl.ARRAY_BUFFER, lt, gl.STATIC_DRAW);
       this.lineCount = this._links.length * 2;
       gl.bindBuffer(gl.ARRAY_BUFFER, this.bLine); gl.bufferData(gl.ARRAY_BUFFER, lp, gl.DYNAMIC_DRAW);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.bLineShade); gl.bufferData(gl.ARRAY_BUFFER, ls, gl.STATIC_DRAW);
@@ -344,12 +365,17 @@
       gl.uniform3f(this.lu.tint, tint[0], tint[1], tint[2]);
       gl.uniform1f(this.lu.focus, this.focus);
       gl.uniform1f(this.lu.alpha, alpha * 0.8);
+      gl.uniform1f(this.lu.time, this._t);
+      gl.uniform1f(this.lu.flow, this.flow);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.bLine);
       gl.enableVertexAttribArray(this.la.pos);
       gl.vertexAttribPointer(this.la.pos, 3, gl.FLOAT, false, 0, 0);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.bLineShade);
       gl.enableVertexAttribArray(this.la.shade);
       gl.vertexAttribPointer(this.la.shade, 1, gl.FLOAT, false, 0, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.bLineT);
+      gl.enableVertexAttribArray(this.la.t);
+      gl.vertexAttribPointer(this.la.t, 1, gl.FLOAT, false, 0, 0);
       gl.drawArrays(gl.LINES, 0, this.lineCount);
 
       gl.useProgram(this.prog);

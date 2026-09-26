@@ -160,6 +160,12 @@ DEFAULTS: dict[str, Any] = {
     # Lower this to 1 if the card is shared with a busy desktop: two KV slots
     # took VRAM to 7.2 GB of 8 GB here, and overflowing that is what made the
     # first measurement look like parallelism was the problem.
+    # The network view lists the hosts SUNI talks to, always. Turning this on
+    # adds the machines this one has recently spoken to, read from the local ARP
+    # cache — nothing pings, sweeps or scans. Off by default because a list of
+    # what else is on the network is a different kind of information from a list
+    # of SUNI's own services.
+    "network_neighbours":     False,
     "fanout_max_parallel":    2,
     "fanout_token_budget":    0,       # tokens for the whole fan-out; agents after it are skipped
     # ── Pluggable model chain (admin-ordered provider preference) ─────────

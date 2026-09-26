@@ -171,3 +171,100 @@ def test_only_indexed_files_can_be_opened():
     allowed = graph.indexed_paths(store)
     assert allowed == set(_paths("a/one.pdf"))
     assert os.path.join("C:" + os.sep, "Windows", "system32") not in allowed
+
+
+# ── machines and services ────────────────────────────────────────────────────
+def test_the_network_lists_hosts_suni_actually_talks_to():
+    g = graph.build("network", config={
+        "ollama_host": "http://127.0.0.1:11434",
+        "smtp_host": "smtp.example.net",
+        "vllm_base_url": "http://gpu-1:8000/v1",
+    })
+    by = {n["label"]: n.get("detail", "") for n in g["nodes"]}
+    assert "gpu-1" in by and "vLLM" in by["gpu-1"]
+    assert "smtp.example.net" in by
+    assert "this machine" in by["127.0.0.1"], "a local service should say so"
+
+
+def test_a_connection_string_never_brings_its_password_along():
+    assert graph._host_of("postgres://user:hunter2@db.internal:5432/app") == "db.internal"
+    assert graph._host_of("https://token@api.example.com/v1") == "api.example.com"
+    assert graph._host_of("") == ""
+
+
+def test_each_host_appears_once_however_many_services_it_runs():
+    g = graph.build("network", config={
+        "ollama_host": "http://gpu-1:11434",
+        "embed_base_url": "http://gpu-1:11434",
+        "vllm_base_url": "http://gpu-1:8000/v1",
+    })
+    assert [n["label"] for n in g["nodes"]].count("gpu-1") == 1
+
+
+def test_neighbours_are_off_unless_asked_for(monkeypatch):
+    """A list of everything on the network is not the same as a list of SUNI's
+    own services, so it waits to be turned on."""
+    monkeypatch.setattr(graph, "_neighbours", lambda: [("192.168.1.9", "aa-bb-cc-dd-ee-ff")])
+    off = graph.build("network", config={})
+    on = graph.build("network", config={"network_neighbours": True})
+    assert not any("192.168.1.9" in n["label"] for n in off["nodes"])
+    assert any("192.168.1.9" in n["label"] for n in on["nodes"])
+
+
+def test_nothing_in_the_network_view_scans_anything():
+    """The ARP cache is read, never filled: a machine appears only because this
+    one already spoke to it."""
+    import ast
+    import inspect
+    tree = ast.parse(inspect.getsource(graph._neighbours).lstrip())
+    fn = tree.body[0]
+    # Drop ONLY the docstring: the prose says it does not scan, and the first
+    # version of this test passed on the word "pings" in that very sentence.
+    # Blanking every string instead removed the "arp" it is meant to look for.
+    if (fn.body and isinstance(fn.body[0], ast.Expr)
+            and isinstance(fn.body[0].value, ast.Constant)
+            and isinstance(fn.body[0].value.value, str)):
+        fn.body.pop(0)
+    code = ast.unparse(tree)
+    assert "'arp', '-a'" in code or '"arp", "-a"' in code
+    for forbidden in ("ping", "connect", "socket", "nmap", "urlopen", "requests"):
+        assert forbidden not in code, f"the neighbour list reaches out ({forbidden})"
+
+
+def test_broadcast_and_multicast_are_not_machines(monkeypatch):
+    import subprocess
+
+    class R:
+        stdout = ("  192.168.1.1     f4-ce-46-a5-5e-71   dynamic\n"
+                  "  192.168.1.255   ff-ff-ff-ff-ff-ff   static\n"
+                  "  239.255.255.250 01-00-5e-7f-ff-fa   static\n")
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: R())
+    ips = [ip for ip, _ in graph._neighbours()]
+    assert ips == ["192.168.1.1"]
+
+
+def test_agents_and_schedules_are_the_callers_own(monkeypatch):
+    """Both are per-user. Asking with somebody else's id must not be a way to
+    see their agents, so the caller is passed through, not assumed."""
+    import suni.agents as ag
+    import suni.schedules as sc
+    asked = {}
+
+    def fake_agents(uid, role=""):
+        asked["agents"] = (uid, role)
+        return [{"slug": "researcher", "name": "Researcher", "enabled": True, "model": ""}]
+
+    def fake_scheds(uid, role=""):
+        asked["schedules"] = (uid, role)
+        return [{"id": "s1", "name": "Weekly", "enabled": False, "cadence": "weekly"}]
+
+    monkeypatch.setattr(ag, "list_for_user", fake_agents)
+    monkeypatch.setattr(sc, "list_for_user", fake_scheds)
+    g = graph.build("agents", user_id="u1", user_role="user")
+    assert asked["agents"] == ("u1", "user")
+    assert asked["schedules"] == ("u1", "user")
+    labels = {n["label"] for n in g["nodes"]}
+    assert labels == {"Researcher", "Weekly"}
+    weekly = next(n for n in g["nodes"] if n["label"] == "Weekly")
+    assert weekly.get("live", 0) == 0, "a disabled schedule should not look live"

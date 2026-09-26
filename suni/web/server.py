@@ -3711,6 +3711,10 @@ def create_app() -> FastAPI:
             registry=registry,
             skill_store=skill_store,
             config=suni_config.all(),
+            # Agents and schedules are per-user: the view must show the caller
+            # theirs, resolved the same way the rest of the app resolves them.
+            user_id=user["id"],
+            user_role=user.get("role", ""),
         ))
 
     @app.get("/api/knowledge/status", dependencies=[Depends(_check_token)])

@@ -1500,6 +1500,10 @@ function renderHead(dt){
     // Between the nebula and her: the field is behind the head because it is
     // drawn first and writes depth, not because anything paints over it.
     _net.update(dt);
+    // Traffic follows what she is actually doing: quiet when idle, busier while
+    // she is thinking, calling a tool or speaking. The lines carry something
+    // when there is something to carry.
+    _net.flow = (state === 'idle') ? 0.22 : (state === 'speaking' ? 0.7 : 0.95);
     const nc = stateColor(stateSmooth);
     _net.draw(proj, [nc[0] / 255, nc[1] / 255, nc[2] / 255], canvas.height);
     _netPaint();
