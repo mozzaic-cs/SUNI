@@ -2601,6 +2601,13 @@ def create_app() -> FastAPI:
         return Response(content=I18N_FILE.read_text(encoding="utf-8"),
                         media_type="application/javascript; charset=utf-8")
 
+    @app.get("/netgraph.js")
+    async def netgraph_js():
+        return Response(
+            content=(Path(__file__).parent / "netgraph.js").read_text(encoding="utf-8"),
+            media_type="application/javascript",
+        )
+
     @app.get("/approval_ui.js")
     async def approval_ui_js():
         """Shared approval prompt for the two voice-first surfaces. chat.html

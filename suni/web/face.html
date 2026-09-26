@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
 <script src="/i18n.js"></script>
+<script src="/netgraph.js"></script>
 <script src="/approval_ui.js"></script>
 <script>
 // Apply operator-configurable branding (Admin -> Configuration -> Identity).
@@ -313,6 +314,22 @@ header{
   100%{opacity:0;transform:translate(var(--x1),var(--y1)) scale(var(--s1))}
 }
 /* Content stage (Step A) — appears when the head shrinks to the corner */
+/* ── the network behind her ─────────────────────────────────────────── */
+#net-pop{position:absolute;z-index:7;pointer-events:none;opacity:0;transition:opacity .16s ease;
+  transform:translate(-50%,calc(-100% - 14px));max-width:320px;
+  padding:8px 11px;border-radius:6px;border:1px solid rgba(0,212,255,.28);
+  background:rgba(6,10,24,.82);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+  font-family:'DM Mono',monospace;font-size:12px;line-height:1.5;color:rgba(228,236,255,.95)}
+#net-pop.on{opacity:1}
+#net-pop .k{color:rgba(0,212,255,.75);font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+#net-pop .p{color:rgba(228,236,255,.55);font-size:10px;word-break:break-all;margin-top:3px}
+#net-pop .hint{color:rgba(0,212,255,.6);font-size:10px;margin-top:5px}
+#net-trail{position:absolute;left:3.5%;bottom:132px;z-index:7;opacity:0;transition:opacity .3s ease;
+  font-family:'DM Mono',monospace;font-size:12px;color:rgba(228,236,255,.6);pointer-events:none}
+#net-trail.on{opacity:1;pointer-events:auto}
+#net-trail span{cursor:pointer;padding:2px 5px;border-radius:3px}
+#net-trail span:hover{color:#00d4ff;background:rgba(0,212,255,.08)}
+#net-trail b{color:rgba(228,236,255,.9);font-weight:400;padding:2px 5px}
 #content-stage{position:absolute;top:60px;left:3.5%;width:60%;bottom:118px;z-index:5;
   opacity:0;transform:translateY(10px);pointer-events:none;
   transition:opacity .5s ease,transform .5s ease;display:flex;flex-direction:column}
@@ -355,6 +372,8 @@ header{
   <canvas id="suni-canvas"></canvas>
   <div id="ingest-layer"></div>
   <div id="content-stage"><div id="stage-body"><div id="stage-media"></div><div id="stage-text"></div></div></div>
+  <div id="net-pop"></div>
+  <div id="net-trail"></div>
   <!-- background scanlines removed — the head keeps its own scanlines from the FS2 shader -->
   <header>
     <div class="wordmark"><span id="brand-name">SUNI</span><sub id="brand-tagline"></sub></div>
@@ -751,6 +770,10 @@ try{
     uCol=gl.getUniformLocation(prog,'u_color'); uBri=gl.getUniformLocation(prog,'u_bright');
     uPt=gl.getUniformLocation(prog,'u_point'); uRound=gl.getUniformLocation(prog,'u_round');
     buildHead();
+    // The field she sits in front of. Built here because it shares this
+    // context; it stays empty and invisible until the graph arrives.
+    try { if (typeof NetGraph !== 'undefined') _net = new NetGraph(gl); }
+    catch(e) { console.warn('[NET] init:', e); }
     bPos=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,bPos); gl.bufferData(gl.ARRAY_BUFFER,headPos,gl.STATIC_DRAW);
     bJaw=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,bJaw); gl.bufferData(gl.ARRAY_BUFFER,headJaw,gl.STATIC_DRAW);
     bIdx=gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,bIdx); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,headIdx,gl.STATIC_DRAW);
@@ -1473,10 +1496,20 @@ function renderHead(dt){
   gl.viewport(0,0,canvas.width,canvas.height);
   gl.clearColor(0,0,0,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
   drawBackground();
+  if (_net && _net.ok) {
+    // Between the nebula and her: the field is behind the head because it is
+    // drawn first and writes depth, not because anything paints over it.
+    _net.update(dt);
+    const nc = stateColor(stateSmooth);
+    _net.draw(proj, [nc[0] / 255, nc[1] / 255, nc[2] / 255], canvas.height);
+    _netPaint();
+  }
   // Stage mode (Step A): the background just drew full-screen; now shrink the
   // head+eyes into the top-right corner so the freed space can host content.
   // Aspect is preserved (same shrink on W and H) so the head never distorts.
-  _stageT += ((_stageMode ? 1 : 0) - _stageT) * Math.min(1, 4 * dt);
+  // The head moves aside for the stage panel OR for the network in focus —
+  // but only the panel opens the panel, or it would cover what it made room for.
+  _stageT += (((_stageMode || _netFocus) ? 1 : 0) - _stageT) * Math.min(1, 4 * dt);
   if (_stageT > 0.002){
     const f = 1 - 0.62 * _stageT;                       // shrink toward ~38%
     const vpW = canvas.width * f, vpH = canvas.height * f;
@@ -1684,6 +1717,9 @@ const _sessionId  = localStorage.getItem('suni_session') || (() => {
     const uiLang = uSettings.response_language || uCfg.response_language || 'en';
     if (typeof setLang !== 'undefined') setLang(uiLang);
   } catch {}
+  // What she can reach, for the field behind her. Fire and forget: the page
+  // is perfectly usable without it, and a failure here must not stop boot.
+  _netLoad('root');
   // Load session info (role, mode, allowed modes)
   const info = await _apiFetch('/api/session/info',
     {headers:{'x-session-id':_sessionId}}).then(r=>r.json()).catch(()=>null);
@@ -2180,6 +2216,125 @@ function _camTick(){
 }
 
 _camBtn.addEventListener('click', () => { if(_camStream) _camStop(); else _camStart(); });
+
+// ══════════════════════════════════════════════════════════════════════
+//  THE NETWORK BEHIND HER
+//  Ambient it is grey, slow and quiet — depth, not information. The moment
+//  the viewer takes hold of it (drag, wheel, click) it takes her colour, the
+//  head steps aside, and it becomes something to read and move through.
+// ══════════════════════════════════════════════════════════════════════
+let _net = null, _netData = null, _netFocus = false, _netHover = null, _netBusy = false;
+const _netPop = document.getElementById('net-pop');
+const _netTrail = document.getElementById('net-trail');
+
+async function _netLoad(focus){
+  if (_netBusy) return;
+  _netBusy = true;
+  try {
+    const r = await _apiFetch('/api/graph?focus=' + encodeURIComponent(focus || 'root'));
+    if (!r.ok) return;
+    _netData = await r.json();
+    if (_net) _net.setData(_netData);
+    _netDrawTrail();
+  } catch(e) { console.warn('[NET] load:', e); }
+  finally { _netBusy = false; }
+}
+
+function _netDrawTrail(){
+  if (!_netData) return;
+  const t = _netData.trail || [];
+  _netTrail.innerHTML = t.map((x, i) =>
+    i === t.length - 1 ? `<b>${_esc(x.label)}</b>`
+                       : `<span data-id="${_esc(x.id)}">${_esc(x.label)}</span>`
+  ).join('<span style="opacity:.35"> / </span>');
+  _netTrail.classList.toggle('on', _netFocus);
+}
+_netTrail.addEventListener('click', e => {
+  const id = e.target && e.target.getAttribute && e.target.getAttribute('data-id');
+  if (id) _netLoad(id);
+});
+
+function _esc(v){ return String(v == null ? '' : v).replace(/[&<>"]/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function _netSetFocus(on){
+  if (_netFocus === on) return;
+  _netFocus = on;
+  if (_net) _net.setFocus(on);
+  _netTrail.classList.toggle('on', on);
+  if (!on) { _netPop.classList.remove('off'); _netPop.classList.remove('on'); _netHover = null; }
+}
+
+/* The label follows its node every frame: the field drifts, and a popup pinned
+   to where the node WAS is worse than none. */
+function _netPaint(){
+  if (!_netHover || !_netFocus) { _netPop.classList.remove('on'); return; }
+  const p = _net.screenPos(_netHover, canvas.clientWidth || W, canvas.clientHeight || H);
+  if (!p) { _netPop.classList.remove('on'); return; }
+  _netPop.style.left = p.x + 'px';
+  _netPop.style.top  = p.y + 'px';
+  _netPop.classList.add('on');
+}
+
+function _netDescribe(node){
+  const m = node.meta || {};
+  const bits = [`<div class="k">${_esc(m.kind || '')}</div>`,
+                `<div>${_esc(node.label)}</div>`];
+  if (m.count)  bits.push(`<div class="p">${Number(m.count).toLocaleString()} files inside</div>`);
+  if (m.detail) bits.push(`<div class="p">${_esc(m.detail)}</div>`);
+  if (m.ext)    bits.push(`<div class="p">.${_esc(m.ext)}</div>`);
+  if (m.live !== undefined) bits.push(`<div class="p">${m.live ? 'configured' : 'not configured'}</div>`);
+  const id = String(m.id || '');
+  if (id.startsWith('dir:') || ['kb','tools','skills','channels','models'].includes(id))
+    bits.push('<div class="hint">click to open</div>');
+  else if (id.startsWith('file:'))
+    bits.push('<div class="hint">a file SUNI has indexed</div>');
+  _netPop.innerHTML = bits.join('');
+}
+
+/* ── pointer: orbit, hover, drill ──────────────────────────────────── */
+let _netDrag = null, _netMoved = 0;
+canvas.addEventListener('pointerdown', e => {
+  if (!_net || !_net.ok) return;
+  _netDrag = { x: e.clientX, y: e.clientY };
+  _netMoved = 0;
+  try { canvas.setPointerCapture(e.pointerId); } catch {}
+});
+canvas.addEventListener('pointermove', e => {
+  if (!_net || !_net.ok) return;
+  if (_netDrag) {
+    const dx = e.clientX - _netDrag.x, dy = e.clientY - _netDrag.y;
+    _netMoved += Math.abs(dx) + Math.abs(dy);
+    _netDrag = { x: e.clientX, y: e.clientY };
+    if (_netMoved > 4) { _netSetFocus(true); _net.orbit(dx, dy); }
+    return;
+  }
+  if (!_netFocus) return;                 // ambient: do not chase the cursor
+  const hit = _net.pick(e.clientX, e.clientY, canvas.clientWidth || W, canvas.clientHeight || H);
+  if (hit !== _netHover) { _netHover = hit; if (hit) _netDescribe(hit); }
+});
+canvas.addEventListener('pointerup', e => {
+  const wasDrag = _netMoved > 4;
+  _netDrag = null;
+  if (!_net || !_net.ok || wasDrag) return;
+  const hit = _net.pick(e.clientX, e.clientY, canvas.clientWidth || W, canvas.clientHeight || H);
+  if (!hit) return;
+  _netSetFocus(true);
+  _netHover = hit; _netDescribe(hit);
+  const id = String((hit.meta && hit.meta.id) || '');
+  // Folders and the section hubs open. A file is a leaf: it describes itself
+  // and waits — opening one is a separate decision, gated server-side.
+  if (id.startsWith('dir:') || ['kb','tools','skills','channels','models'].includes(id)) _netLoad(id);
+});
+canvas.addEventListener('wheel', e => {
+  if (!_net || !_net.ok) return;
+  e.preventDefault();
+  _netSetFocus(true);
+  _net.zoom(e.deltaY);
+}, { passive: false });
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && _netFocus) { _netSetFocus(false); _netLoad('root'); }
+});
 
 // ── Content stage toggle (Step A) — head to corner + content panel ────
 const _stageBtn  = document.getElementById('stage-btn');

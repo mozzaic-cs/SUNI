@@ -93,12 +93,12 @@ def _tree(doc_store) -> tuple[dict, dict]:
 def _roots(dirs: dict, files: dict) -> list[str]:
     """Where the indexed tree starts, with pass-through folders collapsed.
 
-    A drive root is its own parent ("J:\\" -> "J:\\"), so a plain "parent not
+    A drive root is its own parent ("D:\\" -> "D:\\"), so a plain "parent not
     indexed" test excluded everything and the knowledge level came back empty.
 
     The chain below a root is then collapsed while it has one child and no files
-    of its own: three nodes reading J: -> MOZZAIC -> Projects tell the viewer
-    nothing that one node reading the whole path does not.
+    of its own: three nodes reading a drive, a company and a "Projects" folder
+    tell the viewer nothing that one node reading the whole path does not.
     """
     roots = [d for d in dirs
              if os.path.dirname(d) == d or os.path.dirname(d) not in dirs]

@@ -38,7 +38,7 @@ class FakeRegistry:
 
 
 def _paths(*rel):
-    base = os.path.join("J:" + os.sep, "Work")
+    base = os.path.join("D:" + os.sep, "Work")
     return [os.path.join(base, *r.split("/")) for r in rel]
 
 
@@ -70,7 +70,7 @@ def test_no_index_means_no_knowledge_node():
 
 # ── the indexed tree ─────────────────────────────────────────────────────────
 def test_a_lone_root_is_stepped_through_rather_than_shown():
-    """J: -> MOZZAIC -> Projects is three clicks that tell you nothing."""
+    """A drive, then a company, then "Projects" is three clicks that say nothing."""
     g = graph.build("kb", doc_store=FakeStore(_paths("a/one.pdf", "b/two.pdf")))
     labels = {n["label"] for n in g["nodes"]}
     assert labels == {"a", "b"}, "the walk down to the first real choice did not happen"
@@ -98,7 +98,7 @@ def test_drilling_in_shows_folders_and_files_together():
 
 def test_the_trail_leads_back_out():
     store = FakeStore(_paths("a/deep/two.pdf"))
-    g = graph.build(f"dir:{os.path.join('J:' + os.sep, 'Work', 'a', 'deep')}",
+    g = graph.build(f"dir:{os.path.join('D:' + os.sep, 'Work', 'a', 'deep')}",
                     doc_store=store)
     labels = [t["label"] for t in g["trail"]]
     assert labels[0] == "SUNI" and labels[-1] == "deep"
