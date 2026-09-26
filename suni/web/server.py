@@ -2094,6 +2094,30 @@ def create_app() -> FastAPI:
                 _log.warning("[AGENT] %s requested agent %r they cannot use",
                              user["username"], _agent_slug)
 
+        # Several agents: ask each and let SUNI write the answer. Same visibility
+        # check per slug, for the same reason — the client sends names, never
+        # definitions, and grants are still re-resolved per agent inside the run.
+        _fanout_profiles: list[dict] = []
+        _agent_slugs = body.get("agents") or []
+        if isinstance(_agent_slugs, list) and len(_agent_slugs) > 1:
+            from .. import agents as _agents
+            from ..core.fanout import MAX_AGENTS as _MAX_FAN
+            _visible = {a["slug"] for a in _agents.list_for_user(user["id"], user_role)}
+            for _sl in [str(x).strip() for x in _agent_slugs][:_MAX_FAN]:
+                if _sl not in _visible:
+                    _log.warning("[FANOUT] %s requested agent %r they cannot use",
+                                 user["username"], _sl)
+                    continue
+                _p = _agents.get(_sl)
+                if _p and _p.get("enabled", True):
+                    _p["_username"] = user["username"]
+                    _fanout_profiles.append(_p)
+            # One surviving agent is not a fan-out; run it as the single agent it
+            # is, rather than asking the head to compose one report into one.
+            if len(_fanout_profiles) == 1 and not _agent_profile:
+                _agent_profile = _fanout_profiles[0]
+                _fanout_profiles = []
+
         # Per-user language and MCP preferences
         _prefs     = _user_settings.get(user["id"])
         _resp_lang = _prefs.get("response_language", "")
@@ -2215,6 +2239,14 @@ def create_app() -> FastAPI:
                         user_id=user["id"],
                         claude_api_key=_claude_api_key,
                         images=_image_paths,
+                        fanout_profiles=_fanout_profiles or None,
+                        # Memory: left as the caller's, which is what invoke_agent
+                        # already does for a single delegation. Giving each
+                        # specialist its own store is defensible but it is a
+                        # separate decision, and a fan-out writing three
+                        # sub-exchanges per turn into somebody's personal memory
+                        # is the bloat this codebase has already been bitten by.
+                        memory_for=None,
                     ))
                     _run_entry = {"task": _run_task, "stopped_by": None}
                     _active_runs[_run_key] = _run_entry

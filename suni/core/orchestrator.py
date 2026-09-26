@@ -461,6 +461,8 @@ class Orchestrator:
         images: list[str] | None = None,  # paths of attached image files (vision path)
         agent_profile: dict | None = None,  # named agent profile; see suni/agents.py
         dry_run: bool = False,   # show what it WOULD do; execute nothing
+        fanout_profiles: list[dict] | None = None,  # ask several, compose one answer
+        memory_for=None,         # callable(profile) -> memory, for per-agent isolation
     ) -> str:
         """Process a user message through the full agent-tool loop."""
         # Set per-request ContextVars so tool handlers can read them.
@@ -489,7 +491,7 @@ class Orchestrator:
             return await self._run_inner(
                 user_input, context, user_role, conv_mode, response_language,
                 user_mcp_servers, event_cb, user_id, claude_api_key, images,
-                agent_profile, dry_run,
+                agent_profile, dry_run, fanout_profiles, memory_for,
             )
         finally:
             CLAUDE_API_KEY_CTX.reset(_key_token)
@@ -513,6 +515,8 @@ class Orchestrator:
         images: list[str] | None = None,
         agent_profile: dict | None = None,
         dry_run: bool = False,   # show what it WOULD do; execute nothing
+        fanout_profiles: list[dict] | None = None,
+        memory_for=None,
     ) -> str:
         # Per-request memory: the task-local binding (set race-free by run() at
         # request start) — NOT self.memory, which _safe_run swaps and a concurrent
@@ -676,6 +680,54 @@ class Orchestrator:
             except Exception:      # noqa: BLE001 — never fail a turn on a budget check
                 pass
             _GR.set(_agent_grants)
+
+        # ── Fan-out: ask several specialists, then answer as the head ─────
+        # Separate branch, like collaboration below: the ordinary single-turn
+        # pipeline is left untouched. Each specialist runs the normal request
+        # path with its own profile, so grants, model pins and daily ceilings
+        # all still apply — this decides who is asked, not what they may do.
+        if fanout_profiles:
+            from . import fanout as _fan
+            ts = time.perf_counter()
+            _budget = int(_cfg.get("fanout_token_budget", 0) or 0)
+            _par = int(_cfg.get("fanout_max_parallel", _fan.DEFAULT_PARALLEL)
+                       or _fan.DEFAULT_PARALLEL)
+            _names = ", ".join(p.get("name") or p.get("slug", "?") for p in fanout_profiles)
+            _log.info("[FANOUT] asking %d agent(s): %s", len(fanout_profiles), _names)
+            results = await _fan.run_fanout(
+                self, user_input, fanout_profiles,
+                user_role=user_role, user_id=user_id,
+                response_language=response_language,
+                event_cb=event_cb, memory_for=memory_for,
+                max_parallel=_par, token_budget=_budget,
+            )
+            _answered = [r for r in results if r.get("answer")]
+            if not _answered:
+                # Nothing to compose. Say which and why rather than inventing an
+                # answer from nothing.
+                _lines = [f"- {r['name']}: {r.get('error') or r.get('skipped') or 'no answer'}"
+                          for r in results]
+                final = ("None of the agents answered:" + _NL + _NL.join(_lines))
+            else:
+                _head = self._tier_agents.get(CLAUDE_CODE_TIER) if (
+                    bool(_cfg.get("force_claude_code"))
+                    and CLAUDE_CODE_TIER in self._tier_agents) else self.primary
+                _prompt = _fan.compose_prompt(
+                    user_input, results, _lang_instruction(response_language))
+                _synth = await _head.chat(
+                    [Message(role=Role.USER, content=_prompt)], Context(), tools=None)
+                final = _sanitize_response(_synth.content or "")
+                if not final:
+                    # The head produced nothing; the specialists' work is still
+                    # worth more than an empty reply.
+                    final = (_NL + _NL).join(f"**{r['name']}**" + _NL + r["answer"]
+                                        for r in _answered)
+            context.add(Message(role=Role.USER, content=user_input))
+            context.add(Message(role=Role.ASSISTANT, content=final, agent="fanout"))
+            if _mem:
+                await _mem.add_exchange(user_input, final)
+            _tick("fan-out", ts, f"{len(_answered)}/{len(results)} answered")
+            return final
 
         # ── Mode 2: multi-model collaboration (explicit opt-in) ───────────
         # A separate, self-contained branch — the normal Mode-1 pipeline below is
@@ -1411,6 +1463,8 @@ class Orchestrator:
         images: list[str] | None = None,
         agent_profile: dict | None = None,
         dry_run: bool = False,   # show what it WOULD do; execute nothing
+        fanout_profiles: list[dict] | None = None,
+        memory_for=None,
     ) -> str:
         """Wrapper that guarantees any unhandled exception is logged."""
         original_memory = self.memory
@@ -1424,7 +1478,8 @@ class Orchestrator:
                                   event_cb=event_cb, user_id=user_id,
                                   images=images,
                                   claude_api_key=claude_api_key, agent_profile=agent_profile,
-                                  dry_run=dry_run)
+                                  dry_run=dry_run, fanout_profiles=fanout_profiles,
+                                  memory_for=memory_for)
         except _bhealth.BackendUnavailableError as exc:
             # Breaker is open — the local model backend is down. Return a clean,
             # user-facing message. run() yields a STRING (_run_inner returns

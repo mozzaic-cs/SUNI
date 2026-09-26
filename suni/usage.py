@@ -95,3 +95,12 @@ def models_used() -> list[str]:
     """The models that served the current request, in call order."""
     acc = _acc.get()
     return list(acc.models) if acc is not None else []
+
+def current():
+    """The accumulator bound to this request, or None outside one.
+
+    Exposed so a spend ceiling can be checked mid-turn — the fan-out asks how
+    much the turn has cost before it starts another specialist — without anyone
+    reaching into the ContextVar directly.
+    """
+    return _acc.get()

@@ -149,6 +149,16 @@ DEFAULTS: dict[str, Any] = {
     "collaborate_enabled":    True,    # master switch for the collaborate mode
     "collaborate_skip_critique": False,  # fast dial: draft→synthesize only (skip cross-critique)
     "collaborate_pool":       [],      # [] = default Claude Code + Codex; or [{provider,model,base_url,api_key,enabled}]
+    # ── Fan-out: ask several named agents, then answer as the head ────────
+    # Parallelism multiplies cost, so both ceilings are per TURN, not per agent
+    # (each agent's own max_tokens_day still applies). 0 = no token ceiling.
+    # Measured 2026-09-26 on this box (8 GB card, ~2.6 GB of it held by the
+    # desktop): ONE 7B generation ran at 5.6 tok/s; TWO at once took 123s of wall
+    # clock for the same work, the second crawling at 2.7 tok/s. Parallel local
+    # specialists are slower than asking them in turn, so the default is 1.
+    # Raise it when the specialists are pinned to claude-code, which runs off-box.
+    "fanout_max_parallel":    1,
+    "fanout_token_budget":    0,       # tokens for the whole fan-out; agents after it are skipped
     # ── Pluggable model chain (admin-ordered provider preference) ─────────
     # User-defined, drag-ordered list of chat models / providers, top = first
     # choice. STORAGE + ADMIN UI ONLY right now — deliberately NOT wired into
