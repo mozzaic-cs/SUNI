@@ -308,6 +308,8 @@
       'orb.chat_link':     '☰ CHAT',
       'orb.mic_hold':      'Hold to speak',
       'orb.tts_toggle':    'Toggle voice',
+      'orb.tts_pause':     'Pause speech',
+      'orb.tts_resume':    'Resume speech',
       'orb.lang_settings': 'Language & voice settings',
       'orb.settings_note': 'Leave a field on <strong>System default</strong> to use the global setting from Admin → Configuration.',
 
@@ -967,6 +969,8 @@
       'orb.chat_link':     '☰ CHAT',
       'orb.mic_hold':      'Manter premido para falar',
       'orb.tts_toggle':    'Alternar voz',
+      'orb.tts_pause':     'Pausar a fala',
+      'orb.tts_resume':    'Retomar a fala',
       'orb.lang_settings': 'Definições de idioma e voz',
       'orb.settings_note': 'Deixe um campo em <strong>Predefinição do sistema</strong> para usar a definição global de Administração → Configuração.',
 

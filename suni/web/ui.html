@@ -214,12 +214,16 @@ header{
   border:1px solid rgba(255,90,90,.45);cursor:pointer}
 #send-btn.stopping:hover{background:rgba(255,90,90,.3);filter:none}
 
-#tts-btn{
+#tts-btn, #tts-pause{
   background:transparent;border:1px solid rgba(0,212,255,.18);
   border-radius:2px;padding:8px 10px;color:var(--dim);
   font-size:13px;cursor:pointer;transition:all .2s;flex-shrink:0;
 }
 #tts-btn.on{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 8px rgba(0,212,255,.18)}
+/* Nothing is being said: the control stays put rather than appearing and
+   disappearing under the cursor, but says plainly that it does nothing. */
+#tts-pause.idle{opacity:.3;cursor:default}
+#tts-pause.paused{border-color:var(--cyan);color:var(--cyan)}
 
 #snap-btn{
   background:transparent;border:1px solid rgba(255,255,255,.14);
@@ -324,6 +328,7 @@ header{
              autocomplete="off" spellcheck="false"/>
       <button id="mic-btn" data-i18n-title="orb.mic_hold"  title="Hold to speak">🎤</button>
       <button id="tts-btn" data-i18n-title="orb.tts_toggle" title="Toggle voice">🔊</button>
+      <button id="tts-pause" class="idle" data-i18n-title="orb.tts_pause" title="Pause speech">⏸</button>
       <button id="send-btn" data-i18n="chat.send">Send</button>
     </div>
     <!-- EU AI Act Art. 50(1): persistent AI-interaction disclosure -->
@@ -920,6 +925,38 @@ ttsBtn.addEventListener('click', () => {
   ttsBtn.classList.toggle('on', ttsOn);
 });
 
+// ── Pause / resume what is being said ────────────────────────────────
+// Separate from the 🔊 toggle, which decides whether the NEXT reply is spoken.
+// This stops the sentence in progress and picks it up again where it stopped.
+// The drain loop needs no changes: it is parked awaiting 'ended', and pausing
+// fires no such event, so the queue simply waits — and keeps filling.
+const ttsPauseBtn = document.getElementById('tts-pause');
+let _ttsPaused = false;
+
+function _ttsSetPaused(on) {
+  _ttsPaused = on;
+  ttsPauseBtn.classList.toggle('paused', on);
+  ttsPauseBtn.textContent = on ? '▶' : '⏸';
+  ttsPauseBtn.title = (typeof t !== 'undefined')
+    ? t(on ? 'orb.tts_resume' : 'orb.tts_pause')
+    : (on ? 'Resume speech' : 'Pause speech');
+}
+
+function _ttsSpeaking() {
+  return !!audioEl.src && !audioEl.ended && (audioEl.currentTime > 0 || !audioEl.paused);
+}
+
+ttsPauseBtn.addEventListener('click', async () => {
+  if (_ttsPaused) {
+    _ttsSetPaused(false);
+    try { await audioEl.play(); setState('speaking'); } catch(e) { console.warn('TTS resume:', e); }
+  } else if (_ttsSpeaking()) {
+    audioEl.pause();
+    _ttsSetPaused(true);
+    setState('idle');
+  }
+});
+
 let audioCtx = null, analyser = null;
 function setupAudio(el) {
   if (audioCtx) return;
@@ -952,6 +989,7 @@ async function _playUrl(url, text) {
     setupAudio(audioEl);
     if (audioCtx?.state === 'suspended') await audioCtx.resume();
     audioEl.src = url;
+    ttsPauseBtn.classList.remove('idle');
     setState('speaking'); showSub(text);
     await audioEl.play();
     // Resolve on natural end/error OR on interrupt: send() calls _ttsResolve()
@@ -1078,6 +1116,7 @@ async function _drainTts() {
     else if (url) URL.revokeObjectURL(url);
   }
   _ttsBusy = false;
+  if (!_ttsQueue.length && !_ttsPaused) ttsPauseBtn.classList.add('idle');
   // The queue can empty transiently mid-reply (we drain faster than the model
   // generates) — do NOT go idle here or the state/caption would flicker. The
   // send() done-handler's waitDrain owns the final idle once streaming ends.
@@ -1207,6 +1246,9 @@ async function send() {
   // NOT flip _ttsBusy here — a fresh drain must not start while the old loop is
   // mid-play, or both would fight the single <audio> element.
   _ttsGen++; _ttsQueue.length = 0; _ttsFirst = true;
+  // A fresh reply replaces what was paused; leaving the button on ▶ would offer
+  // to resume audio that no longer exists.
+  if (typeof _ttsSetPaused === 'function') _ttsSetPaused(false);
   try { audioEl.pause(); } catch {}
   if (_ttsResolve) { _ttsResolve(); _ttsResolve = null; }  // unblock any parked play so the old drain bails
   clearInterval(_waitDrainTimer);   // stop a previous reply's idle-poll so it can't fire during this one

@@ -200,6 +200,10 @@ select option,select optgroup{background:var(--bg2);color:var(--text)}
 .tool-btn{background:transparent;border:1px solid rgba(255,255,255,.12);border-radius:2px;
   padding:5px 9px;color:var(--dim);font-size:13px;cursor:pointer;transition:all .18s;flex-shrink:0;}
 .tool-btn.on{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 7px rgba(0,212,255,.15)}
+/* Nothing is being said: the control stays put rather than appearing and
+   disappearing under the cursor, but says plainly that it does nothing. */
+#tts-pause.idle{opacity:.3;cursor:default}
+#tts-pause.paused{border-color:var(--cyan);color:var(--cyan)}
 .tool-btn.mic-on{border-color:#e74c3c;color:#e74c3c;box-shadow:0 0 8px rgba(231,76,60,.3);
   animation:mic-pulse 1.4s ease-in-out infinite}
 @keyframes mic-pulse{0%,100%{box-shadow:0 0 8px rgba(231,76,60,.3)}50%{box-shadow:0 0 16px rgba(231,76,60,.55)}}
@@ -530,6 +534,7 @@ select option,select optgroup{background:var(--bg2);color:var(--text)}
         </select>
         <div class="toolbar-space"></div>
         <button id="tts-btn" class="tool-btn" data-i18n-title="chat.tts_toggle" title="Toggle voice output">🔊</button>
+        <button id="tts-pause" class="tool-btn idle" data-i18n-title="orb.tts_pause" title="Pause speech">⏸</button>
         <button id="mic-btn" class="tool-btn" data-i18n-title="chat.mic_input"  title="Voice input">🎤</button>
       </div>
       <div id="file-chips" class="file-chips"></div>
@@ -1197,6 +1202,34 @@ let _ttsBusy = false, _ttsOn = false, _ttsGen = 0, _ttsFirst = true, _ttsResolve
 _ttsBtn.classList.toggle('on', _ttsOn);
 _ttsBtn.addEventListener('click', () => { _ttsOn = !_ttsOn; _ttsBtn.classList.toggle('on', _ttsOn); });
 
+// ── Pause / resume what is being said ────────────────────────────────
+// The 🔊 toggle decides whether the NEXT reply is spoken; this stops the
+// sentence in progress and picks it up where it stopped. The drain loop is
+// parked awaiting 'ended', which pausing does not fire, so the queue waits.
+const _ttsPauseBtn = document.getElementById('tts-pause');
+let _ttsPaused = false;
+
+function _ttsSetPaused(on) {
+  _ttsPaused = on;
+  _ttsPauseBtn.classList.toggle('paused', on);
+  _ttsPauseBtn.textContent = on ? '▶' : '⏸';
+  _ttsPauseBtn.title = (typeof t !== 'undefined')
+    ? t(on ? 'orb.tts_resume' : 'orb.tts_pause')
+    : (on ? 'Resume speech' : 'Pause speech');
+}
+
+_ttsPauseBtn.addEventListener('click', async () => {
+  const speaking = !!_audioEl.src && !_audioEl.ended
+                   && (_audioEl.currentTime > 0 || !_audioEl.paused);
+  if (_ttsPaused) {
+    _ttsSetPaused(false);
+    try { await _audioEl.play(); } catch {}
+  } else if (speaking) {
+    _audioEl.pause();
+    _ttsSetPaused(true);
+  }
+});
+
 let _audioCtx = null;
 function _setupAudio(el) {
   if (_audioCtx) return;
@@ -1224,6 +1257,7 @@ async function _playUrl(url) {
     _setupAudio(_audioEl);
     if (_audioCtx?.state === 'suspended') await _audioCtx.resume();
     _audioEl.src = url;
+    _ttsPauseBtn.classList.remove('idle');
     await _audioEl.play();
     // Resolve on natural end/error OR on interrupt: send() calls _ttsResolve()
     // after pausing, since pause() fires no event this await would otherwise see
@@ -1249,6 +1283,7 @@ async function _drainTts() {
     else if (url) URL.revokeObjectURL(url);
   }
   _ttsBusy = false;
+  if (!_ttsQueue.length && !_ttsPaused) _ttsPauseBtn.classList.add('idle');
   if (_ttsQueue.length) _drainTts();   // items enqueued as the loop wound down
 }
 function _enqueueTts(s) { if (s.trim().length < 4) return; _ttsQueue.push(s); _drainTts(); }
@@ -1738,6 +1773,9 @@ async function _send() {
   // _ttsBusy here — that would let a fresh drain start while the old loop is mid
   // play and both would fight the single <audio> element.
   _ttsGen++; _ttsQueue.length = 0; _ttsFirst = true;
+  // A fresh reply replaces what was paused; leaving the button on ▶ would offer
+  // to resume audio that no longer exists.
+  if (typeof _ttsSetPaused === 'function') _ttsSetPaused(false);
   try { _audioEl.pause(); } catch {}
   if (_ttsResolve) { _ttsResolve(); _ttsResolve = null; }  // unblock any parked play so the old drain bails
   let tsBuf = '';
