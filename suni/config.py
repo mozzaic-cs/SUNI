@@ -223,6 +223,21 @@ DEFAULTS: dict[str, Any] = {
     # ── Intent judge (tool-call security review) ──────────────────────────
     "intent_judge":       False,  # LLM reviews tool calls for off-intent / injected steering (additive-only)
     "intent_judge_model": "",     # model for the judge; "" = use main `model`
+    # ── Desktop awareness (see suni/desktop.py) ──────────────────────────────
+    # What is on the screen, as window titles, so SUNI can answer about the work
+    # in front of you. Off by default, and like meeting recording this setting
+    # only DISABLES — window titles are somebody's day in plain text.
+    "desktop_awareness":    False,
+    # WHO may be told. SUNI is multi-user and this is one machine's screen; with
+    # nobody named, nothing is reported to anyone. It is not a default that can
+    # be guessed: the colleague on a shared instance is not entitled to watch
+    # the operator work.
+    "desktop_owner":        "",
+    # Extra fragments matched against process name and title, dropped where they
+    # are read. Password managers are excluded in code and need no entry here.
+    "desktop_exclude":      [],
+    "desktop_sample_s":     6,      # seconds between reads of the window list
+
     # ── Meeting recording (see suni/meetings.py) ─────────────────────────────
     # Off by default: a feature that records people does not switch itself on.
     # Note this only DISABLES — there is no setting that grants consent, and

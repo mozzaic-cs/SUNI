@@ -183,8 +183,13 @@ class ClaudeCodeAgent(BaseAgent):
 
         # Global memory/preferences/language context built by the orchestrator —
         # folded into every turn so CC sees relevant KB/episodic hits each time.
+        # "desktop" and "ancestry" are here for the same reason: this path is the
+        # one most installs actually take, and background that reaches only the
+        # local tiers is background that usually reaches nothing.
         for m in messages:
-            if m.role == Role.SYSTEM and m.agent in ("memory", "lang") and m.content:
+            if (m.role == Role.SYSTEM
+                    and m.agent in ("memory", "lang", "desktop", "ancestry")
+                    and m.content):
                 prefix_parts.append(m.content)
 
         # User-attached files. The chat handler injects these as SYSTEM messages

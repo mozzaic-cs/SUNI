@@ -597,6 +597,19 @@ class Orchestrator:
             if skills_ctx:
                 context.add(Message(role=Role.SYSTEM, content=skills_ctx, agent="skills"))
 
+        # ── what is on their screen ───────────────────────────────────
+        # Background for the turn, and only for the person whose machine it is.
+        # Replaced rather than appended, like the memory block: two turns of
+        # stale window lists would be worse than none.
+        try:
+            from .. import desktop as _desktop
+            _screen = _desktop.context_line(user_id, _cfg)
+            if _screen:
+                context.history = [m for m in context.history if m.agent != "desktop"]
+                context.add(Message(role=Role.SYSTEM, content=_screen, agent="desktop"))
+        except Exception:      # noqa: BLE001 — never fail a turn over a nicety
+            pass
+
         # ── memory retrieval (user + collective) ──────────────────────
         ts = time.perf_counter()
         if _mem:
