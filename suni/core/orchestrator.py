@@ -302,6 +302,24 @@ def _sanitize_response(text: str) -> str:
     return cleaned.strip()
 
 
+def may_stream_tokens(*, has_live_consumer: bool, pinned: bool, current_tier: int,
+                     max_local_tier: int, t5_available: bool,
+                     agent_streams: bool) -> bool:
+    """Whether this turn's text may be shown while it is generated.
+
+    Only when nothing can replace it afterwards. Escalation retries a turn at a
+    higher tier when the text reads like a refusal, so on an escalatable turn the
+    words already on screen — and already in the speech queue, which reads
+    whatever the token stream gives it — may be ones we are about to discard.
+
+    A pinned model never escalates (that is the point of pinning), and neither
+    does the top local tier with no handoff left. Those turns are safe to show.
+    """
+    if not has_live_consumer or not agent_streams:
+        return False
+    return bool(pinned or (current_tier >= max_local_tier and not t5_available))
+
+
 _CC_PIN_NAMES = ("claude-code", "claude_code", "cc")
 
 
@@ -1562,8 +1580,25 @@ class Orchestrator:
             _msgs = context.get_conversation()
             if _lang_pin is not None:
                 _msgs = list(_msgs) + [_lang_pin]
+            # Stream the reply only when nothing can replace it afterwards.
+            # Escalation retries a turn at a higher tier when the text looks like
+            # a refusal, so on an escalatable turn the words on screen — and in
+            # the speech queue — could be ones we are about to discard. A pinned
+            # model never escalates, and neither does the top tier with no
+            # handoff left, so those are the turns it is safe to show live.
+            _stream_cb = None
+            if may_stream_tokens(
+                    has_live_consumer=event_cb is not None,
+                    pinned=_pinned,
+                    current_tier=current_tier,
+                    max_local_tier=MAX_LOCAL_TIER,
+                    t5_available=_t5_available,
+                    agent_streams=getattr(current_agent, "supports_token_stream", False)):
+                def _stream_cb(piece: str) -> None:          # noqa: F811
+                    event_cb({"type": "token", "text": piece})
             response = await current_agent.chat(
-                _msgs, context, tools=tools
+                _msgs, context, tools=tools,
+                **({"on_token": _stream_cb} if _stream_cb else {})
             )
             elapsed = time.perf_counter() - ts
             note = getattr(response, "_trace_note", "")

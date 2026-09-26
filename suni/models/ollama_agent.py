@@ -31,12 +31,16 @@ class OllamaAgent(BaseAgent):
         # None = follow config num_ctx per call; set explicitly (admin panel's
         # live apply) it pins the value.
         self.num_ctx: int | None = None
+        # Read by the orchestrator before it offers a token callback: other
+        # backends share this base class and do not stream.
+        self.supports_token_stream = True
 
     async def chat(
         self,
         messages: list[Message],
         context: Context,
         tools: list[dict] | None = None,
+        on_token=None,
     ) -> Message:
         ollama_msgs = self._to_ollama(messages)
         kwargs: dict = {"model": self.model, "messages": ollama_msgs}
@@ -59,7 +63,10 @@ class OllamaAgent(BaseAgent):
 
         _t0 = time.perf_counter()
         try:
-            response = await self.client.chat(**kwargs)
+            if on_token is not None:
+                response = await self._chat_streaming(kwargs, on_token)
+            else:
+                response = await self.client.chat(**kwargs)
         except Exception as exc:
             # Record the failure for the live error-rate metric, then re-raise
             # so existing error handling upstream is unchanged. Only CONNECTION
@@ -123,6 +130,50 @@ class OllamaAgent(BaseAgent):
         )
         out._trace_note = trace_note  # picked up by orchestrator
         return out
+
+    async def _chat_streaming(self, kwargs: dict, on_token):
+        """Stream the reply, forwarding text as it is generated.
+
+        Returns the same ChatResponse shape the buffered call returns: the final
+        chunk carries the timing and token counts, and the accumulated content
+        and any tool calls are folded back into it, so everything downstream —
+        telemetry, the trace note, tool dispatch — is unchanged.
+
+        Tool calls are the reason this is careful. A turn that calls a tool must
+        not have its text forwarded: the user would watch a preamble appear that
+        the answer then replaces, and the caption and speech queue read whatever
+        the token stream gives them. Forwarding therefore stops for good the
+        moment a tool call appears in the stream. qwen2.5 sends tool calls with
+        no content, so in practice nothing has been forwarded by then; a model
+        that interleaved the two would leak at most the words before the call.
+        """
+        parts: list[str] = []
+        tool_calls: list = []
+        final = None
+        async for chunk in await self.client.chat(**kwargs, stream=True):
+            final = chunk
+            msg = getattr(chunk, "message", None)
+            if msg is None:
+                continue
+            if getattr(msg, "tool_calls", None):
+                tool_calls.extend(msg.tool_calls)
+            piece = getattr(msg, "content", "") or ""
+            if piece:
+                parts.append(piece)
+                if not tool_calls:
+                    try:
+                        on_token(piece)
+                    except Exception:      # noqa: BLE001 — display never fails a run
+                        pass
+        if final is None:                  # empty stream: nothing to fold
+            raise RuntimeError("the model returned no response")
+        # The last chunk's message holds no text of its own; give it the whole
+        # reply so the caller sees exactly what a buffered call would return.
+        final.message.content = "".join(parts)
+        if tool_calls:
+            final.message.tool_calls = tool_calls
+        return final
+
 
     def _to_ollama(self, messages: list[Message]) -> list[dict]:
         result: list[dict] = []
