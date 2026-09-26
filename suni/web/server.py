@@ -869,6 +869,14 @@ def create_app() -> FastAPI:
         _auth.init_db()
         _audit.init_db()
         _conversations.init_db()
+        # Queued work runs in memory, so a stopped process leaves rows claiming to
+        # be running with nothing running them. Fail them here, once, rather than
+        # letting them say "in progress" for ever.
+        try:
+            from .. import task_queue as _tq_boot
+            _tq_boot.reap_orphans()
+        except Exception as _exc:      # noqa: BLE001 — never block startup on this
+            _log.warning("[BGTASK] could not reap interrupted tasks: %s", _exc)
         # Before anything else: say whether the LAST run stopped cleanly. A
         # killed process cannot log its own death, so this is the only place the
         # answer can appear. See suni/runstate.py.
@@ -3404,6 +3412,75 @@ def create_app() -> FastAPI:
         return JSONResponse({"ok": True})
 
     # ── Background Task Queue ─────────────────────────────────────────────
+
+    @app.post("/api/assignments")
+    @_limiter.limit("20/hour")
+    async def assignments_create_api(request: Request,
+                                     user: dict = Depends(get_current_user)):
+        """Hand an agent a piece of work that outlives this request.
+
+        The queue existed with no way to put anything in it — statuses, progress
+        streaming and completion notices were all reachable and nothing ever
+        created a row. This is the missing half: the head assigns, the agent
+        works while the caller goes away, and the result waits in the record with
+        a notification if one is configured.
+
+        The agent runs the ordinary request path, so its grants, model pin and
+        daily ceilings apply exactly as they do in chat.
+        """
+        from .. import task_queue as _tq
+        from .. import agents as _agents
+        body = await request.json()
+        prompt = str(body.get("prompt") or "").strip()
+        if not prompt:
+            return JSONResponse({"error": "prompt is required"}, status_code=400)
+        user_role = user.get("role", "user")
+        slug = str(body.get("agent") or "").strip()
+        profile = None
+        if slug:
+            _visible = {a["slug"] for a in _agents.list_for_user(user["id"], user_role)}
+            if slug not in _visible:
+                return JSONResponse({"error": "unknown agent"}, status_code=403)
+            profile = _agents.get(slug)
+            if not profile or not profile.get("enabled", True):
+                return JSONResponse({"error": "agent is disabled"}, status_code=400)
+            profile["_username"] = user["username"]
+
+        task = _tq.create_task(
+            title=str(body.get("title") or prompt)[:120],
+            description=prompt[:500],
+            user_id=user["id"],
+            notify_channel=str(body.get("notify") or ""),
+            agent_slug=slug,
+            prompt=prompt,
+        )
+
+        _prefs = _user_settings.get(user["id"])
+        _lang = _prefs.get("response_language", "")
+
+        async def _work() -> str:
+            from ..core.context import Context as _Ctx
+            from ..core.ancestry import schedule_note as _note_for
+            from ..core.message import Message as _M, Role as _R
+            ctx = _Ctx()
+            # Same reasoning as a scheduled run: nobody is watching, so say so.
+            _n = _note_for(task["title"], "once, in the background")
+            if _n:
+                ctx.add(_M(role=_R.SYSTEM, content=_n, agent="ancestry"))
+            return await orchestrator._safe_run(
+                prompt, ctx,
+                memory_override=_get_user_memory(user["id"]),
+                user_role=user_role,
+                user_id=user["id"],
+                response_language=_lang,
+                agent_profile=profile,
+            )
+
+        asyncio.create_task(_tq.run_task(task["id"], _work))
+        _audit.log_event(user["id"], user["username"], "assignment.created",
+                         detail=f"{slug or 'suni'}: {prompt[:60]}", target_id=task["id"],
+                         agent_slug=slug)
+        return JSONResponse({"task": task})
 
     @app.get("/api/tasks")
     async def tasks_list_api(

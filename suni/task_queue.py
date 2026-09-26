@@ -36,7 +36,9 @@ CREATE TABLE IF NOT EXISTS bg_tasks (
     result       TEXT DEFAULT NULL,
     error        TEXT DEFAULT NULL,
     progress     TEXT NOT NULL DEFAULT '0',   -- "0"–"100" or human text
-    notify_channel TEXT DEFAULT ''            -- 'telegram' | 'whatsapp' | ''
+    notify_channel TEXT DEFAULT '',           -- 'telegram' | 'whatsapp' | ''
+    agent_slug   TEXT NOT NULL DEFAULT '',    -- which agent does it; '' = SUNI itself
+    prompt       TEXT NOT NULL DEFAULT ''     -- what to ask when it runs
 );
 CREATE INDEX IF NOT EXISTS idx_bgt_user   ON bg_tasks(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_bgt_status ON bg_tasks(status);
@@ -49,6 +51,12 @@ def _conn() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript(_SCHEMA_SQL)
+    # CREATE TABLE IF NOT EXISTS does nothing to a table that already exists, so
+    # columns added later never appear on an upgraded install.
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(bg_tasks)").fetchall()}
+    for col in ("agent_slug", "prompt"):
+        if col not in cols:
+            conn.execute(f"ALTER TABLE bg_tasks ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
     return conn
 
 
@@ -63,16 +71,41 @@ def create_task(
     description: str = "",
     user_id: str = "",
     notify_channel: str = "",
+    agent_slug: str = "",
+    prompt: str = "",
 ) -> dict:
     tid = str(uuid.uuid4())[:10]
     now = _now()
     with _conn() as conn:
         conn.execute(
-            "INSERT INTO bg_tasks (id, title, description, status, user_id, created_at, notify_channel) "
-            "VALUES (?, ?, ?, 'pending', ?, ?, ?)",
-            (tid, title, description, user_id, now, notify_channel),
+            "INSERT INTO bg_tasks (id, title, description, status, user_id, created_at, "
+            "notify_channel, agent_slug, prompt) "
+            "VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?)",
+            (tid, title, description, user_id, now, notify_channel, agent_slug, prompt),
         )
     return get_task(tid)
+
+
+def reap_orphans() -> int:
+    """Fail anything left mid-flight by a stopped process. Returns the count.
+
+    A queued task lives in this table but RUNS in memory, so a restart — or a
+    crash — leaves rows that say 'running' with nothing running them. Without
+    this they stay that way for ever, which is the worst of both: the work never
+    happens and the record says it is in progress. Called once at startup.
+    """
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT id FROM bg_tasks WHERE status IN ('running','pending')").fetchall()
+        if not rows:
+            return 0
+        conn.execute(
+            """UPDATE bg_tasks SET status='failed', completed_at=?,
+               error='interrupted: SUNI stopped before this finished',
+               progress='error' WHERE status IN ('running','pending')""",
+            (_now(),))
+    log.warning("[BGTASK] %d task(s) were interrupted by a restart", len(rows))
+    return len(rows)
 
 
 def get_task(task_id: str) -> dict | None:

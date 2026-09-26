@@ -56,7 +56,7 @@ EXPORT_COLUMNS: dict[str, tuple[str, ...]] = {
     "agent_members": ("slug", "role", "added_at"),
     "bg_tasks": ("id", "title", "description", "status", "created_at",
                  "started_at", "completed_at", "result", "error", "progress",
-                 "notify_channel"),
+                 "notify_channel", "agent_slug", "prompt"),
     "watch_items": ("id", "type", "value", "enabled", "created_at"),
     "projects": ("id", "name", "goal", "status", "context_json", "action_log",
                  "created_at", "updated_at"),
