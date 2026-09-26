@@ -454,6 +454,11 @@ class Orchestrator:
         # The Claude Code agent streams progress through this when a live
         # consumer (the SSE chat stream) is listening.
         _evt_token = EVENT_CB_CTX.set(event_cb)
+        # What this turn is for, so anything it delegates can say why it was
+        # asked. Set here rather than in the delegation tool: by the time that
+        # runs, the sub-request has replaced the user's own words.
+        from .ancestry import CURRENT_REQUEST as _REQ
+        _req_token = _REQ.set(user_input)
         # Role and resolved grants for this turn, so a nested invoke_agent can
         # intersect against what is actually in force rather than re-deriving
         # from the role and discarding the calling agent's narrowing.
@@ -472,6 +477,7 @@ class Orchestrator:
             CLAUDE_API_KEY_CTX.reset(_key_token)
             USER_ID_CTX.reset(_uid_token)
             EVENT_CB_CTX.reset(_evt_token)
+            _REQ.reset(_req_token)
             _ROLE_CTX.reset(_role_token)
             _memory_tool.reset(_mem_token)
 

@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS schedules (
     last_run     TEXT NOT NULL DEFAULT '',
     last_status  TEXT NOT NULL DEFAULT '',
     run_count    INTEGER NOT NULL DEFAULT 0,
+    fail_streak  INTEGER NOT NULL DEFAULT 0,   -- consecutive failures; 0 = healthy
     created_at   TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sched_due   ON schedules(enabled, next_run);
@@ -63,6 +64,11 @@ def _conn() -> sqlite3.Connection:
     c = sqlite3.connect(SCHEDULES_DB)
     c.row_factory = sqlite3.Row
     c.executescript(_SCHEMA)
+    # CREATE TABLE IF NOT EXISTS does nothing to an existing table, so a column
+    # added after the first release never appears on an upgraded install.
+    cols = {r["name"] for r in c.execute("PRAGMA table_info(schedules)").fetchall()}
+    if "fail_streak" not in cols:
+        c.execute("ALTER TABLE schedules ADD COLUMN fail_streak INTEGER NOT NULL DEFAULT 0")
     return c
 
 
@@ -228,6 +234,52 @@ def due(now: datetime | None = None) -> list[dict[str, Any]]:
     return [_row(r) for r in rows]
 
 
+RETRY_AFTER_S = 300      # one prompt retry, five minutes later
+MAX_FAIL_STREAK = 2      # this many consecutive failures and it stops trying
+
+
+def mark_failed(sched_id: str, status: str, cadence: str) -> dict[str, Any]:
+    """Record a failed run and decide whether to retry it or stop.
+
+    A failure used to do exactly what a success did: write the status and wait
+    for the next slot. A daily job whose password expired therefore failed at
+    08:00 every morning for as long as nobody read the list, and a transient
+    failure — the network down for a minute — waited a whole day to be retried
+    when trying again shortly would have worked.
+
+    So: one retry soon, and if that fails too the schedule is DISABLED rather
+    than left grinding. Disabled rather than deleted, and the reason is written
+    to last_status, because the owner has to be able to see what happened and
+    switch it back on. Bounded deliberately at one: a job that fails twice is
+    not having bad luck.
+
+    Returns {"action": "retry"|"stopped", "streak": n, "next_run": iso}.
+    """
+    with _conn() as c:
+        row = c.execute("SELECT fail_streak FROM schedules WHERE id=?",
+                        (sched_id,)).fetchone()
+        streak = int((row["fail_streak"] if row else 0) or 0) + 1
+        now = _now()
+        if streak >= MAX_FAIL_STREAK:
+            try:
+                nxt = next_after(cadence).isoformat()
+            except CadenceError:
+                nxt = (now + timedelta(days=1)).isoformat()
+            note = f"stopped after {streak} failures: {status}"
+            c.execute(
+                """UPDATE schedules SET last_run=?, last_status=?, next_run=?,
+                   run_count=run_count+1, fail_streak=?, enabled=0 WHERE id=?""",
+                (now.isoformat(), note[:200], nxt, streak, sched_id))
+            return {"action": "stopped", "streak": streak, "next_run": nxt}
+        nxt = (now + timedelta(seconds=RETRY_AFTER_S)).isoformat()
+        note = f"failed, retrying: {status}"
+        c.execute(
+            """UPDATE schedules SET last_run=?, last_status=?, next_run=?,
+               run_count=run_count+1, fail_streak=? WHERE id=?""",
+            (now.isoformat(), note[:200], nxt, streak, sched_id))
+        return {"action": "retry", "streak": streak, "next_run": nxt}
+
+
 def mark_ran(sched_id: str, status: str, cadence: str) -> None:
     """Advance the clock whatever happened.
 
@@ -241,5 +293,5 @@ def mark_ran(sched_id: str, status: str, cadence: str) -> None:
     with _conn() as c:
         c.execute(
             """UPDATE schedules SET last_run=?, last_status=?, next_run=?,
-               run_count=run_count+1 WHERE id=?""",
+               run_count=run_count+1, fail_streak=0 WHERE id=?""",
             (_now().isoformat(), status[:200], nxt, sched_id))

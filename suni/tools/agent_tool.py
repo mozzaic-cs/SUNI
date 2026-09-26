@@ -172,6 +172,14 @@ async def handler(agent: str = "", task: str = "", **_kwargs) -> str:
     depth_token = AGENT_DEPTH.set(depth + 1)
     try:
         sub = _Ctx()
+        # Why this was delegated. The sub-run starts from a bare instruction in
+        # a fresh context, so without this the specialist cannot tell what the
+        # person is actually trying to get done.
+        from ..core.ancestry import CURRENT_REQUEST as _REQ, delegation_note
+        _note = delegation_note(_REQ.get(""), found.get("name", ""))
+        if _note:
+            from ..core.message import Message as _M, Role as _R
+            sub.add(_M(role=_R.SYSTEM, content=_note, agent="ancestry"))
         answer = await _orchestrator._safe_run(
             task, sub,
             user_role=role,

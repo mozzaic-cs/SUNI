@@ -47,7 +47,7 @@ EXPORT_COLUMNS: dict[str, tuple[str, ...]] = {
     "messages": ("id", "conversation_id", "role", "content", "ts"),
     "schedules": ("id", "name", "prompt", "agent_slug", "cadence", "delivery",
                   "enabled", "next_run", "last_run", "last_status", "run_count",
-                  "created_at"),
+                  "fail_streak", "created_at"),
     "agents": ("slug", "name", "description", "model", "mode", "tools_json",
                "blocked_json", "mcp_json", "enabled", "created_at", "updated_at",
                "used_count", "last_used", "max_steps", "max_runs_day",

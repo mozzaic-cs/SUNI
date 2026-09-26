@@ -798,8 +798,12 @@ def create_app() -> FastAPI:
                             if profile:
                                 profile["_username"] = owner.get("username", "")
                         else:
-                            _sched.mark_ran(s["id"], "skipped: agent not available to owner",
-                                            s["cadence"])
+                            # Counted as a failure, not a skip: a schedule whose
+                            # agent the owner can no longer reach will never run
+                            # again, and skipping quietly at its cadence hides
+                            # that for as long as nobody reads the list.
+                            _sched.mark_failed(
+                                s["id"], "agent not available to owner", s["cadence"])
                             continue
                     status = "ok"
                     from .. import updater as _upd
@@ -807,6 +811,15 @@ def create_app() -> FastAPI:
                     try:
                         from ..core.context import Context as _Ctx
                         ctx = _Ctx()
+                        # A scheduled run is amnesiac by construction: it cannot
+                        # tell a first attempt from a fourth, and nobody is
+                        # watching it to say the last one failed.
+                        from ..core.ancestry import schedule_note as _sched_note
+                        _note = _sched_note(s.get("name", ""), s.get("cadence", ""),
+                                            s.get("last_status", ""), s.get("last_run", ""))
+                        if _note:
+                            from ..core.message import Message as _M, Role as _R
+                            ctx.add(_M(role=_R.SYSTEM, content=_note, agent="ancestry"))
                         answer = await orchestrator._safe_run(
                             s["prompt"], ctx,
                             memory_override=_get_user_memory(owner["id"]),
@@ -822,10 +835,25 @@ def create_app() -> FastAPI:
                         status = f"error: {exc}"
                         _log.error("[SCHEDULE] %s failed: %s", s["id"], exc, exc_info=True)
                     _upd.mark_busy(-1)
-                    _sched.mark_ran(s["id"], status, s["cadence"])
+                    # A failure gets one prompt retry and then stops the
+                    # schedule, rather than repeating at its cadence for as long
+                    # as nobody reads the list.
+                    if status == "ok":
+                        _sched.mark_ran(s["id"], status, s["cadence"])
+                        _detail = f"{s['name']} -> ok"
+                    else:
+                        _rec = _sched.mark_failed(s["id"], status, s["cadence"])
+                        if _rec["action"] == "stopped":
+                            _log.warning("[SCHEDULE] %r disabled after %d failures: %s",
+                                         s["name"], _rec["streak"], status)
+                        else:
+                            _log.info("[SCHEDULE] %r failed, retrying at %s",
+                                      s["name"], _rec["next_run"])
+                        _detail = (f"{s['name']} -> {_rec['action']} "
+                                   f"(streak {_rec['streak']}): {status}")
                     _audit.log_event(owner["id"], owner.get("username", ""),
                                      "schedule.ran",
-                                     detail=f"{s['name']} -> {status}"[:100],
+                                     detail=_detail[:100],
                                      target_id=s["id"], agent_slug=s["agent_slug"])
             except Exception as exc:
                 _log.error("[SCHEDULE] runner loop error: %s", exc, exc_info=True)
