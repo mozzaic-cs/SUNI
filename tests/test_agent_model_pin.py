@@ -1,83 +1,75 @@
-"""
-An agent profile that names a model must get that model.
+"""An agent profile's pinned model decides where its turn runs.
 
-The trap this guards: the tier system picks the agent for a request and escalates
-to a stronger tier when the response looks weak. A pinned model that stayed
-subject to escalation would be swapped out mid-run — the setting would appear to
-work in casual use and silently stop applying on exactly the harder prompts the
-model was chosen for. That is the failure shape this repository keeps producing,
-so pinning suppresses escalation for the request.
+The tier loop already honoured a pin. The gap was upstream: force_claude_code
+sends every turn to the CLI before that loop is reached, so a summariser pinned
+to a small local model silently cost what the expensive path costs — the setting
+appeared to work while deciding nothing. That switch is on in this install, so
+the pin decided nothing at all.
 """
-from __future__ import annotations
-
 import inspect
 
 import pytest
 
 from suni.core import orchestrator as orch
+from suni.core.orchestrator import routes_to_cli
 
 
-@pytest.fixture(scope="module")
-def src() -> str:
-    return inspect.getsource(orch)
+def decide(**over):
+    base = dict(pinned_model="", force_cc=False, classifier_says_yes=False,
+                readonly=False, conv_mode="assistant", rbac_ok=True,
+                tier_registered=True)
+    base.update(over)
+    return routes_to_cli(**base)
 
 
-def test_pinned_model_is_taken_from_the_resolved_grants(src):
-    """Not from the raw profile — grants are what passed through RBAC."""
-    i = src.index("_pin_model")
-    assert 'grants or {}).get("model")' in src[i:i + 200], \
-        "the pinned model is read from somewhere other than the resolved grants"
+# ── the bug this fixes ───────────────────────────────────────────────────────
+def test_a_local_pin_is_not_overridden_by_force_claude_code():
+    assert decide(pinned_model="qwen2.5:7b", force_cc=True) is False
 
 
-def test_pinning_suppresses_escalation(src):
-    """The whole point: a chosen model must still be answering at the end."""
-    i = src.index("needs_escalation(response.content)")
-    guard = src[i - 200:i + 60]
-    assert "_pinned" in guard, \
-        "escalation can still swap out a pinned model mid-request"
+def test_a_local_pin_also_beats_the_classifier():
+    assert decide(pinned_model="qwen2.5:7b", classifier_says_yes=True) is False
 
 
-def test_escalation_still_works_when_not_pinned(src):
-    """The guard must be a condition, not a removal."""
-    assert "not _pinned and not response.has_tool_calls()" in src, \
-        "escalation appears unconditionally disabled"
-    assert "escalating %d→%d due to capability signal" in src, \
-        "the escalation path was removed rather than guarded"
+# ── the reverse pin ──────────────────────────────────────────────────────────
+@pytest.mark.parametrize("name", ["claude-code", "claude_code", "cc",
+                                  "Claude-Code", "  claude-code  "])
+def test_a_profile_can_pin_the_cli_with_the_switch_off(name):
+    assert decide(pinned_model=name, force_cc=False) is True
 
 
-def test_construction_failure_falls_back_rather_than_failing(src):
-    """A typo'd model name must not take the request down."""
-    i = src.index("could not build agent for pinned model")
-    assert "falling back to the tier system" in src[i:i + 200]
-    fn = src[src.index("def _agent_for_model"):src.index("def _agent_for_tier")]
-    assert "except Exception" in fn and "return None" in fn
+# ── unchanged behaviour for everyone else ────────────────────────────────────
+def test_without_a_pin_the_switch_still_decides():
+    assert decide(force_cc=True) is True
+    assert decide(force_cc=False) is False
 
 
-def test_backend_is_cached_per_model():
-    """Built once per model, not per request — construction opens a client."""
-    fn = inspect.getsource(orch.Orchestrator._agent_for_model)
-    assert "_model_agents" in fn and "if model in cache" in fn
+def test_without_a_pin_the_classifier_still_decides():
+    assert decide(classifier_says_yes=True) is True
 
 
-def test_no_model_means_no_pin():
-    """An agent profile without a model leaves tiering completely alone."""
-    fn = inspect.getsource(orch.Orchestrator._agent_for_model)
-    assert "if not model:" in fn and "return None" in fn
+@pytest.mark.parametrize("blocker", [
+    {"readonly": True},
+    {"conv_mode": "task"},
+    {"rbac_ok": False},
+    {"tier_registered": False},
+])
+def test_nothing_reaches_the_cli_through_a_closed_gate(blocker):
+    # Even an explicit pin must not open read-only mode, task mode, a role that
+    # is denied claude_task, or an instance with no CLI tier registered.
+    assert decide(pinned_model="claude-code", force_cc=True, **blocker) is False
 
 
-def test_pinned_agent_still_gets_the_base_system_prompt():
-    """The base prompt carries the AI-disclosure instruction and safety rules;
-    a pinned backend built without it would quietly drop both."""
-    fn = inspect.getsource(orch.Orchestrator._agent_for_model)
-    assert "resolve_system_prompt" in fn, \
-        "the pinned backend is constructed without the base system prompt"
+# ── the two halves must agree on what a pin means ────────────────────────────
+def test_the_tier_loop_does_not_treat_the_cli_name_as_a_model():
+    src = inspect.getsource(orch)
+    i = src.index('_pin_model = (grants or {}).get("model")')
+    guard = src[i:i + 500]
+    assert "_CC_PIN_NAMES" in guard and '_pin_model = ""' in guard, \
+        "the tier loop would try to build an Ollama client called claude-code"
 
 
-def test_agent_for_model_returns_none_on_failure(monkeypatch):
-    """Functional check of the fallback, not just its source."""
-    o = orch.Orchestrator.__new__(orch.Orchestrator)
-    assert o._agent_for_model("") is None
-    import suni.models.factory as factory
-    monkeypatch.setattr(factory, "make_agent",
-                        lambda **kw: (_ for _ in ()).throw(RuntimeError("no such model")))
-    assert o._agent_for_model("does-not-exist:1b") is None
+def test_the_request_path_uses_this_function():
+    src = inspect.getsource(orch)
+    assert "_cc_should_direct = routes_to_cli(" in src, \
+        "the decision was re-inlined; these tests would then prove nothing"

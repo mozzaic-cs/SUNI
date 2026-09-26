@@ -302,6 +302,33 @@ def _sanitize_response(text: str) -> str:
     return cleaned.strip()
 
 
+_CC_PIN_NAMES = ("claude-code", "claude_code", "cc")
+
+
+def routes_to_cli(*, pinned_model: str, force_cc: bool, classifier_says_yes: bool,
+                  readonly: bool, conv_mode: str, rbac_ok: bool,
+                  tier_registered: bool) -> bool:
+    """Whether this turn goes straight to the Claude Code CLI.
+
+    A function rather than a condition buried in the request path because it is
+    a decision with five inputs and a real failure mode: an agent profile that
+    pins a small local model must NOT be sent to the CLI, or the cheap
+    specialist costs exactly what the expensive one does. force_claude_code
+    routes before the tier loop is reached, and the tier loop is where a pin is
+    honoured — so without this the pin decided nothing whenever that switch was
+    on, which is how it is configured here.
+
+    The reverse pin is supported too: a profile naming "claude-code" reaches the
+    CLI even with the switch off.
+    """
+    if readonly or conv_mode == "task" or not rbac_ok or not tier_registered:
+        return False
+    pin = (pinned_model or "").strip().lower()
+    if pin:
+        return pin in _CC_PIN_NAMES
+    return bool(force_cc or classifier_says_yes)
+
+
 class Orchestrator:
     """
     Routes user input through the primary agent, handles tool calls,
@@ -715,13 +742,22 @@ class Orchestrator:
             and (_cc_allowed is None or "claude_task" in _cc_allowed)
         )
         _force_cc = bool(_cfg.get("force_claude_code"))
-        _cc_should_direct = (
-            not _readonly
-            and conv_mode != "task"
-            and _cc_rbac_ok
-            and CLAUDE_CODE_TIER in self._tier_agents
-            and (_force_cc or direct_to_claude_code(user_input))
+        # What the agent profile asked for, if anything. Read from the resolved
+        # grants, not the raw profile, so the role intersection still applies.
+        _pinned_model = str((_agent_grants or {}).get("model") or "").strip()
+        _pins_local = bool(_pinned_model) and _pinned_model.lower() not in _CC_PIN_NAMES
+        _cc_should_direct = routes_to_cli(
+            pinned_model=_pinned_model,
+            force_cc=_force_cc,
+            classifier_says_yes=direct_to_claude_code(user_input),
+            readonly=_readonly,
+            conv_mode=conv_mode,
+            rbac_ok=_cc_rbac_ok,
+            tier_registered=CLAUDE_CODE_TIER in self._tier_agents,
         )
+        if _pins_local and _force_cc:
+            _log.info("[AGENT] %r pins %s — keeping it local despite force_claude_code",
+                      (agent_profile or {}).get("slug", "?"), _pinned_model)
 
         # Was the previous turn an image we generated? If so, a short follow-up
         # ("referia-me a…", "make it bigger", "actually a cat") is a refinement of
@@ -1446,6 +1482,11 @@ class Orchestrator:
         # deliberate; refusing to answer would be worse than answering by default.
         _pinned = False
         _pin_model = (grants or {}).get("model") or ""
+        # "claude-code" is a routing choice, not a model name: it is handled
+        # upfront by the direct path. Trying to build an Ollama client for it
+        # would only log a failure and fall back to the tiers.
+        if str(_pin_model).strip().lower() in _CC_PIN_NAMES:
+            _pin_model = ""
         if _pin_model:
             pinned_agent = self._agent_for_model(_pin_model)
             if pinned_agent is not None:
