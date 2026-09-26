@@ -153,3 +153,139 @@ def test_it_reaches_the_path_this_install_actually_uses():
     src = (pathlib.Path(__file__).resolve().parent.parent
            / "suni/models/claude_code_agent.py").read_text(encoding="utf-8")
     assert '"desktop"' in src
+
+
+# ── looking at the screen ────────────────────────────────────────────────────
+def _owner_can_look(monkeypatch, tmp_path, variation, rects=None):
+    """Set the gate open, the output directory to tmp, and the frame's liveliness."""
+    from suni.tools import screen_tool
+    monkeypatch.setattr(screen_tool, "_monitors", lambda: rects if rects is not None else [])
+    monkeypatch.setattr(desktop, "visible_to", lambda uid, config=None: True)
+    monkeypatch.setattr("suni.user_settings.resolve_output_dir", lambda uid: str(tmp_path))
+
+    def fake_capture(path, box=None):
+        open(path, "wb").close()          # the file the handler may have to clean up
+        return (1600, 900), variation
+
+    monkeypatch.setattr(screen_tool, "_capture", fake_capture)
+
+
+def test_looking_is_gated_on_the_same_owner_rule(monkeypatch):
+    from suni.tools import registry as _reg
+    from suni.tools import screen_tool
+    monkeypatch.setattr(desktop, "visible_to", lambda uid, config=None: False)
+    tok = _reg.USER_ID_CTX.set("someone")
+    try:
+        out = screen_tool.handler("why")
+    finally:
+        _reg.USER_ID_CTX.reset(tok)
+    assert "not enabled" in out.lower()
+    assert "captured" not in out.lower()
+
+
+def test_a_locked_screen_is_reported_not_described(monkeypatch, tmp_path):
+    from suni.tools import registry as _reg
+    from suni.tools import screen_tool
+    _owner_can_look(monkeypatch, tmp_path, variation=0.5)
+    tok = _reg.USER_ID_CTX.set("owner")
+    try:
+        out = screen_tool.handler("look")
+    finally:
+        _reg.USER_ID_CTX.reset(tok)
+    assert "blank" in out.lower() and "locked" in out.lower()
+    assert "do not guess" in out.lower()
+    assert not list(tmp_path.glob("screen_*.png")), "a useless frame was left behind"
+
+
+def test_a_real_frame_is_saved_where_the_user_can_find_it(monkeypatch, tmp_path):
+    from suni.tools import registry as _reg
+    from suni.tools import screen_tool
+    _owner_can_look(monkeypatch, tmp_path, variation=40.0)
+    tok = _reg.USER_ID_CTX.set("owner")
+    try:
+        out = screen_tool.handler("read the total")
+    finally:
+        _reg.USER_ID_CTX.reset(tok)
+    assert "captured" in out.lower()
+    assert str(tmp_path) in out, "the reply does not say where the image went"
+    assert list(tmp_path.glob("screen_*.png")), "nothing was actually saved"
+
+
+def test_taking_a_picture_of_the_screen_needs_approval():
+    from suni import approval
+    assert "look_at_screen" in approval._CONSEQUENTIAL
+
+
+def test_there_is_no_timer_behind_it():
+    """A capture exists because somebody asked, never because time passed.
+
+    Checked against the CODE with prose removed: the module's own docstring says
+    "no sampler and no interval", and the first version of this test failed on
+    the word "interval" in that sentence.
+    """
+    import ast
+    import inspect
+    from suni.tools import screen_tool
+    tree = ast.parse(inspect.getsource(screen_tool))
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            body = getattr(node, "body", [])
+            if (body and isinstance(body[0], ast.Expr)
+                    and isinstance(body[0].value, ast.Constant)
+                    and isinstance(body[0].value.value, str)):
+                body.pop(0)
+    code = ast.unparse(tree)
+    for forbidden in ("Timer", "sleep", "schedule", "while True"):
+        assert forbidden not in code, f"screen capture runs on its own ({forbidden})"
+
+
+# ── more than one screen ─────────────────────────────────────────────────────
+def test_the_default_is_the_screen_being_worked_on(monkeypatch):
+    """Five monitors is normal here. Capturing all of them to answer about one
+    is both slower and more of somebody's desk than the question asked for."""
+    from suni.tools import screen_tool
+    rects = [(0, 0, 3840, 2160), (-1920, 723, 0, 1803)]
+    monkeypatch.setattr(screen_tool, "_monitors", lambda: rects)
+    # Foreground window sitting on the second screen.
+    monkeypatch.setattr(screen_tool, "_active_monitor", lambda r: 1)
+    grabbed = []
+
+    def fake_capture(path, box=None):
+        grabbed.append(box)
+        return (1600, 900), 40.0
+
+    monkeypatch.setattr(screen_tool, "_capture", fake_capture)
+    monkeypatch.setattr(desktop, "visible_to", lambda uid, config=None: True)
+    monkeypatch.setattr("suni.user_settings.resolve_output_dir", lambda uid: ".")
+    from suni.tools import registry as _reg
+    tok = _reg.USER_ID_CTX.set("owner")
+    try:
+        out = screen_tool.handler("what is this error")
+    finally:
+        _reg.USER_ID_CTX.reset(tok)
+    assert grabbed == [rects[1]], "captured the wrong screen"
+    assert "screen 2" in out
+
+
+def test_all_screens_can_be_asked_for(monkeypatch):
+    from suni.tools import screen_tool
+    rects = [(0, 0, 100, 100), (100, 0, 200, 100), (200, 0, 300, 100)]
+    monkeypatch.setattr(screen_tool, "_monitors", lambda: rects)
+    monkeypatch.setattr(screen_tool, "_capture", lambda path, box=None: ((10, 10), 40.0))
+    monkeypatch.setattr(desktop, "visible_to", lambda uid, config=None: True)
+    monkeypatch.setattr("suni.user_settings.resolve_output_dir", lambda uid: ".")
+    from suni.tools import registry as _reg
+    tok = _reg.USER_ID_CTX.set("owner")
+    try:
+        out = screen_tool.handler("compare them", monitor="all")
+    finally:
+        _reg.USER_ID_CTX.reset(tok)
+    assert out.count("screen ") >= 3
+
+
+def test_a_monitor_left_of_the_primary_still_captures(monkeypatch):
+    """Its coordinates are negative, which only the virtual desktop can express."""
+    import inspect
+    from suni.tools import screen_tool
+    src = inspect.getsource(screen_tool._capture)
+    assert "all_screens=True" in src

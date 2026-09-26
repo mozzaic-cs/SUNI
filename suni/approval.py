@@ -126,6 +126,9 @@ _CONSEQUENTIAL: dict[str, list[str]] = {
     # approval card is where a human takes responsibility for that — the
     # participants_informed flag alone would be the model's word for it.
     "start_meeting_recording": ["title", "participants_informed"],
+    # Captures whatever is on the screen, which is rarely only the thing being
+    # asked about. The card is where a person decides that is fine right now.
+    "look_at_screen":          ["reason"],
 }
 
 # Pending approvals: {approval_id: {"user_id": str, "future": Future, "tool": str, ...}}

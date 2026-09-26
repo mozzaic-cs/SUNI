@@ -283,7 +283,7 @@ def _build_orchestrator(
     registry.register(claude_code_advanced.INIT_SCHEMA, claude_code_advanced.init_handler)
     registry.register(claude_code_advanced.SCHEDULE_SCHEMA, claude_code_advanced.schedule_handler)
     registry.register(claude_code_advanced.ADVISOR_SCHEMA, claude_code_advanced.advisor_handler)
-    from ..tools import agent_tool, schedule_tool, network_tool, memory_tool
+    from ..tools import agent_tool, schedule_tool, network_tool, memory_tool, screen_tool
     # network_tool and memory_tool were registered in main.py's CLI registry and
     # NOT here, so the web UI silently lacked ping_host and memory_save/search.
     # run() already calls memory_tool.bind() every request, which does nothing
@@ -325,6 +325,9 @@ def _build_orchestrator(
     registry.register(monitor_tool.LIST_SCHEMA,      monitor_tool.list_handler)
     registry.register(monitor_tool.REMOVE_SCHEMA,    monitor_tool.remove_handler)
     registry.register(monitor_tool.ALERTS_SCHEMA,    monitor_tool.alerts_handler)
+    # Only offered when the machine's owner is the one asking; it refuses for
+    # anyone else, so registering it unconditionally costs a tool slot, not a leak.
+    registry.register(screen_tool.SCHEMA, screen_tool.handler)
     registry.register(task_tool.LIST_SCHEMA,   task_tool.list_handler)
     registry.register(task_tool.STATUS_SCHEMA, task_tool.status_handler)
     registry.register(project_tool.CREATE_SCHEMA,  project_tool.create_handler)
