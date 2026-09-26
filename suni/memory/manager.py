@@ -48,34 +48,64 @@ def _get_model_384():
     return SentenceTransformer(EMBED_MODEL_NAME, device="cpu")
 
 
+# Keyed by the loop OBJECT, held weakly: id() is recycled once a loop is garbage
+# collected, so an id-keyed cache eventually hands a dead loop's client to a new
+# one, which fails with "Event loop is closed" at the first request.
+_HTTP_CLIENTS: "object" = __import__("weakref").WeakKeyDictionary()
+_HTTP_NO_LOOP: dict = {}
+
+
+def _http() -> "object":
+    """One HTTP client per event loop, reused across embeddings.
+
+    A client per call cost 873 ms per embedding against 99 ms with one kept open
+    — measured 2026-09-26, 20 embeds each way. Constructing a client builds an
+    SSL context and opens a fresh TCP connection every time, and both happen on
+    the event loop: during transcript ingestion, thousands of chunks in a row
+    left the loop with no room to serve a chat turn, which is how this was found.
+
+    Keyed by loop because a client is bound to the loop it was made on, and the
+    CLI, the tests and the server do not share one.
+    """
+    import asyncio
+    import httpx
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+    store = _HTTP_CLIENTS if loop is not None else _HTTP_NO_LOOP
+    key = loop if loop is not None else "sync"
+    c = store.get(key)
+    if c is None or getattr(c, "is_closed", False):
+        c = httpx.AsyncClient(timeout=60)
+        store[key] = c
+    return c
+
+
 async def embed_nomic(text: str, host: str = "", model: str = NOMIC_MODEL) -> list[float]:
     """Embedding via an Ollama /api/embed endpoint (default: local nomic-embed-text,
     768-dim). host/model are overridable so episodic embeddings can point at a
     remote Ollama without changing the model."""
-    import httpx
     host = host or OLLAMA_HOST()
-    async with httpx.AsyncClient(timeout=60) as c:
-        r = await c.post(
-            f"{host.rstrip('/')}/api/embed",
-            json={"model": model, "input": text, "keep_alive": -1},
-        )
-        r.raise_for_status()
-        return r.json()["embeddings"][0]
+    r = await _http().post(
+        f"{host.rstrip('/')}/api/embed",
+        json={"model": model, "input": text, "keep_alive": -1},
+    )
+    r.raise_for_status()
+    return r.json()["embeddings"][0]
 
 
 async def embed_openai(text: str, base_url: str, model: str, api_key: str = "") -> list[float]:
     """Embedding via an OpenAI-compatible /v1/embeddings endpoint (vLLM or other).
     base_url should include the /v1 suffix. Keep the model nomic-dimension-
     compatible unless you re-embed existing memory."""
-    import httpx
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-    async with httpx.AsyncClient(timeout=60) as c:
-        r = await c.post(
-            f"{base_url.rstrip('/')}/embeddings",
-            json={"model": model, "input": text}, headers=headers,
-        )
-        r.raise_for_status()
-        return r.json()["data"][0]["embedding"]
+    r = await _http().post(
+        f"{base_url.rstrip('/')}/embeddings",
+        json={"model": model, "input": text}, headers=headers,
+    )
+    r.raise_for_status()
+    return r.json()["data"][0]["embedding"]
 
 
 def _detect_type(text: str) -> str:
