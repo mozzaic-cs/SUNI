@@ -187,10 +187,11 @@ def test_the_network_lists_hosts_suni_actually_talks_to():
 
 
 def test_a_connection_string_never_brings_its_password_along():
-    # Assembled rather than written out: "secret@host.tld" in a source file is
-    # an email address as far as the release scanner is concerned, and it is
-    # right to be that broad — so the fixture works around the rule, not the
-    # rule around the fixture.
+    # Assembled rather than written out. A password followed by an at-sign and
+    # a hostname reads as an email address to the release scanner, and it is
+    # right to be that broad — so the fixture works around the rule rather than
+    # the rule around the fixture. (Spelling the example out in this comment
+    # tripped it a second time.)
     db = "postgres://dbuser:{}@{}:5432/app".format("s3cr3t", "db.internal")
     api = "https://{}@{}/v1".format("tok3n", "api.example.com")
     assert graph._host_of(db) == "db.internal"
