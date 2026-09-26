@@ -3015,6 +3015,7 @@ def create_app() -> FastAPI:
             mcp_servers=body.get("mcp_servers"),
             max_steps=int(body.get("max_steps") or 0),
             max_runs_day=int(body.get("max_runs_day") or 0),
+            max_tokens_day=int(body.get("max_tokens_day") or 0),
         )
         _audit.log_event(user["id"], user["username"], "agent.created",
                          detail=f"name={name}", target_id=rec["slug"],
@@ -3038,7 +3039,12 @@ def create_app() -> FastAPI:
                              **{k: v for k, v in body.items()
                                 if k in ("name", "description", "model", "mode",
                                          "tools", "blocked", "mcp_servers",
-                                         "enabled", "system_prompt")})
+                                         "enabled", "system_prompt",
+                                         # The ceilings were settable at creation
+                                         # and nowhere else, so raising one meant
+                                         # deleting the agent and its history.
+                                         "max_steps", "max_runs_day",
+                                         "max_tokens_day")})
         if rec is None:
             return JSONResponse({"error": "not found or not yours"}, status_code=403)
         _audit.log_event(user["id"], user["username"], "agent.updated",

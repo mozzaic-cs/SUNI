@@ -608,14 +608,20 @@ class Orchestrator:
             # tool-iteration cap bounds ONE turn; this bounds a day of them,
             # which is what an unattended schedule actually needs.
             try:
-                from ..agents import over_daily_budget as _over
-                if _over(agent_profile):
-                    _cap = int(agent_profile.get("max_runs_day") or 0)
-                    _log.warning("[AGENT] %r has used its daily allowance (%d runs)",
-                                 agent_profile.get("slug", "?"), _cap)
-                    return (f"The agent {agent_profile.get('name', '?')!r} has used its "
-                            f"allowance for today ({_cap} runs). It will run again "
-                            f"tomorrow, or raise the limit in the admin panel.")
+                from ..agents import budget_exceeded as _exceeded
+                _hit = _exceeded(agent_profile)
+                if _hit:
+                    _name = agent_profile.get("name", "?")
+                    _parts = _hit.split(":")
+                    if _parts[0] == "tokens":
+                        _spent = f"{int(_parts[2]):,}"
+                        _limit = f"{int(_parts[1]):,}"
+                        _what = f"token allowance for today ({_spent} of {_limit})"
+                    else:
+                        _what = f"allowance for today ({_parts[1]} runs)"
+                    _log.warning("[AGENT] %r stopped: %s", agent_profile.get("slug", "?"), _hit)
+                    return (f"The agent {_name!r} has used its {_what}. It will run "
+                            f"again tomorrow, or raise the limit in the admin panel.")
             except Exception:      # noqa: BLE001 — never fail a turn on a budget check
                 pass
             _GR.set(_agent_grants)

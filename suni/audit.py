@@ -20,6 +20,14 @@ from pathlib import Path
 _DB = Path("memory/audit.db")
 
 
+def db_path() -> str:
+    """Where the trail lives. Callers that read it directly ask here rather than
+    repeating the literal: agents.py had its own copy, so pointing the trail
+    somewhere else (a test, a second instance) silently left the budget counters
+    reading the original file."""
+    return str(_DB)
+
+
 def _conn() -> sqlite3.Connection:
     c = sqlite3.connect(str(_DB))
     c.row_factory = sqlite3.Row

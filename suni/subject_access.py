@@ -50,7 +50,8 @@ EXPORT_COLUMNS: dict[str, tuple[str, ...]] = {
                   "created_at"),
     "agents": ("slug", "name", "description", "model", "mode", "tools_json",
                "blocked_json", "mcp_json", "enabled", "created_at", "updated_at",
-               "used_count", "last_used", "max_steps", "max_runs_day"),
+               "used_count", "last_used", "max_steps", "max_runs_day",
+               "max_tokens_day"),
     # slug + role only: the co-members of a shared agent are other people.
     "agent_members": ("slug", "role", "added_at"),
     "bg_tasks": ("id", "title", "description", "status", "created_at",

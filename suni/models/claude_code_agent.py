@@ -58,6 +58,27 @@ _CC_HOME = os.path.expanduser("~")
 _CC_TOOLS = "Read,Glob,Grep,WebFetch,WebSearch,Bash"
 
 
+def _record_cc_usage(parsed: dict) -> None:
+    """Book the CLI's own token counts against this request.
+
+    Until this existed, a turn delegated to Claude Code recorded a model name and
+    nothing else, so every token budget read zero on the path that actually
+    spends the most — and an agent with a token ceiling could run all day without
+    ever reaching it. The CLI reports usage on its result line; cache reads and
+    cache writes are input tokens, and they are the bulk of a resumed session.
+    """
+    u = parsed.get("usage") if isinstance(parsed, dict) else None
+    if not isinstance(u, dict):
+        return
+    prompt = (int(u.get("input_tokens") or 0)
+              + int(u.get("cache_creation_input_tokens") or 0)
+              + int(u.get("cache_read_input_tokens") or 0))
+    gen = int(u.get("output_tokens") or 0)
+    if prompt or gen:
+        from .. import usage as _usage
+        _usage.record(prompt, gen)
+
+
 async def _stream_run(args: list[str], event_cb, timeout: int,
                       task: str) -> tuple[int, str, str, dict]:
     """Run the CLI in stream-json mode, reporting progress as it arrives.
@@ -100,6 +121,8 @@ async def _stream_run(args: list[str], event_cb, timeout: int,
                 state["session_id"] = d["session_id"]
             if isinstance(d.get("result"), str):
                 state["result"] = d["result"]
+            if isinstance(d.get("usage"), dict):
+                state["usage"] = d["usage"]
         elif t == "stream_event":
             ev = d.get("event") or {}
             et = ev.get("type")
@@ -249,6 +272,7 @@ class ClaudeCodeAgent(BaseAgent):
             )
         else:
             parsed = _streamed or _parse_json_output(stdout)
+            _record_cc_usage(parsed)
             content = parsed.get("result", parsed.get("content", stdout.strip()))
             new_sid = parsed.get("session_id", "")
             if new_sid:

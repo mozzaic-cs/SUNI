@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS agents (
     enabled      INTEGER NOT NULL DEFAULT 1,
     max_steps    INTEGER NOT NULL DEFAULT 0,   -- 0 = the global tool-iteration cap
     max_runs_day INTEGER NOT NULL DEFAULT 0,   -- 0 = unlimited
+    max_tokens_day INTEGER NOT NULL DEFAULT 0, -- 0 = unlimited
     created_at   TEXT NOT NULL,
     updated_at   TEXT NOT NULL,
     used_count   INTEGER NOT NULL DEFAULT 0,
@@ -83,7 +84,8 @@ def _conn() -> sqlite3.Connection:
     # ALTER-if-missing pattern as audit.py.
     cols = {r["name"] for r in c.execute("PRAGMA table_info(agents)").fetchall()}
     for col, ddl in (("max_steps", "INTEGER NOT NULL DEFAULT 0"),
-                     ("max_runs_day", "INTEGER NOT NULL DEFAULT 0")):
+                     ("max_runs_day", "INTEGER NOT NULL DEFAULT 0"),
+                     ("max_tokens_day", "INTEGER NOT NULL DEFAULT 0")):
         if col not in cols:
             c.execute(f"ALTER TABLE agents ADD COLUMN {col} {ddl}")
     return c
@@ -187,6 +189,7 @@ def budget_for(agent: dict | None, default_steps: int) -> dict[str, int]:
     return {
         "max_steps": steps if steps > 0 else int(default_steps),
         "max_runs_day": int(a.get("max_runs_day") or 0),
+        "max_tokens_day": int(a.get("max_tokens_day") or 0),
     }
 
 
@@ -205,7 +208,7 @@ def runs_today(slug: str) -> int:
         from datetime import datetime, timezone
         midnight = datetime.now(timezone.utc).replace(
             hour=0, minute=0, second=0, microsecond=0).isoformat()
-        with sqlite3.connect(_audit.DB_PATH if hasattr(_audit, "DB_PATH") else "memory/audit.db") as c:
+        with sqlite3.connect(_audit.db_path()) as c:
             row = c.execute(
                 "SELECT COUNT(*) FROM audit_log WHERE agent_slug=? AND ts>=? AND route='chat'",
                 (slug, midnight)).fetchone()
@@ -214,13 +217,57 @@ def runs_today(slug: str) -> int:
         return 0
 
 
-def over_daily_budget(agent: dict | None) -> bool:
-    """True when this agent has used up its allowance for the day."""
+def tokens_today(slug: str) -> int:
+    """Tokens this agent has spent since UTC midnight, prompt plus generated.
+
+    Same source as runs_today and for the same reason: the audit row is written
+    whatever happens, so the ledger cannot drift from the record. Rows carry
+    prompt_tokens/gen_tokens already — this only adds them up.
+    """
+    if not slug:
+        return 0
+    try:
+        from . import audit as _audit
+        import sqlite3
+        from datetime import datetime, timezone
+        midnight = datetime.now(timezone.utc).replace(
+            hour=0, minute=0, second=0, microsecond=0).isoformat()
+        with sqlite3.connect(_audit.db_path()) as c:
+            row = c.execute(
+                """SELECT COALESCE(SUM(prompt_tokens),0) + COALESCE(SUM(gen_tokens),0)
+                     FROM audit_log WHERE agent_slug=? AND ts>=?""",
+                (slug, midnight)).fetchone()
+        return int(row[0]) if row and row[0] is not None else 0
+    except Exception:      # noqa: BLE001 — a budget check must not break the turn
+        return 0
+
+
+def budget_exceeded(agent: dict | None) -> str:
+    """Which ceiling this agent has reached, or "" if it may run.
+
+    Two ceilings, because a run count is a poor proxy for spend: a turn that
+    delegates to the CLI and reads forty documents costs orders of magnitude
+    more than a one-line reply, and both count as one run.
+
+    Returns a short reason rather than a bool so the refusal can say WHICH limit
+    stopped it. A caller told only "no" cannot tell the operator what to raise.
+    """
     a = agent or {}
-    cap = int(a.get("max_runs_day") or 0)
-    if cap <= 0:
-        return False
-    return runs_today(str(a.get("slug") or "")) >= cap
+    slug = str(a.get("slug") or "")
+    runs_cap = int(a.get("max_runs_day") or 0)
+    if runs_cap > 0 and runs_today(slug) >= runs_cap:
+        return f"runs:{runs_cap}"
+    tok_cap = int(a.get("max_tokens_day") or 0)
+    if tok_cap > 0:
+        spent = tokens_today(slug)
+        if spent >= tok_cap:
+            return f"tokens:{tok_cap}:{spent}"
+    return ""
+
+
+def over_daily_budget(agent: dict | None) -> bool:
+    """True when this agent has used up any of its allowances for the day."""
+    return bool(budget_exceeded(agent))
 
 
 def report(slug: str, days: int = 7) -> dict[str, Any]:
@@ -232,6 +279,7 @@ def report(slug: str, days: int = 7) -> dict[str, Any]:
     Art 12 record-keeping is only useful if somebody can read it back.
     """
     import sqlite3
+    from . import audit as _audit
     from datetime import datetime, timedelta, timezone
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     out: dict[str, Any] = {
@@ -240,7 +288,7 @@ def report(slug: str, days: int = 7) -> dict[str, Any]:
         "grants_seen": [], "first": "", "last": "",
     }
     try:
-        with sqlite3.connect("memory/audit.db") as c:
+        with sqlite3.connect(_audit.db_path()) as c:
             c.row_factory = sqlite3.Row
             rows = c.execute(
                 """SELECT ts, username, route, tools_called, tool_errors,
@@ -369,6 +417,7 @@ def create(
     mcp_servers: list[str] | None = None,
     max_steps: int = 0,
     max_runs_day: int = 0,
+    max_tokens_day: int = 0,
 ) -> dict[str, Any]:
     slug = slugify(name)
     ts = _now()
@@ -378,16 +427,19 @@ def create(
         "mcp_servers": mcp_servers, "enabled": True, "created_at": ts, "updated_at": ts,
         "system_prompt": system_prompt,
         "max_steps": int(max_steps or 0), "max_runs_day": int(max_runs_day or 0),
+        "max_tokens_day": int(max_tokens_day or 0),
     }
     with _conn() as c:
         c.execute(
             """INSERT OR REPLACE INTO agents
                (slug,name,description,owner_id,model,mode,tools_json,blocked_json,
-                mcp_json,enabled,max_steps,max_runs_day,created_at,updated_at)
-               VALUES (?,?,?,?,?,?,?,?,?,1,?,?,?,?)""",
+                mcp_json,enabled,max_steps,max_runs_day,max_tokens_day,
+                created_at,updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,1,?,?,?,?,?)""",
             (slug, name, description, owner_id, model, mode,
              json.dumps(tools), json.dumps(blocked or []), json.dumps(mcp_servers),
-             int(max_steps or 0), int(max_runs_day or 0), ts, ts),
+             int(max_steps or 0), int(max_runs_day or 0), int(max_tokens_day or 0),
+             ts, ts),
         )
         c.execute(
             "INSERT OR REPLACE INTO agent_members (slug,user_id,role,added_at) VALUES (?,?,'owner',?)",
@@ -464,7 +516,7 @@ def update(slug: str, user_id: str, user_role: str = "", **fields) -> dict | Non
         return None
     allowed = {"name", "description", "model", "mode", "tools",
                "blocked", "mcp_servers", "enabled", "system_prompt",
-               "max_steps", "max_runs_day"}
+               "max_steps", "max_runs_day", "max_tokens_day"}
     for k, v in fields.items():
         if k in allowed:
             cur[k] = v
@@ -473,13 +525,13 @@ def update(slug: str, user_id: str, user_role: str = "", **fields) -> dict | Non
         c.execute(
             """UPDATE agents SET name=?, description=?, model=?, mode=?, tools_json=?,
                blocked_json=?, mcp_json=?, enabled=?, max_steps=?, max_runs_day=?,
-               updated_at=? WHERE slug=?""",
+               max_tokens_day=?, updated_at=? WHERE slug=?""",
             (cur["name"], cur.get("description", ""), cur.get("model", ""),
              cur.get("mode", "assistant"), json.dumps(cur.get("tools")),
              json.dumps(cur.get("blocked") or []), json.dumps(cur.get("mcp_servers")),
              1 if cur.get("enabled", True) else 0,
              int(cur.get("max_steps") or 0), int(cur.get("max_runs_day") or 0),
-             cur["updated_at"], slug),
+             int(cur.get("max_tokens_day") or 0), cur["updated_at"], slug),
         )
     _write_md(cur)
     return cur

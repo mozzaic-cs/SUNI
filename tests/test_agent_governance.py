@@ -67,14 +67,14 @@ def test_the_allowance_is_counted_from_the_audit_trail():
 def test_a_budget_check_never_breaks_the_turn():
     assert "except Exception" in inspect.getsource(agents.runs_today)
     src = inspect.getsource(orch)
-    i = src.index("over_daily_budget as _over")
+    i = src.index("budget_exceeded as _exceeded")
     assert "except Exception" in src[i:i + 900]
 
 
 def test_the_gate_runs_before_any_work():
     """An agent that has spent its budget should cost nothing to refuse."""
     src = inspect.getsource(orch)
-    gate = src.index("over_daily_budget as _over")
+    gate = src.index("budget_exceeded as _exceeded")
     tier = src.index("_start_tier = min(max(complexity_score")
     assert gate < tier, "the budget is checked after the model work has been set up"
 

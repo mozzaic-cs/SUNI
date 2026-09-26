@@ -72,11 +72,15 @@ def test_the_endpoint_refuses_to_forward_protected_fields():
     from suni.web import server as srv
     src = inspect.getsource(srv)
     i = src.index('@app.patch("/api/agents/{slug}")')
-    block = src[i:i + 1200]
-    allow = block[block.index("if k in ("):block.index("))", block.index("if k in ("))]
+    block = src[i:i + 2000]
+    start = block.index("if k in (")
+    allow = block[start:block.index(")})", start)]
     assert "slug" not in allow and "owner_id" not in allow, \
         "the update endpoint forwards a field that identifies the agent"
     assert "system_prompt" in allow and "name" in allow
+    # The ceilings are editable: they used to be settable only at creation,
+    # so raising one meant deleting the agent and losing its history.
+    assert "max_runs_day" in allow and "max_tokens_day" in allow
 
 
 def test_disabling_through_update_sticks(a):
