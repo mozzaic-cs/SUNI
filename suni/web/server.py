@@ -3690,6 +3690,22 @@ def create_app() -> FastAPI:
             "config":   suni_config.all(),
         })
 
+    @app.get("/api/graph")
+    async def graph_api(focus: str = "root", user: dict = Depends(get_current_user)):
+        """One level of what SUNI can reach, for the Face to draw behind the head.
+
+        Authenticated like everything else: the folder names alone say what this
+        machine works on, which is not something to hand out unauthenticated.
+        """
+        from .. import graph as _graph
+        return JSONResponse(_graph.build(
+            focus,
+            doc_store=doc_store,
+            registry=registry,
+            skill_store=skill_store,
+            config=suni_config.all(),
+        ))
+
     @app.get("/api/knowledge/status", dependencies=[Depends(_check_token)])
     async def knowledge_status():
         return JSONResponse({
