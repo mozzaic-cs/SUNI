@@ -221,13 +221,14 @@ body.simple .section-gap{height:6px!important}
   <div class="sys-badge">
     <span class="badge gpu">RTX 4000 · 8 GB VRAM</span>
     <span class="badge ram">192 GB RAM</span>
-    <span class="badge cpu">16-core CPU · qwen2.5:7b · 28–31 tok/s</span>
+    <span class="badge cpu">16-core CPU · qwen2.5:7b · 57 tok/s on a quiet card, 5.6 when the desktop holds the VRAM</span>
     <span class="badge ram">81 644 KB chunks · 7 614 files</span>
     <span class="badge phase">Phase 8 · dual-mode backend (Ollama⇄vLLM) + capability fleet (STT · vision · TTS) · security hardening (intent judge · output guard · tool policies) · OIDC · circuit breaker · token accounting · 2026-07-16</span>
     <span class="badge phase">Phase 9 · voice-first persona (retractable dock + live caption) · opt-in webcam presence/head-tracking + vision snapshot · language-aware TTS + streaming prefetch pipeline · face colour selector · drag-drop upload on all UIs · Claude Code prompt-via-stdin (Windows cmd.exe limit) · 2026-07-24</span>
     <span class="badge phase">Phase 10 · messaging channels — Telegram (long-poll) · Discord (Gateway WS) · Slack (Socket Mode), all connect-out/no-public-URL, allow-list fail-closed + role standard, live start/stop supervisor · per-channel memory isolation (task-local fix) · Codex provider (no-key ChatGPT sub) · multi-model "collaborate" mode (Mode 2: draft → cross-critique → synthesise) with live phase streaming · 2026-07-26</span>
     <span class="badge phase">Phase 11 &middot; supervision &amp; reachability &mdash; runstate black box (heartbeat + unclean-stop detection, a killed process cannot log its own death) &middot; listener watchdog (alive-but-deaf accept loop &rarr; exit for supervisor restart) &middot; repeating scheduled task / systemd watchdog timer + port-guarded launchers &middot; client-disconnect noise filter (19,328 tracebacks were 97% of the log) &middot; AI Act Art 12 model traceability + Art 14(4)(e) stop button &middot; token refresh in every UI &middot; certificate SANs from the host (reachable by LAN IP) &middot; per-user output isolation &middot; 2026-09-05</span>
     <span class="badge phase">Phase 12 &middot; meeting recording &mdash; SUNI does NOT join Teams/Meet/Zoom; it records this machine's loopback + microphone alongside whoever is in the call, so it is platform-agnostic, never in a participant list, and the audio never leaves the box &middot; local CPU faster-whisper, installed by default (no GPU contention with qwen; 4.4x realtime) &middot; consent is a hard gate, not a setting &middot; 2026-09-05</span>
+    <span class="badge phase">Phase 13 &middot; staffing &mdash; token ceilings beside run counts (the CLI reported no tokens at all until its usage was booked) &middot; a profile's pinned model now decides the PATH, not just the tier &middot; fan-out: ask several specialists, answer as the head &middot; assignments that outlive the request, with interrupted work failed at startup &middot; goal ancestry into delegated and scheduled runs &middot; bounded schedule recovery (one retry, then disabled with the reason) &middot; real streaming on both paths &middot; embedding stopped building an HTTP client per call: 873&thinsp;ms &rarr; 63&thinsp;ms &middot; 2026-09-26</span>
   </div>
 </header>
 
@@ -243,7 +244,7 @@ body.simple .section-gap{height:6px!important}
       <div class="node-detail">
         <span>WebGL orb · 6 Gaussian blobs · Lissajous paths</span>
         States: idle / thinking / speaking / <span style="color:var(--teal);display:inline">working</span> / <span style="color:var(--cyan);display:inline">browsing</span><br>
-        SSE: token · done · error · tool_start · tool_end · skill_used<br>
+        SSE: token · done · error · tool_start · tool_end · skill_used · cc_note · fanout<br>
         STT Web Speech API · streaming TTS edge-tts · mode selector<br>
         Drag-drop upload · opt-in webcam presence (orb wakes) · snapshot
       </div>
@@ -381,6 +382,7 @@ body.simple .section-gap{height:6px!important}
         <span class="tool-pill">/api/backup · /api/auth/*</span>
         <span class="tool-pill new">/api/approval/history (audit trail)</span>
         <span class="tool-pill new">/api/projects/{id}/members GET·POST·DELETE</span>
+        <span class="tool-pill new">/api/assignments &mdash; hand an agent work that outlives the request</span>
       </div>
       <div class="node-detail" style="margin-top:8px">
         Rate limiting: 20/min chat · 40/min TTS · 2/hr compress · Body: 64 KB · 12 000 char · 100 MB upload
@@ -845,6 +847,19 @@ body.simple .section-gap{height:6px!important}
         Admin Skills tab: browse · edit · delete
       </div>
     </div>
+    <div class="node c-cyan" style="min-width:230px">
+      <div class="node-title" style="color:var(--cyan)">Real streaming <span class="new-badge">Phase 13</span></div>
+      <div class="node-detail">
+        <span>The answer appears as it is written, on both paths</span>
+        Nothing streamed before: the finished reply was replayed one word every
+        18&thinsp;ms, adding seconds AFTER the model had stopped<br>
+        CLI: stream-json, and every assistant turn classified by its stop_reason
+        — tool_use is narration (a cc_note, subtitle only), end_turn is the answer<br>
+        Local: Ollama stream=True, but only on turns nothing can replace — a
+        pinned model, or the top tier with no handoff left<br>
+        <span style="color:var(--cyan)">Narration never reaches the token stream, because the speech queue says aloud whatever the token stream gives it</span>
+      </div>
+    </div>
     <div class="node c-teal" style="min-width:210px">
       <div class="node-title" style="color:var(--teal)">Live Tool Feed</div>
       <div class="node-detail">
@@ -1273,7 +1288,8 @@ body.simple .section-gap{height:6px!important}
           <span>Session-independent async tasks with SSE progress</span>
           cancel signal raises CancelledError in set_progress<br>
           push notify on completion<br>
-          tools: tasks_list · task_status
+          tools: tasks_list · task_status<br>
+          <span style="color:var(--purple)">Half-built until Phase 13: statuses, progress and notices all worked and nothing could create a row. POST /api/assignments is the other half.</span>
         </div>
       </div>
     </div>
@@ -1436,6 +1452,9 @@ body.simple .section-gap{height:6px!important}
         definition stays readable and editable outside the app<br>
         Sharing mirrors project_members: owner / editor / viewer<br>
         <span style="color:var(--purple)">Model pinned by a profile suppresses tier escalation — otherwise the choice would be swapped out mid-run</span><br>
+        <span style="color:var(--purple)">routes_to_cli() makes the pin decide the PATH too: force_claude_code used to route
+        before the tier loop was reached, so a pinned agent went to the CLI anyway and the
+        cheap specialist cost what the expensive one does. "claude-code" pins the CLI in reverse.</span><br>
         A profile naming an UNREGISTERED tool is warned about: the intersection
         keeps the name, the registry returns nothing, and the model narrates
         instead of calling — which reads as a weak model and is not
@@ -1474,7 +1493,11 @@ body.simple .section-gap{height:6px!important}
         preserve permissions the owner has since lost<br>
         Delivery performed by the runner: unattended runs have no approver, so
         the model never chooses a recipient<br>
-        <span style="color:var(--teal)">Unknown cadence refused, never rounded &middot; missed slots do not stack</span>
+        <span style="color:var(--teal)">Unknown cadence refused, never rounded &middot; missed slots do not stack</span><br>
+        <span style="color:var(--teal)">A failure used to do exactly what a success did — write the status and wait for the next
+        slot, so a job whose password expired failed every morning for as long as nobody read the
+        list. Now: one retry five minutes later, then DISABLED with the reason on the record.
+        Disabled, not deleted: the owner has to see it and switch it back on. A success clears the streak.</span>
       </div>
     </div>
 
@@ -1509,14 +1532,58 @@ body.simple .section-gap{height:6px!important}
     </div>
 
     <div class="node" style="border-color:rgba(255,69,96,.45);min-width:250px">
-      <div class="node-tag" style="background:rgba(255,69,96,.07);color:var(--red)">max_steps &middot; max_runs_day</div>
+      <div class="node-tag" style="background:rgba(255,69,96,.07);color:var(--red)">max_steps &middot; max_runs_day &middot; max_tokens_day</div>
       <div class="node-title" style="color:var(--red)">Ceilings</div>
       <div class="node-detail">
         <span>The instance cap bounds one turn; these bound a day of them</span>
         A schedule firing every 15 minutes has no natural stopping point<br>
         max_steps applies as a MINIMUM against the instance cap — a profile can
         tighten it, never raise it, the same rule as its tool grants<br>
-        <span style="color:var(--red)">Runs counted from the audit trail, not a profile counter that would drift on a failed run</span>
+        A run count is a poor proxy for spend: one turn that delegates to the CLI
+        and reads forty documents costs orders of magnitude more than a one-line
+        reply, and both counted as one run — hence a TOKEN ceiling beside it<br>
+        <span style="color:var(--red)">Runs and tokens both counted from the audit trail, not a profile counter that would drift on a failed run</span><br>
+        <span style="color:var(--red)">The CLI reported no tokens at all until its usage was booked (cache reads included) — every budget read zero on the path that spends most: "say only: ready" costs ~26k input tokens</span>
+      </div>
+    </div>
+
+    <div class="node" style="border-color:rgba(155,89,182,.4);min-width:250px">
+      <div class="node-tag" style="background:rgba(155,89,182,.06);color:var(--purple)">fanout.py &middot; agents:[&hellip;] &middot; compose_prompt</div>
+      <div class="node-title" style="color:var(--purple)">Fan-out <span class="new-badge">Phase 13</span></div>
+      <div class="node-detail">
+        <span>Ask several specialists at once, then answer as the head</span>
+        Each one runs the ORDINARY request path with its own profile, so grants,
+        model pins and daily ceilings all still apply — the fan-out decides who
+        is asked, never what they may do<br>
+        Skipped and failed agents reach the composer BY NAME: an answer built
+        from two of five must not read like an answer from five<br>
+        <span style="color:var(--purple)">fanout_token_budget is checked BEFORE each specialist starts, against what the turn has already spent — an expensive first answer stops the rest instead of being noticed afterwards</span><br>
+        <span style="color:var(--purple)">Measured 2026-09-26: with OLLAMA_NUM_PARALLEL=2, one generation 57 tok/s, two at once 88 tok/s aggregate. With one slot they merely queue.</span>
+      </div>
+    </div>
+
+    <div class="node" style="border-color:rgba(20,217,140,.4);min-width:250px">
+      <div class="node-tag" style="background:rgba(20,217,140,.06);color:var(--teal)">POST /api/assignments &middot; task_queue.py</div>
+      <div class="node-title" style="color:var(--teal)">Assignments <span class="new-badge">Phase 13</span></div>
+      <div class="node-detail">
+        <span>Work handed to an agent that outlives the request asking for it</span>
+        The caller gets the record back at once; the agent works through the
+        ordinary path and the result waits, with a notification if configured<br>
+        <span style="color:var(--teal)">A task lives in SQLite but RUNS in memory, so a stopped process left rows claiming "running" with nothing running them — interrupted work is failed at startup instead</span>
+      </div>
+    </div>
+
+    <div class="node" style="border-color:rgba(0,212,255,.35);min-width:250px">
+      <div class="node-tag" style="background:rgba(0,212,255,.06);color:var(--cyan)">ancestry.py &middot; CURRENT_REQUEST</div>
+      <div class="node-title" style="color:var(--cyan)">Why the work exists <span class="new-badge">Phase 13</span></div>
+      <div class="node-detail">
+        <span>A delegated or scheduled run starts from a bare instruction in a fresh context</span>
+        The specialist is handed "summarise the Q3 numbers" with no hint that a
+        board pack is being assembled, and a job firing every Monday cannot tell
+        a first attempt from a fourth<br>
+        The originating request travels with the delegation; a scheduled run is
+        told that it recurs and how the last attempt went<br>
+        <span style="color:var(--cyan)">Background, not instruction — and it says so in itself, because a reply that narrates SUNI's plumbing is a bug this codebase has already shipped once</span>
       </div>
     </div>
 
@@ -1624,6 +1691,7 @@ body.simple .section-gap{height:6px!important}
   <div class="legend-item"><span class="new-badge" style="background:rgba(0,212,255,.12);color:var(--cyan)">new</span> Phase 7: adaptive memory — LLM supersession · soft-deprecation (lifecycle) · weekly consolidation · conversation dedup · age-out</div>
   <div class="legend-item"><span class="new-badge" style="background:rgba(201,162,39,.14);color:var(--gold)">new</span> Phase 7: EU AI Act Art 50 — AI-interaction disclosure · AI-generated content marking (PDF/email) · risk classification · safeguard mapping</div>
   <div class="legend-item"><span class="new-badge" style="background:rgba(155,89,182,.15);color:var(--purple)">new</span> Phase 12: named agents (narrow-only grants, model pinning, delegation with a depth cap) &middot; panel agents &middot; scheduled invocations &middot; deterministic cadence parsing &middot; per-agent ceilings, dry-run and report</div>
+<div class="legend-item"><span class="new-badge" style="background:rgba(155,89,182,.15);color:var(--purple)">new</span> Phase 13: staffing &mdash; token ceilings &middot; pinned model decides the path &middot; fan-out with a per-turn budget &middot; assignments that outlive the request &middot; goal ancestry &middot; bounded schedule recovery &middot; streaming on both paths</div>
   <div class="legend-item"><span class="new-badge" style="background:rgba(20,217,140,.15);color:var(--teal)">new</span> Phase 11: deployment — Docker + compose · TLS generated on first run · first-run wizard · pip wheel · systemd unit · cross-platform boot path · local image generation</div>
 </div>
 

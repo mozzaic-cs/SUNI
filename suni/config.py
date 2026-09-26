@@ -152,12 +152,15 @@ DEFAULTS: dict[str, Any] = {
     # ── Fan-out: ask several named agents, then answer as the head ────────
     # Parallelism multiplies cost, so both ceilings are per TURN, not per agent
     # (each agent's own max_tokens_day still applies). 0 = no token ceiling.
-    # Measured 2026-09-26 on this box (8 GB card, ~2.6 GB of it held by the
-    # desktop): ONE 7B generation ran at 5.6 tok/s; TWO at once took 123s of wall
-    # clock for the same work, the second crawling at 2.7 tok/s. Parallel local
-    # specialists are slower than asking them in turn, so the default is 1.
-    # Raise it when the specialists are pinned to claude-code, which runs off-box.
-    "fanout_max_parallel":    1,
+    # Measured 2026-09-26, twice, because the first reading was taken while an
+    # embedding flood was competing for the same GPU and said the opposite.
+    # On a quiet card, with OLLAMA_NUM_PARALLEL=2 so the server actually batches:
+    # one generation 57 tok/s, two at once 88 tok/s aggregate (47 each). With
+    # OLLAMA_NUM_PARALLEL=1 concurrent requests simply queue — no gain, no harm.
+    # Lower this to 1 if the card is shared with a busy desktop: two KV slots
+    # took VRAM to 7.2 GB of 8 GB here, and overflowing that is what made the
+    # first measurement look like parallelism was the problem.
+    "fanout_max_parallel":    2,
     "fanout_token_budget":    0,       # tokens for the whole fan-out; agents after it are skipped
     # ── Pluggable model chain (admin-ordered provider preference) ─────────
     # User-defined, drag-ordered list of chat models / providers, top = first
