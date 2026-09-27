@@ -224,3 +224,36 @@ def test_the_centre_node_is_named_too():
                                                         MOD.index("labels(w, h, opts)"))]
     assert "this.center.label" in lab, "the centre is still an anonymous dot"
     assert "label: (graph && graph.trail" in MOD, "the centre never learns its name"
+
+
+def test_clusters_are_laid_out_facing_the_viewer():
+    """Groups on a sphere put half of themselves edge-on or behind the middle,
+    and at the distance needed to fit that sphere they are small, scattered and
+    crossed by every spoke — a picture of a scatter, not of groups. On a disc
+    every group is the same distance from the eye and all of them are in frame.
+    """
+    lay = MOD[MOD.index("_clusterLayout() {"):MOD.index("setCluster(on) {")]
+    assert "2.399963" in lay, "groups are not spread by golden angle on a disc"
+    assert "centre[2] + p[2] * rad * 0.45" in lay, "groups are balls, not discs"
+    # One group per category. Splitting a category into bands is for a level
+    # where everything is one kind; two clusters of tools is not "by category".
+    assert "const PER = 40" in lay, "ordinary categories get split in half"
+
+
+def test_the_view_is_framed_from_what_the_layout_actually_spans():
+    """A single extent understates the vertical reach of a wide disc, and the
+    group that falls off the bottom edge is the one being looked for."""
+    assert "_extentY" in MOD and "_extentX" in MOD
+    sc = MOD[MOD.index("setCluster(on) {"):][:1200]
+    assert "needY" in sc and "needX" in sc, "one axis frames both"
+
+
+def test_a_roomier_layout_is_not_a_roomier_picture():
+    """The camera pulls back to fit whatever the layout spans, so spacing the
+    groups further apart just moves the camera back and shrinks every node
+    below the size that can carry an icon or a name."""
+    lay = MOD[MOD.index("_clusterLayout() {"):MOD.index("setCluster(on) {")]
+    import re as _re
+    m = _re.search(r"radOf = \(n\) => ([\d.]+) \+ Math\.sqrt\(n\) \* ([\d.]+)", lay)
+    assert m, "the group radius is no longer a simple function of size"
+    assert float(m.group(2)) < 0.4, "groups grow faster than the camera can follow"

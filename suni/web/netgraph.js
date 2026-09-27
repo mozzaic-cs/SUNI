@@ -625,48 +625,70 @@
        Only the destinations change; update() walks the nodes there, so the
        toggle reads as the field rearranging rather than as a new screen. */
     _clusterLayout() {
-      this._extent = 0;
+      /* Group centres on a DISC facing the viewer, not on a sphere around
+         them. A sphere puts half the groups edge-on or behind the middle, and
+         at the distance needed to fit it they are small, scattered and
+         crossed by every spoke - which is a picture of a scatter, not of
+         groups. On a disc every group is the same distance from the eye and
+         all of them are in frame.
+
+         A golden-angle spiral rather than a ring, so eight groups do not sit
+         in a circle with a hole in the middle. */
       const groups = new Map();
-      const seen = new Map();          // how many of each kind placed so far
-      const PER = 16;
-      // Which categories are too big for one ball. Counted first, because the
-      // decision has to be the same for every member of a kind.
+      // One group per category. Splitting a big category into alphabetical
+      // bands is for a level where EVERYTHING is one kind - a hundred folders
+      // in one ball is the crowding this mode exists to undo - so the
+      // threshold is high enough that ordinary categories stay whole. Two
+      // clusters of tools is not "grouped by category".
+      const PER = 40;
       const totals = new Map();
       for (const nd of this.nodes) totals.set(nd.kind, (totals.get(nd.kind) || 0) + 1);
-      this._bigKinds = new Set([...totals.keys()].filter(k => totals.get(k) > PER));
+      const bigKinds = new Set([...totals.keys()].filter(k => totals.get(k) > PER));
+      this._bigKinds = bigKinds;
       for (const nd of this.nodes) {
-        const n = seen.get(nd.kind) || 0;
-        seen.set(nd.kind, n + 1);
-        // Chunk index from the running count. Deriving it from the FIRST
-        // bucket's length instead put every node after the sixteenth into one
-        // oversized second cluster — the crowding this mode exists to undo.
-        // Within a category, sub-group by initial so the split means something
-        // a viewer can use — "the S folders" rather than "the second sixteen".
-        const initial = String(nd.label || '?').trim().charAt(0).toUpperCase();
-        const band = /[A-Z]/.test(initial) ? String.fromCharCode(65 + Math.floor((initial.charCodeAt(0) - 65) / 4) * 4)
-                                           : '#';
-        const key = (this._bigKinds && this._bigKinds.has(nd.kind))
-          ? `${nd.kind} ${band}` : nd.kind;
+        let key = nd.kind;
+        if (bigKinds.has(nd.kind)) {
+          const initial = String(nd.label || '?').trim().charAt(0).toUpperCase();
+          key = `${nd.kind} ${/[A-Z]/.test(initial)
+            ? String.fromCharCode(65 + Math.floor((initial.charCodeAt(0) - 65) / 4) * 4)
+            : '#'}`;
+        }
         const arr = groups.get(key) || [];
         arr.push(nd);
         groups.set(key, arr);
       }
+
       const keys = [...groups.keys()].filter(k => groups.get(k).length);
       const gCount = Math.max(1, keys.length);
-      // Far enough apart that the gaps are the obvious feature. Clusters that
-      // merely touch look like one crowd with lumps in it.
-      const spread = 10 + gCount * 1.9;
+      /* Deliberately small in world units. The camera pulls back to fit
+         whatever this spans, so a roomy layout is not a roomier picture - it
+         is the same picture further away, with the nodes too small to carry an
+         icon or a name. Tight groups, close camera. */
+      const radOf = (n) => 0.6 + Math.sqrt(n) * 0.30;
+      let maxRad = 0;
+      for (const k of keys) maxRad = Math.max(maxRad, radOf(groups.get(k).length));
+
+      /* Spaced from the size of the biggest ball, so the gaps stay gaps
+         whether there are three groups of two or eight of thirty. */
+      const R = gCount === 1 ? 0 : maxRad * 2.2 * Math.sqrt(gCount);
+      this._extentX = 0;
+      this._extentY = 0;
+
       keys.forEach((key, gi) => {
-        const c = fibSphere(gi, gCount);
-        const centre = [c[0] * spread, c[1] * spread * 0.62, c[2] * spread];
+        const t = gCount === 1 ? 0 : Math.sqrt((gi + 0.5) / gCount);
+        const a = gi * 2.399963;                       // golden angle
+        const centre = [Math.cos(a) * R * t, Math.sin(a) * R * t * 0.78, 0];
         const members = groups.get(key);
-        const rad = 1.1 + Math.sqrt(members.length) * 0.52;
-        this._extent = Math.max(this._extent || 0, spread + rad);
+        const rad = radOf(members.length);
+        this._extentX = Math.max(this._extentX, Math.abs(centre[0]) + rad);
+        this._extentY = Math.max(this._extentY, Math.abs(centre[1]) + rad);
         members.forEach((nd, i) => {
           const p = fibSphere(i, Math.max(2, members.length));
+          /* Flattened on z: a group should read as a disc of its own from the
+             front, not as a ball whose far half is dimmed to nothing. */
           nd.target = [centre[0] + p[0] * rad,
                        centre[1] + p[1] * rad,
-                       centre[2] + p[2] * rad];
+                       centre[2] + p[2] * rad * 0.45];
         });
       });
     }
@@ -676,11 +698,16 @@
       if (this.clustered) this._clusterLayout();
       else for (const nd of this.nodes) nd.target = nd.radial.slice();
       this.wantFocus = true;
-      // Framed to the layout rather than by a guessed multiplier: groups pushed
-      // apart off the edges of the screen are not a separated view, they are a
-      // lost one.
+      /* Framed from what the layout actually spans, in each axis separately.
+         A single "extent" understates the vertical reach of a wide disc, and
+         the group that falls off the bottom edge is the one the viewer was
+         looking for. 0.42 is tan(fov/2) for the 0.80 projection the Face uses;
+         the horizontal check assumes the narrowest window worth designing for
+         rather than reading the canvas, which this module never sees. */
+      const needY = (this._extentY || 10) / 0.38;
+      const needX = (this._extentX || 10) / 0.52;
       this.distWant = this.clustered
-        ? Math.max(12, Math.min(52, (this._extent || 18) * 1.55))
+        ? Math.max(9, Math.min(40, Math.max(needY, needX)))
         : Math.max(9, Math.min(38, this.distWant * 0.62));
     }
 
@@ -821,7 +848,7 @@
       gl.uniform1f(this.lu.focus, this.focus);
       // Grouped, every spoke crosses the gaps the grouping just opened, so the
       // wires drop back and the clusters are what is left to look at.
-      gl.uniform1f(this.lu.alpha, alpha * (this.clustered ? 0.22 : 0.8));
+      gl.uniform1f(this.lu.alpha, alpha * (this.clustered ? 0.07 : 0.8));
       gl.uniform1f(this.lu.time, this._t);
       gl.uniform1f(this.lu.flow, this.flow);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.bLine);

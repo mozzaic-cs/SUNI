@@ -91,6 +91,58 @@ def _tree(doc_store) -> tuple[dict, dict]:
     return dirs, files
 
 
+def _model_entries(cfg: dict) -> list[tuple[str, str, str, bool]]:
+    """(key, label, detail, live) for every model SUNI can actually think with.
+
+    One function because there are two views of this and they disagreed: the
+    overview listed only chain tiers that carry a model string, which silently
+    dropped the primary and the Claude Code tier - the tier that answers most
+    turns here. Two lists built from the same config by different code is how
+    one of them quietly stops being true.
+    """
+    out: list[tuple[str, str, str, bool]] = []
+    seen: set[str] = set()
+
+    def add(key: str, label: str, detail: str, live: bool) -> None:
+        if not label or key in seen:
+            return
+        seen.add(key)
+        out.append((key, label, detail, live))
+
+    primary = str(cfg.get("model") or "").strip()
+    add(primary, primary, "primary", True)
+
+    for tier in (cfg.get("model_chain") or []):
+        m = str(tier.get("model") or "").strip()
+        provider = str(tier.get("provider") or "").strip()
+        label = str(tier.get("label") or "").strip()
+        enabled = bool(tier.get("enabled"))
+        # An empty, switched-off tier is a slot, not a model.
+        if not m and not enabled:
+            continue
+        if not (m or provider):
+            continue
+        # The CLI tier has no model string because it chooses its own; saying
+        # "no model set" about it reads as a misconfiguration.
+        detail = "CLI · chooses its own model" if provider == "claude-code" else provider
+        add(m or str(tier.get("id") or label), m or label, detail, enabled)
+
+    vllm = str(cfg.get("vllm_model") or "").strip()
+    if vllm:
+        add(vllm, vllm, f"vLLM · {_host_of(cfg.get('vllm_base_url') or '')}",
+            str(cfg.get("backend") or "") == "vllm")
+
+    embed = str(cfg.get("embed_model") or "").strip()
+    if embed:
+        add(embed, embed, f"embeddings · {cfg.get('embed_backend') or 'ollama'}", True)
+
+    if cfg.get("image_gen_enabled"):
+        img = str(cfg.get("image_gen_model") or "").strip()
+        if img:
+            add(img, img.split("/")[-1], "images · local", True)
+    return out
+
+
 def indexed_files(doc_store) -> set[str]:
     """Every file the index holds, lower-cased and resolved.
 
@@ -278,11 +330,12 @@ def build(focus: str = "root", *, doc_store=None, registry=None, skill_store=Non
         from . import system_profile as sp
         nodes.append(_node("machine", f"{sp.CPU_CORES}-core · {sp.RAM_GB:.0f} GB RAM", "machine",
                            detail=f"{sp.VRAM_MB} MB VRAM"))
-        for tier in (cfg.get("model_chain") or [])[:6]:
-            m = str(tier.get("model") or "").strip()
-            if m:
-                nodes.append(_node(f"model:{m}", m, "model",
-                                   live=1 if tier.get("enabled") else 0))
+        # The same rule the models level uses. This branch had its own, which
+        # listed chain tiers carrying a model string and so dropped both the
+        # primary and Claude Code from the picture of everything at once.
+        for key, label, detail, live in _model_entries(cfg)[:6]:
+            nodes.append(_node(f"model:{key}", label, "model",
+                               live=1 if live else 0, detail=detail))
         for n in sorted(registry.names() if registry else [])[:24]:
             nodes.append(_node(f"tool:{n}", n, "tool"))
         try:
@@ -297,7 +350,7 @@ def build(focus: str = "root", *, doc_store=None, registry=None, skill_store=Non
         try:
             from . import agents as _ag
             for a in _ag.list_for_user(user_id or "", user_role or "admin")[:8]:
-                nodes.append(_node(f"agent:{a['slug']}", a.get("name") or a["slug"], "skill"))
+                nodes.append(_node(f"agent:{a['slug']}", a.get("name") or a["slug"], "agent"))
         except Exception:      # noqa: BLE001
             pass
         # ONE node per indexed drive, not the archive scattered across the view.
@@ -324,7 +377,7 @@ def build(focus: str = "root", *, doc_store=None, registry=None, skill_store=Non
             _node("tools", f"{len(registry.names()) if registry else 0} tools", "tool"),
             _node("skills", "skills", "skill"),
             _node("channels", "channels", "channel"),
-            _node("agents", "agents & schedules", "skill"),
+            _node("agents", "agents & schedules", "agent"),
             _node("network", _hostname(), "machine", detail=_lan_ip()),
         ]
         dirs, files = _tree(doc_store)
@@ -356,64 +409,9 @@ def build(focus: str = "root", *, doc_store=None, registry=None, skill_store=Non
 
     elif focus == "models":
         trail.append({"id": "models", "label": "models"})
-        seen: set[str] = set()
-
-        def _model_node(key: str, label: str, detail: str, live: bool) -> None:
-            if not label or key in seen:
-                return
-            seen.add(key)
+        for key, label, detail, live in _model_entries(cfg):
             nodes.append(_node(f"model:{key}", label, "model",
                                live=1 if live else 0, detail=detail))
-
-        # The primary first, because it is what answers unless something else
-        # is chosen for a turn.
-        primary = str(cfg.get("model") or "").strip()
-        _model_node(primary, primary, "primary", True)
-
-        # Then the tier chain. A tier is named by its model where it has one and
-        # by its label where it does not: the Claude Code tier carries no model
-        # string at all - the CLI picks its own - and the old code required one,
-        # so the tier that actually answered most turns was the single thing
-        # missing from the view of what SUNI can think with.
-        for tier in (cfg.get("model_chain") or []):
-            m = str(tier.get("model") or "").strip()
-            provider = str(tier.get("provider") or "").strip()
-            label = str(tier.get("label") or "").strip()
-            enabled = bool(tier.get("enabled"))
-            # An empty, switched-off tier is a slot, not a model. Listing "Large
-            # (T3)" as something she can think with is worse than listing
-            # nothing: it is an answer that is not true.
-            if not m and not enabled:
-                continue
-            if not (m or provider):
-                continue
-            # The CLI tier has no model string because it chooses its own;
-            # saying "no model set" about it reads as a misconfiguration.
-            if provider == "claude-code":
-                detail = "CLI · chooses its own model"
-            else:
-                detail = provider if m else provider
-            _model_node(m or str(tier.get("id") or label), m or label,
-                        detail, enabled)
-
-        # A remote OpenAI-compatible backend is a model she can think with even
-        # though it is nowhere in the chain - it is configured on its own.
-        vllm = str(cfg.get("vllm_model") or "").strip()
-        if vllm:
-            _model_node(vllm, vllm, f"vLLM · {_host_of(cfg.get('vllm_base_url') or '')}",
-                        str(cfg.get("backend") or "") == "vllm")
-
-        # These two are models by any honest reading: one turns every document
-        # and memory into vectors, the other makes the pictures. Leaving them
-        # out made "which models do you have" a smaller answer than the truth.
-        embed = str(cfg.get("embed_model") or "").strip()
-        if embed:
-            _model_node(embed, embed,
-                        f"embeddings · {cfg.get('embed_backend') or 'ollama'}", True)
-        if cfg.get("image_gen_enabled"):
-            img = str(cfg.get("image_gen_model") or "").strip()
-            if img:
-                _model_node(img, img.split("/")[-1], "images · local", True)
 
     elif focus == "agents":
         trail.append({"id": "agents", "label": "agents & schedules"})
