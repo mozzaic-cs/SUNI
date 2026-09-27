@@ -97,12 +97,34 @@ def test_drilling_in_shows_folders_and_files_together():
 
 
 def test_the_trail_leads_back_out():
-    store = FakeStore(_paths("a/deep/two.pdf"))
+    # "a" has to branch, or it is not a level of its own: a folder holding one
+    # folder and nothing else collapses onto its child, and the test below is
+    # about what the trail does then.
+    store = FakeStore(_paths("a/deep/two.pdf", "a/other/three.pdf"))
     g = graph.build(f"dir:{os.path.join('D:' + os.sep, 'Work', 'a', 'deep')}",
                     doc_store=store)
     labels = [t["label"] for t in g["trail"]]
     assert labels[0] == "SUNI" and labels[-1] == "deep"
     assert "a" in labels, "the level above is not reachable from here"
+
+
+def test_the_trail_never_offers_a_step_to_where_you_already_are():
+    """A folder holding exactly one folder collapses onto its child, so opening
+    it shows the child's contents. Offering it in the breadcrumb anyway gave a
+    link that reloaded the current view — which is what made the navigation
+    look dead rather than clever."""
+    store = FakeStore(_paths("a/deep/two.pdf"))
+    deep = os.path.join("D:" + os.sep, "Work", "a", "deep")
+    g = graph.build(f"dir:{deep}", doc_store=store)
+    labels = [t["label"] for t in g["trail"]]
+    assert labels[-1] == "deep"
+    assert "a" not in labels, "a step that leads back to this same folder"
+    # And every remaining dir step has to resolve somewhere else.
+    dirs, files = graph._tree(store)
+    for st in g["trail"][:-1]:
+        sid = str(st["id"])
+        if sid.startswith("dir:"):
+            assert graph._collapse(sid[4:], dirs, files) != deep
 
 
 def test_a_crowded_folder_says_what_it_left_out(monkeypatch):

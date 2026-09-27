@@ -2317,6 +2317,7 @@ const _netLabels = document.getElementById('net-labels');
 const _netLabelPool = [];
 const _netExitBtn = document.getElementById('net-exit');
 const _netMenu = document.getElementById('net-menu');
+let _netPtr = null;         // last pointer position, for the centre's own hint
 _netExitBtn.addEventListener('click', _netExit);
 
 /* A one-line note over the field. Used when an action had nothing to act on —
@@ -2392,6 +2393,15 @@ function _netSpot(kind, force){
 
 /* Back to her, at full size, from wherever the viewer ended up: the spotlight
    off, the groups back together, the camera home and the top level loaded. */
+/* Up one level. The trail is the authority on what "up" means - the server
+   builds it, and it already knows that a chain of single-child folders counts
+   as one step - so this walks it rather than trying to take a path apart. */
+function _netUp(){
+  const t = (_netData && _netData.trail) || [];
+  if (t.length < 2) { _netExit(); return; }     // already at the top
+  _netLoad(String(t[t.length - 2].id));
+}
+
 function _netExit(){
   if (_net && _net.ok) {
     _net.spotlight(null);
@@ -2555,6 +2565,22 @@ function _netSetFocus(on){
    to where the node WAS is worse than none. */
 function _netPaint(){
   _netPaintLabels();
+  // The centre has no node to hover, so its hint is drawn from the pointer
+  // position rather than from a hit. Without this the one obvious target on
+  // screen is also the only one that never explains itself.
+  if (_netFocus && _netPtr && !_netHover && _net && _net.ok
+      && _net.pickCentre(_netPtr.x, _netPtr.y,
+                         canvas.clientWidth || W, canvas.clientHeight || H)) {
+    const t = (_netData && _netData.trail) || [];
+    const up = t.length > 1 ? t[t.length - 2].label : '';
+    _netPop.innerHTML = '<div class="k">here</div><div>'
+      + _esc(t.length ? t[t.length - 1].label : 'SUNI') + '</div>'
+      + '<div class="hint">' + (up ? 'click to go up to ' + _esc(up) : 'the top level') + '</div>';
+    _netPop.style.left = (_netPtr.x + 14) + 'px';
+    _netPop.style.top  = (_netPtr.y + 10) + 'px';
+    _netPop.classList.add('on');
+    return;
+  }
   if (!_netHover || !_netFocus) { _netPop.classList.remove('on'); return; }
   const p = _net.screenPos(_netHover, canvas.clientWidth || W, canvas.clientHeight || H);
   if (!p) { _netPop.classList.remove('on'); return; }
@@ -2597,6 +2623,7 @@ canvas.addEventListener('pointermove', e => {
     return;
   }
   if (!_netFocus) return;                 // ambient: do not chase the cursor
+  _netPtr = { x: e.clientX, y: e.clientY };
   const hit = _net.pick(e.clientX, e.clientY, canvas.clientWidth || W, canvas.clientHeight || H);
   if (hit !== _netHover) { _netHover = hit; if (hit) _netDescribe(hit); }
 });
@@ -2605,7 +2632,15 @@ canvas.addEventListener('pointerup', e => {
   _netDrag = null;
   if (!_net || !_net.ok || wasDrag) return;
   const hit = _net.pick(e.clientX, e.clientY, canvas.clientWidth || W, canvas.clientHeight || H);
-  if (!hit) return;
+  if (!hit) {
+    // The middle is the level you are on; clicking it goes up out of it.
+    if (_netFocus && _net.pickCentre(e.clientX, e.clientY,
+                                     canvas.clientWidth || W, canvas.clientHeight || H)) {
+      _netMenuHide();
+      _netUp();
+    }
+    return;
+  }
   _netSetFocus(true);
   _netHover = hit; _netDescribe(hit);
   const id = String((hit.meta && hit.meta.id) || '');

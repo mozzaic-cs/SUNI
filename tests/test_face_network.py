@@ -105,7 +105,11 @@ def test_the_popup_follows_its_node_every_frame():
     assert "_netPaint()" in FACE
     # Anchored on the brace: "function _netPaint" is a prefix of
     # "function _netPaintLabels", so the loose form windows the wrong function.
-    paint = FACE[FACE.index("function _netPaint(){"):][:900]
+    # To the end of the function, not a fixed window of it: this asserted over
+    # 900 characters and failed when a block was added at the top, which is the
+    # second time a slice-sized test has broken over an insertion.
+    start = FACE.index("function _netPaint(){")
+    paint = FACE[start:FACE.index(chr(10) + "}", start)]
     assert "screenPos(" in paint
 
 
@@ -257,3 +261,21 @@ def test_a_roomier_layout_is_not_a_roomier_picture():
     m = _re.search(r"radOf = \(n\) => ([\d.]+) \+ Math\.sqrt\(n\) \* ([\d.]+)", lay)
     assert m, "the group radius is no longer a simple function of size"
     assert float(m.group(2)) < 0.4, "groups grow faster than the camera can follow"
+
+
+def test_the_middle_of_the_field_goes_up_a_level():
+    """The centre is drawn from index 0 of the buffers and has no entry in
+    this.nodes, so pick() can never return it and a click there did nothing —
+    on the most obvious target on the screen, which also happens to BE the
+    level you are on."""
+    assert "pickCentre(x, y, w, h)" in MOD, "the centre still cannot be clicked"
+    assert "function _netUp()" in FACE
+    up = FACE[FACE.index("function _netUp()"):][:420]
+    # The trail is the authority on what "up" means: the server builds it and
+    # already knows a chain of single-child folders counts as one step.
+    assert "_netData.trail" in up, "up is guessed from the path instead of the trail"
+    up_hit = FACE[FACE.index("canvas.addEventListener('pointerup'"):][:1600]
+    assert "pickCentre" in up_hit, "clicking the middle does nothing"
+    assert up_hit.index("_net.pick(") < up_hit.index("pickCentre"), (
+        "the centre is tested before the nodes, so a node in front of it "
+        "would never be clickable")

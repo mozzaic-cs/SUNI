@@ -122,9 +122,11 @@ def _model_entries(cfg: dict) -> list[tuple[str, str, str, bool]]:
             continue
         if not (m or provider):
             continue
-        # The CLI tier has no model string because it chooses its own; saying
-        # "no model set" about it reads as a misconfiguration.
-        detail = "CLI · chooses its own model" if provider == "claude-code" else provider
+        # A subscription CLI tier — Claude Code, Codex — carries no model string
+        # because the CLI picks its own. Reporting that as an absence reads as a
+        # misconfiguration rather than as how the thing works.
+        detail = ("CLI · chooses its own model"
+                  if provider in ("claude-code", "codex") else provider)
         add(m or str(tier.get("id") or label), m or label, detail, enabled)
 
     vllm = str(cfg.get("vllm_model") or "").strip()
@@ -141,6 +143,55 @@ def _model_entries(cfg: dict) -> list[tuple[str, str, str, bool]]:
         if img:
             add(img, img.split("/")[-1], "images · local", True)
     return out
+
+
+def _collapse(path: str, dirs: dict, files: dict) -> str:
+    """Walk down through folders that hold exactly one thing.
+
+    Somebody opening a drive wants the first real choice, not three clicks
+    through a chain that never branches. Defined once because the breadcrumb
+    has to know about it too: while only the focus resolution collapsed, the
+    trail offered J:\\ and J:\\MOZZAIC as separate steps that both landed on
+    Projects, so clicking either one loaded the view already on screen and the
+    navigation looked broken.
+    """
+    seen = 0
+    while seen < 64:                      # a symlink loop is not a reason to hang
+        kids = dirs.get(path, {})
+        if len(kids) == 1 and not files.get(path):
+            path = next(iter(kids))
+            seen += 1
+            continue
+        return path
+    return path
+
+
+def _live_steps(path: str, dirs: dict, files: dict, drop: int = 0) -> list[dict]:
+    """The breadcrumb for `path`, minus the steps that lead back to `path`.
+
+    Every step has to go somewhere other than here. An ancestor that collapses
+    onto this same folder is not a step back — it is a link to the page you are
+    already on, which is what made the breadcrumb look dead rather than clever.
+    """
+    steps = _trail_for(path)[drop:]
+    ancestors, dests = [], {}
+    for i, st in enumerate(steps[:-1]):
+        sid = str(st.get("id", ""))
+        if not sid.startswith("dir:"):
+            ancestors.append(st)
+            continue
+        dest = _collapse(sid[4:], dirs, files)
+        if dest == path:
+            continue                      # a link to the page you are on
+        # Several ancestors of a chain that never branches all resolve to the
+        # same folder. Keep the last of them: its label is the one that names
+        # where the click actually goes.
+        dests[dest] = len(ancestors)
+        ancestors.append(st)
+    wanted = set(dests.values())
+    keep = [st for i, st in enumerate(ancestors)
+            if not str(st.get("id", "")).startswith("dir:") or i in wanted]
+    return keep + steps[-1:]
 
 
 def indexed_files(doc_store) -> set[str]:
@@ -477,24 +528,19 @@ def build(focus: str = "root", *, doc_store=None, registry=None, skill_store=Non
             # spending a click on a node with nowhere else to go.
             if len(roots) == 1:
                 only = roots[0]
-                trail += _trail_for(only)[1:]
+                trail += _live_steps(only, dirs, files, drop=1)
                 children = dirs.get(only, {})
                 here_files = sorted(files.get(only, []))
             else:
                 children = {d: under.get(d, 0) for d in roots}
                 here_files: list[str] = []
         else:
-            path = focus[4:]
-            # Walk down through folders that hold exactly one thing: a viewer
-            # opening a drive wants the first real choice, not three clicks
-            # through a chain that never branches.
-            while True:
-                kids = dirs.get(path, {})
-                if len(kids) == 1 and not files.get(path):
-                    path = next(iter(kids))
-                    continue
-                break
-            trail += _trail_for(path)
+            path = _collapse(focus[4:], dirs, files)
+            # Every step has to lead somewhere other than here. An ancestor that
+            # collapses onto this same folder is not a step back, it is a link
+            # to the page you are on - which is what made the breadcrumb look
+            # dead rather than clever.
+            trail += _live_steps(path, dirs, files)
             children = dirs.get(path, {})
             here_files = sorted(files.get(path, []))
         nodes = [_node(f"dir:{p}", os.path.basename(p) or p, "folder", count=c)

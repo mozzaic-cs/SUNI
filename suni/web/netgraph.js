@@ -931,6 +931,24 @@
 
     screenPos(node, w, h) { return node ? this.project(node.pos, w, h) : null; }
 
+    /* Was that click on the thing in the middle?
+
+       The centre is not in this.nodes - it is drawn from index 0 of the buffers
+       and has no entry to pick - so pick() can never return it, and a click
+       there did nothing at all. It is the most obvious target on the screen and
+       it is the current level itself, which makes it the natural way back up.
+
+       Generous by a few pixels: it is a small sphere and the thing it does is
+       harmless. */
+    pickCentre(x, y, w, h) {
+      if (!this.ok) return false;
+      const p = this.project([0, 0, 0], w, h);
+      if (!p || p.w <= 0.05) return false;
+      const px = (this._scalePx || (h * 0.013)) * SIZE_BY_KIND.root / Math.max(p.w, 0.001);
+      const r = Math.max(14, px * 0.75);
+      return (x - p.x) * (x - p.x) + (y - p.y) * (y - p.y) <= r * r;
+    }
+
     /* Which nodes have earned a name on screen.
 
        Zooming in makes points bigger, so keying off a node's drawn size is the
