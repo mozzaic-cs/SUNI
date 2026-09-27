@@ -32,10 +32,11 @@
     attribute float a_icon;       /* cell in the icon atlas */
     uniform mat4 u_mvp;
     uniform float u_scale;        /* pixels per unit of a_size, for this canvas */
+    uniform float u_cols;         /* atlas is u_cols x u_cols cells */
+    varying vec2  v_cell;
     varying float v_shade;
     varying float v_depth;
     varying vec3 v_color;
-    varying float v_icon;
     varying float v_px;
     void main(){
       vec4 clip = u_mvp * vec4(a_pos, 1.0);
@@ -46,12 +47,26 @@
       v_px = gl_PointSize;
       v_shade = a_shade;
       v_color = a_color;
-      v_icon = a_icon;
+      /* Which atlas cell, worked out HERE rather than in the fragment stage.
+         mod()/floor() on an index that lands exactly on a row boundary is a
+         coin toss at mediump: 4.0/4.0 comes back as 0.99999 and floor() drops
+         it a whole row. That is why the star flickered and nothing else did —
+         "skill" is the icon whose index is exactly one row in. Vertex-stage
+         float is highp, and the varying only ever carries small whole
+         numbers, which survive the trip. */
+      float idx = floor(a_icon + 0.5);
+      v_cell = vec2(floor(mod(idx, u_cols)), floor(idx / u_cols + 0.001));
       v_depth = clamp(clip.w / 24.0, 0.0, 1.0);
     }`;
 
   const FS = `
+    /* highp where the device has it: the icon atlas is sampled per pixel and
+       mediump uv over a multi-cell atlas bleeds between neighbours. */
+    #ifdef GL_FRAGMENT_PRECISION_HIGH
+    precision highp float;
+    #else
     precision mediump float;
+    #endif
     uniform vec3      u_tint;
     uniform float     u_focus;    /* 0 ambient (grey) .. 1 focus (in colour) */
     uniform float     u_alpha;
@@ -60,7 +75,7 @@
     varying float v_shade;
     varying float v_depth;
     varying vec3  v_color;
-    varying float v_icon;
+    varying vec2  v_cell;
     varying float v_px;
     void main(){
       /* A sphere, not a smudge. The point is shaded as a ball lit from the
@@ -89,8 +104,7 @@
 
       /* The glyph sits on the ball, bright enough to read against it. Below
          about thirteen pixels it would be mush, so it fades in with size. */
-      vec2 cell = vec2(mod(v_icon, u_cols), floor(v_icon / u_cols));
-      vec2 uv = (cell + clamp(gl_PointCoord * 1.42 - 0.21, 0.0, 1.0)) / u_cols;
+      vec2 uv = (v_cell + clamp(gl_PointCoord * 1.42 - 0.21, 0.0, 1.0)) / u_cols;
       float room = smoothstep(13.0, 26.0, v_px) * (0.35 + 0.65 * u_focus);
       float glyph = texture2D(u_icons, uv).a * room;
       col = mix(col, mix(vec3(1.0), cat + 0.55, 0.35), glyph * 0.85);
@@ -432,6 +446,13 @@
       this.focus = 0;         // eased 0..1, ambient → focus
       this.wantFocus = false;
       this.highlight = null;  // node id SUNI or the pointer is pointing at
+      // What the camera is looking AT. It used to be the origin and only the
+      // origin, which is fine while the centre is the subject and useless the
+      // moment a particular group is. Eased, like dist, so travelling to a
+      // cluster is a move the eye can follow.
+      this.look = [0, 0, 0];
+      this.lookWant = [0, 0, 0];
+      this.spot = null;       // category currently singled out, or null
       this.yaw = 0.4; this.pitch = -0.18;
       this.dist = 15; this.distWant = 15;
       this.spin = 0.035;      // ambient drift, radians/second
@@ -501,7 +522,15 @@
           phase: (i * 1.7) % 6.283,
         };
       });
-      this.center = { id: (graph && graph.focus) || 'root', pos: [0, 0, 0] };
+      this.center = {
+        id: (graph && graph.focus) || 'root',
+        label: (graph && graph.trail && graph.trail.length
+                ? graph.trail[graph.trail.length - 1].label : 'SUNI'),
+        pos: [0, 0, 0],
+      };
+      this.spot = null;
+      this.look = [0, 0, 0];
+      this.lookWant = [0, 0, 0];
       if (this.clustered) this._clusterLayout();
       // Pull back far enough that the level fits. Six nodes and a hundred and
       // twenty need very different room, and a level whose edges are off-screen
@@ -638,6 +667,47 @@
         : Math.max(9, Math.min(38, this.distWant * 0.62));
     }
 
+    /* Send the camera to one category and dim the rest.
+
+       This is what clicking a legend row means, and what SUNI means when she
+       says "here are the machines": not a filter that hides everything else —
+       the field should stay recognisable — but a spotlight. The others stay
+       drawn, dark, in place, so it is visible that they are still there.
+
+       Passing null puts everything back up. */
+    spotlight(kind) {
+      this.spot = kind || null;
+      this._uploadShade();
+      if (!kind) { this.lookWant = [0, 0, 0]; return; }
+      const members = this.nodes.filter(nd => nd.kind === kind);
+      if (!members.length) return;
+      const c = [0, 0, 0];
+      for (const nd of members) for (let i = 0; i < 3; i++) c[i] += nd.home[i] / members.length;
+      let far = 0;
+      for (const nd of members) {
+        far = Math.max(far, Math.hypot(nd.home[0] - c[0], nd.home[1] - c[1], nd.home[2] - c[2]));
+      }
+      this.lookWant = c;
+      this.distWant = Math.max(6, Math.min(52, far * 2.6 + 6));
+      this.wantFocus = true;
+      return members.length;
+    }
+
+    /* Shade is a per-node attribute the shaders already dim by, so singling a
+       category out is a buffer rewrite rather than a second draw path. */
+    _uploadShade() {
+      if (!this.ok || !this.nodes.length) return;
+      const gl = this.gl;
+      const shade = new Float32Array(this.count);
+      shade[0] = this.spot ? 0.3 : 1;
+      this.nodes.forEach((nd, i) => {
+        const base = nd.shade;
+        shade[i + 1] = this.spot ? (nd.kind === this.spot ? 1 : base * 0.22) : base;
+      });
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.bShade);
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, shade);
+    }
+
     /* ── camera ─────────────────────────────────────────────────────────── */
     orbit(dx, dy) {
       this.yaw += dx * 0.006;
@@ -645,7 +715,7 @@
       this.wantFocus = true;
     }
     zoom(delta) {
-      this.distWant = Math.max(4.5, Math.min(40, this.distWant * (1 + delta * 0.0012)));
+      this.distWant = Math.max(4.5, Math.min(60, this.distWant * (1 + delta * 0.0012)));
       this.wantFocus = true;
     }
     setFocus(on) { this.wantFocus = !!on; }
@@ -656,6 +726,8 @@
       const want = this.wantFocus ? 1 : 0;
       this.focus += (want - this.focus) * Math.min(1, 3.2 * dt);
       this.dist += (this.distWant - this.dist) * Math.min(1, 5 * dt);
+      const lk = Math.min(1, 3.4 * dt);
+      for (let i = 0; i < 3; i++) this.look[i] += (this.lookWant[i] - this.look[i]) * lk;
       // Ambient drift only while nobody is holding it: a view that keeps
       // rotating under the cursor is a view you cannot read.
       if (this.focus < 0.02) this.yaw += this.spin * dt;
@@ -698,7 +770,10 @@
     }
 
     view() {
-      return mul(trans(0, 0, -this.dist), mul(rotX(this.pitch), rotY(this.yaw)));
+      return mul(trans(0, 0, -this.dist),
+                 mul(rotX(this.pitch),
+                     mul(rotY(this.yaw),
+                         trans(-this.look[0], -this.look[1], -this.look[2]))));
     }
 
     /* ── drawing ────────────────────────────────────────────────────────── */
@@ -838,7 +913,19 @@
         if (skip && p.x > skip.x0 && p.x < skip.x1 && p.y > skip.y0 && p.y < skip.y1) continue;
         cand.push({ node: nd, x: p.x, y: p.y, px, w: p.w });
       }
+      /* The centre is the one node that was never named, which left the thing
+         everything on screen hangs off — her, at the top level; whatever you
+         opened, below it — as an anonymous dot. It goes in first and out of
+         turn: it is the subject, so it outranks whatever is merely big. */
+      const cp = this.project([0, 0, 0], w, h);
       cand.sort((a, b) => b.px - a.px || a.w - b.w);
+      if (cp && cp.w > 0.05 && cp.x > 0 && cp.y > 0 && cp.x < w && cp.y < h
+          && !(skip && cp.x > skip.x0 && cp.x < skip.x1 && cp.y > skip.y0 && cp.y < skip.y1)) {
+        cand.unshift({
+          node: { id: this.center.id, label: this.center.label, kind: 'root' },
+          x: cp.x, y: cp.y, px: scale * SIZE_BY_KIND.root / Math.max(cp.w, 0.001), w: cp.w,
+        });
+      }
       for (const c of cand) {
         if (out.length >= max) break;
         let clear = true;

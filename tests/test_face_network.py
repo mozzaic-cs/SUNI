@@ -140,7 +140,11 @@ def test_names_never_land_on_her_face():
 
 def test_overlapping_names_are_dropped_not_nudged():
     """A label moved away from its node points at nothing."""
-    block = MOD[MOD.index("labels(w, h, opts)"):][:1800]
+    # The whole method, not a fixed window of it: a comment added at the top
+    # pushed the line this was looking for off the end of an 1800-character
+    # slice, and the test failed over prose.
+    start = MOD.index("labels(w, h, opts)")
+    block = MOD[start:MOD.index(chr(10) + "    }", start)]
     assert "spacing" in block and "clear = false" in block
 
 
@@ -157,3 +161,66 @@ def test_ambient_keeps_its_colours():
     i = MOD.index("vec3 cat = mix(v_color")
     block = MOD[i - 400:i + 400]
     assert "vec3 grey" not in block, "ambient still drains the colour out"
+
+
+def test_the_atlas_cell_is_worked_out_before_the_fragment_stage():
+    """The star flickered and no other icon did.
+
+    "skill" is the icon whose index lands exactly on a row boundary, and
+    mod()/floor() on it at mediump is a coin toss: 4.0/4.0 comes back as
+    0.99999 and the glyph drops a whole row into an empty cell. Vertex-stage
+    float is highp, and a varying carrying small whole numbers survives.
+    """
+    assert "varying vec2  v_cell;" in MOD, "the cell is not passed from the vertex stage"
+    vs = MOD[MOD.index("const VS ="):MOD.index("const FS =")]
+    assert "v_cell = vec2(" in vs, "the cell is still worked out per fragment"
+    fs = MOD[MOD.index("const FS ="):]
+    assert "floor(v_icon" not in fs, "the fragment stage still divides the icon index"
+    assert "GL_FRAGMENT_PRECISION_HIGH" in MOD, "no highp where the device has it"
+
+
+def test_there_is_a_visible_way_back_to_her():
+    """Escape worked from the first version, which is no use to anyone who does
+    not already know it is there. A head shrunk into a corner with no way back
+    is a trap, not a mode."""
+    assert 'id="net-exit"' in FACE, "nothing on screen leads back"
+    assert "_netExitBtn.addEventListener('click', _netExit)" in FACE
+    exit_fn = FACE[FACE.index("function _netExit()"):][:500]
+    assert "_netSetFocus(false)" in exit_fn, "the head never comes back to full size"
+    assert "spotlight(null)" in exit_fn, "a category stays singled out after leaving"
+    assert "setCluster(false)" in exit_fn, "the groups stay pulled apart after leaving"
+    # Escape and the button are the same door.
+    esc = FACE[FACE.index("e.key === 'Escape'"):][:120]
+    assert "_netExit()" in esc
+
+
+def test_clicking_a_category_takes_you_to_it():
+    assert 'data-kind="${item.kind}"' in FACE, "legend rows do not say which category"
+    assert "_netSpot(row.dataset.kind)" in FACE, "legend rows do not answer to a click"
+    spot = MOD[MOD.index("spotlight(kind) {"):][:900]
+    assert "lookWant" in spot, "the camera never travels to the category"
+    # A spotlight, not a filter: the rest stays drawn, dark and in place, so it
+    # is visible that they are still there.
+    shade = MOD[MOD.index("_uploadShade() {"):][:700]
+    assert "this.spot" in shade and "* 0.22" in shade, (
+        "the other categories are hidden rather than dimmed")
+    assert "this.spot = null" in MOD, "loading a level leaves a stale category dimmed"
+
+
+def test_the_camera_can_look_at_something_other_than_the_origin():
+    """Travelling to a group is meaningless if the camera only ever orbits the
+    middle."""
+    view = MOD[MOD.index("    view() {"):][:320]
+    assert "this.look" in view, "the view matrix ignores where the camera is looking"
+    assert "60" in MOD[MOD.index("    zoom(delta)"):][:200], (
+        "the zoom clamp is tighter than the distance the cluster view asks for, "
+        "so the first wheel notch snaps it back")
+
+
+def test_the_centre_node_is_named_too():
+    """It is the thing everything on screen hangs off - her at the top level,
+    whatever you opened below it - and it was the one node with no name."""
+    lab = MOD[MOD.index("labels(w, h, opts)"):MOD.index(chr(10) + "    }",
+                                                        MOD.index("labels(w, h, opts)"))]
+    assert "this.center.label" in lab, "the centre is still an anonymous dot"
+    assert "label: (graph && graph.trail" in MOD, "the centre never learns its name"
