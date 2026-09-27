@@ -326,6 +326,14 @@ header{
 #net-pop .hint{color:rgba(0,212,255,.6);font-size:10px;margin-top:5px}
 /* The key to the colours. Fades up with focus like the trail: in ambient it
    would be a caption on something nobody is reading yet. */
+/* Node names. A pool of spans reused every frame — creating and destroying
+   elements at sixty hertz is how a smooth canvas gets a stuttering overlay. */
+#net-labels{position:absolute;inset:0;z-index:6;pointer-events:none;overflow:hidden}
+#net-labels span{position:absolute;transform:translate(-50%,0);
+  font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.02em;
+  color:rgba(228,236,255,.82);text-shadow:0 1px 3px rgba(0,0,0,.9),0 0 8px rgba(0,0,0,.7);
+  white-space:nowrap;opacity:0;transition:opacity .25s ease}
+#net-labels span.on{opacity:1}
 #net-legend{position:absolute;right:2.2%;bottom:132px;z-index:7;opacity:0;
   transition:opacity .35s ease;pointer-events:none;
   display:flex;flex-direction:column;gap:5px;
@@ -389,6 +397,7 @@ header{
   <div id="net-pop"></div>
   <div id="net-trail"></div>
   <div id="net-legend"></div>
+  <div id="net-labels"></div>
   <!-- background scanlines removed — the head keeps its own scanlines from the FS2 shader -->
   <header>
     <div class="wordmark"><span id="brand-name">SUNI</span><sub id="brand-tagline"></sub></div>
@@ -1543,7 +1552,12 @@ function renderHead(dt){
   if (_stageT > 0.002){
     const f = 1 - 0.62 * _stageT;                       // shrink toward ~38%
     const vpW = canvas.width * f, vpH = canvas.height * f;
-    const mx = canvas.width * 0.015, my = canvas.height * 0.06;   // larger top margin — head sits lower from the top edge
+    // Negative right margin: the viewport hangs a little past the right edge.
+    // The head only fills the middle ~65% of its viewport's width (the viewport
+    // keeps the canvas aspect, the head is about as wide as it is tall), so the
+    // overhang costs empty space, not face, and buys the network the room it
+    // wanted. Top margin stays generous so she sits below the edge.
+    const mx = canvas.width * -0.055, my = canvas.height * 0.06;
     gl.viewport((canvas.width - vpW - mx) * _stageT, (canvas.height - vpH - my) * _stageT, vpW, vpH);
   }
   gl.useProgram(prog);
@@ -2259,6 +2273,55 @@ _camBtn.addEventListener('click', () => { if(_camStream) _camStop(); else _camSt
 const _netPop = document.getElementById('net-pop');
 const _netTrail = document.getElementById('net-trail');
 const _netLegend = document.getElementById('net-legend');
+const _netLabels = document.getElementById('net-labels');
+const _netLabelPool = [];
+
+/* Names, for as many nodes as currently have room for one. The module decides
+   which those are — it knows how big each point is drawn and where it landed —
+   and this only moves the spans. */
+/* Where her head is on screen right now, in CSS pixels, as a box to keep names
+   out of. It moves: centred while she is the whole picture, shrunk into the
+   top-right corner once the network has the floor. _stageT is that journey, so
+   the box travels with her instead of being two hardcoded rectangles. */
+function _headBox(w, h){
+  const t = _stageT;
+  const cx = (w * 0.5) * (1 - t) + (w * 0.87) * t;
+  const cy = (h * 0.46) * (1 - t) + (h * 0.26) * t;
+  const halfW = (h * 0.30) * (1 - t) + (h * 0.17) * t;
+  const halfH = (h * 0.38) * (1 - t) + (h * 0.22) * t;
+  return { x0: cx - halfW, x1: cx + halfW, y0: cy - halfH, y1: cy + halfH };
+}
+
+function _netPaintLabels(){
+  if (!_net || !_net.ok || !_netData) { _netHideLabels(); return; }
+  const w = canvas.clientWidth || W, h = canvas.clientHeight || H;
+  // Ambient names only the few biggest things; focus names as many as fit.
+  const wanted = _net.labels(w, h, {
+    minPx: _netFocus ? 14 : 26,
+    max: _netFocus ? 20 : 6,
+    exclude: _headBox(w, h),
+  });
+  for (let i = 0; i < wanted.length; i++) {
+    let el = _netLabelPool[i];
+    if (!el) {
+      el = document.createElement('span');
+      _netLabels.appendChild(el);
+      _netLabelPool.push(el);
+    }
+    const item = wanted[i];
+    if (el._id !== item.node.id) { el.textContent = item.node.label || ''; el._id = item.node.id; }
+    el.style.left = item.x + 'px';
+    el.style.top = (item.y + item.px * 0.55 + 4) + 'px';
+    el.classList.add('on');
+  }
+  for (let i = wanted.length; i < _netLabelPool.length; i++) {
+    _netLabelPool[i].classList.remove('on');
+  }
+}
+
+function _netHideLabels(){
+  for (const el of _netLabelPool) el.classList.remove('on');
+}
 
 /* Built from the module's own palette, never from a copy of it: a legend that
    can disagree with the thing it explains is worse than no legend. Size is part
@@ -2274,7 +2337,9 @@ function _netBuildLegend(){
                     background:linear-gradient(rgba(${rgb},.18),rgba(${rgb},.18))">
              <span style="color:rgb(${rgb})">${_esc(item.label)}</span></div>`;
   });
-  rows.push('<div class="hint">bigger node = more inside<br>drag to turn · wheel to zoom · click to open</div>');
+  rows.push('<div class="hint">bigger node = more inside<br>'
+            + 'drag to turn · wheel to zoom · click to open<br>'
+            + '<b style="color:rgba(0,212,255,.8)">C</b> groups by category</div>');
   _netLegend.innerHTML = rows.join('');
 }
 
@@ -2322,6 +2387,7 @@ function _netSetFocus(on){
 /* The label follows its node every frame: the field drifts, and a popup pinned
    to where the node WAS is worse than none. */
 function _netPaint(){
+  _netPaintLabels();
   if (!_netHover || !_netFocus) { _netPop.classList.remove('on'); return; }
   const p = _net.screenPos(_netHover, canvas.clientWidth || W, canvas.clientHeight || H);
   if (!p) { _netPop.classList.remove('on'); return; }
@@ -2388,6 +2454,13 @@ canvas.addEventListener('wheel', e => {
 }, { passive: false });
 window.addEventListener('keydown', e => {
   if (e.key === 'Escape' && _netFocus) { _netSetFocus(false); _netLoad('overview'); }
+  // C pulls the field apart into one group per category and back again. Not a
+  // different view — the same nodes, walking to different places.
+  if ((e.key === 'c' || e.key === 'C') && _net && _net.ok
+      && !/^(INPUT|TEXTAREA)$/.test((e.target && e.target.tagName) || '')) {
+    _netSetFocus(true);
+    _net.setCluster(!_net.clustered);
+  }
 });
 
 // ── Content stage toggle (Step A) — head to corner + content panel ────
@@ -2701,7 +2774,7 @@ function _ingestPrompt(text){
   if (!layer || !text) return;
   const words = text.split(/\s+/).filter(Boolean).slice(0, 24);
   const W = window.innerWidth, H = window.innerHeight;
-  const cx = _stageMode ? W * 0.82 : W * 0.5;         // recede toward the head (top-right when staged)
+  const cx = _stageMode ? W * 0.87 : W * 0.5;         // recede toward the head (top-right when staged)
   const cy = _stageMode ? H * 0.20 : H * 0.5;
   for (let i = 0; i < words.length; i++){
     const el = document.createElement('span');

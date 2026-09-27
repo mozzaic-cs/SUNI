@@ -40,11 +40,20 @@ def test_it_is_drawn_behind_the_head_not_over_it():
     assert "depthMask(false)" in MOD and "DEPTH_TEST" in MOD
 
 
-def test_ambient_is_grey_and_focus_takes_her_colour():
-    assert "stateColor(stateSmooth)" in FACE[FACE.index("_net.draw("):FACE.index("_net.draw(") + 200] \
-        or "nc[0] / 255" in FACE
-    assert "mix(grey, u_tint, u_focus)" in MOD, "focus does not tint the field"
-
+def test_both_moods_are_in_colour_and_focus_is_the_brighter_one():
+    """Ambient was greyscale first. Behind her head the categories still have to
+    be tellable apart, so it keeps its colours and only drops in brightness."""
+    assert "nc[0] / 255" in FACE, "her state colour never reaches the field"
+    assert "vec3 cat = mix(v_color, u_tint" in MOD, "nodes ignore their category colour"
+    # The brightness factor is tuned by eye, so the test asks what it has to be
+    # true of rather than what it currently reads: dimmer than focus in ambient,
+    # and focus adds rather than subtracts. A pinned literal here failed on a
+    # tuning pass that had not broken anything.
+    factors = re.findall(r"\(([\d.]+) \+ ([\d.]+) \* u_focus\)", MOD)
+    assert factors, "node brightness does not depend on focus at all"
+    for base, gain in factors:
+        assert float(gain) > 0, "focus dims the field instead of brightening it"
+        assert float(base) < 1.0, "ambient is already at full brightness"
 
 def test_taking_hold_of_it_moves_the_head_aside_without_opening_the_panel():
     """The stage panel is 60% of the screen with a backdrop: opening it would
@@ -94,7 +103,9 @@ def test_labels_are_escaped():
 def test_the_popup_follows_its_node_every_frame():
     """The field drifts; a label pinned where the node was is worse than none."""
     assert "_netPaint()" in FACE
-    paint = FACE[FACE.index("function _netPaint"):][:600]
+    # Anchored on the brace: "function _netPaint" is a prefix of
+    # "function _netPaintLabels", so the loose form windows the wrong function.
+    paint = FACE[FACE.index("function _netPaint(){"):][:900]
     assert "screenPos(" in paint
 
 
@@ -108,3 +119,41 @@ def test_a_shader_failure_leaves_the_page_working():
     assert "this.ok = !!(this.prog && this.lprog)" in MOD
     assert "if (!this.ok) return;" in MOD
     assert "_net && _net.ok" in FACE
+
+
+# ── names ────────────────────────────────────────────────────────────────────
+def test_names_appear_as_nodes_grow_on_screen():
+    """Zooming in makes points bigger, so keying labels off drawn size is the
+    whole rule: far out only the hubs are named, close in everything is."""
+    assert "labels(w, h, opts)" in MOD
+    assert "minPx" in MOD and "px < minPx" in MOD
+    assert "minPx: _netFocus ? 14 : 26" in FACE, "ambient names as many as focus does"
+
+
+def test_names_never_land_on_her_face():
+    assert "exclude: _headBox(w, h)" in FACE, "nothing tells the labels where she is"
+    assert "function _headBox(" in FACE
+    box = FACE[FACE.index("function _headBox("):][:700]
+    assert "_stageT" in box, "the box does not follow her to the corner"
+    assert "o.exclude" in MOD and "skip.x0" in MOD
+
+
+def test_overlapping_names_are_dropped_not_nudged():
+    """A label moved away from its node points at nothing."""
+    block = MOD[MOD.index("labels(w, h, opts)"):][:1800]
+    assert "spacing" in block and "clear = false" in block
+
+
+def test_labels_reuse_a_pool_of_elements():
+    """Creating and destroying spans at sixty hertz is how a smooth canvas gets
+    a stuttering overlay."""
+    assert "_netLabelPool" in FACE
+    assert "document.createElement('span')" in FACE
+
+
+def test_ambient_keeps_its_colours():
+    """Grey was the first instinct and the wrong one: the categories stay
+    readable behind her head, just quieter."""
+    i = MOD.index("vec3 cat = mix(v_color")
+    block = MOD[i - 400:i + 400]
+    assert "vec3 grey" not in block, "ambient still drains the colour out"

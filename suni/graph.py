@@ -90,6 +90,18 @@ def _tree(doc_store) -> tuple[dict, dict]:
     return dirs, files
 
 
+def _drives(dirs: dict, files: dict) -> list[str]:
+    """The top of each indexed tree, uncollapsed — "D:\\" rather than the first
+    folder that happens to contain something.
+
+    _roots() walks down past single-child chains because that is what a viewer
+    wants when they are already inside the knowledge branch. Here the point is
+    the opposite: name the thing the files live on.
+    """
+    return sorted(d for d in dirs
+                  if os.path.dirname(d) == d or os.path.dirname(d) not in dirs)
+
+
 def _roots(dirs: dict, files: dict) -> list[str]:
     """Where the indexed tree starts, with pass-through folders collapsed.
 
@@ -243,20 +255,19 @@ def build(focus: str = "root", *, doc_store=None, registry=None, skill_store=Non
                 nodes.append(_node(f"agent:{a['slug']}", a.get("name") or a["slug"], "skill"))
         except Exception:      # noqa: BLE001
             pass
+        # ONE node per indexed drive, not the archive scattered across the view.
+        # Twenty-eight folders and forty files at this level said nothing that a
+        # single "7,637 files over there" does not, and buried the machine, the
+        # models and the tools among them. The drive opens on a click, which is
+        # where folder names start to mean something.
         dirs, files = _tree(doc_store)
         if dirs or files:
             under = _tree_cache.get("under", {})
-            # The biggest folders, then a scatter of actual files: the shape of
-            # the archive rather than its first alphabetical corner.
-            top = sorted(under.items(), key=lambda kv: -kv[1])[:28]
-            for path, count in top:
-                nodes.append(_node(f"dir:{path}", os.path.basename(path) or path,
-                                   "folder", count=count))
-            sample = [p for group in files.values() for p in group]
-            step = max(1, len(sample) // 40)
-            for path in sample[::step][:40]:
-                nodes.append(_node(f"file:{path}", os.path.basename(path), "file",
-                                   ext=os.path.splitext(path)[1].lstrip(".").lower()))
+            for root in _drives(dirs, files):
+                count = under.get(root, 0)
+                nodes.append(_node(f"dir:{root}", root.rstrip(os.sep) or root, "folder",
+                                   count=count,
+                                   detail=f"{count:,} indexed files" if count else ""))
         nodes = _cap(nodes, focus)
 
     elif focus == "root":
@@ -383,6 +394,15 @@ def build(focus: str = "root", *, doc_store=None, registry=None, skill_store=Non
                 here_files: list[str] = []
         else:
             path = focus[4:]
+            # Walk down through folders that hold exactly one thing: a viewer
+            # opening a drive wants the first real choice, not three clicks
+            # through a chain that never branches.
+            while True:
+                kids = dirs.get(path, {})
+                if len(kids) == 1 and not files.get(path):
+                    path = next(iter(kids))
+                    continue
+                break
             trail += _trail_for(path)
             children = dirs.get(path, {})
             here_files = sorted(files.get(path, []))

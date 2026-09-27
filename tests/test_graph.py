@@ -279,12 +279,15 @@ def test_agents_and_schedules_are_the_callers_own(monkeypatch):
 
 def test_the_overview_mixes_every_kind_so_it_reads_as_a_network():
     """The root's handful of hubs reads as a handful of dots. The ambient view
-    samples across branches instead."""
+    puts the machine, the models, the tools and the drives together — the
+    archive as ONE node, since scattering its folders here buried everything
+    else."""
     store = FakeStore(_paths(*[f"a/f{i}.pdf" for i in range(30)]))
-    g = graph.build("overview", doc_store=store, registry=FakeRegistry(["t1", "t2"]),
+    g = graph.build("overview", doc_store=store,
+                    registry=FakeRegistry([f"t{i}" for i in range(12)]),
                     config={"model_chain": [{"model": "m1", "enabled": True}]})
     kinds = {n["kind"] for n in g["nodes"]}
-    assert {"machine", "model", "tool", "file"} <= kinds
+    assert {"machine", "model", "tool", "folder"} <= kinds
     assert len(g["nodes"]) > 10
 
 
@@ -295,3 +298,25 @@ def test_overview_nodes_are_real_so_clicking_one_descends():
     assert folder["id"].startswith("dir:")
     child = graph.build(folder["id"], doc_store=store)
     assert child["nodes"], "a folder from the overview leads nowhere"
+
+
+def test_the_overview_shows_a_drive_not_its_folders():
+    """Twenty-eight folders and forty files at this level said nothing a single
+    "that much, over there" does not, and buried the machine and the tools."""
+    store = FakeStore(_paths(*[f"a{i}/f{i}.pdf" for i in range(30)]))
+    g = graph.build("overview", doc_store=store, registry=FakeRegistry(["t1"]))
+    folders = [n for n in g["nodes"] if n["kind"] == "folder"]
+    assert len(folders) == 1, f"{len(folders)} folder nodes in the overview"
+    assert folders[0]["label"].startswith("D:")
+    assert "30" in folders[0].get("detail", ""), "the drive does not say how much it holds"
+    assert not [n for n in g["nodes"] if n["kind"] == "file"], "files leaked into the overview"
+
+
+def test_the_drive_opens_on_the_first_real_choice():
+    """A chain that never branches is clicks that tell you nothing."""
+    store = FakeStore(_paths("deep/inner/a/one.pdf", "deep/inner/b/two.pdf"))
+    g = graph.build("overview", doc_store=store)
+    drive = next(n for n in g["nodes"] if n["kind"] == "folder")
+    opened = graph.build(drive["id"], doc_store=store)
+    assert {n["label"] for n in opened["nodes"]} == {"a", "b"}
+    assert [t["label"] for t in opened["trail"]][-1] == "inner"

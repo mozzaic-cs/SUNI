@@ -6,8 +6,8 @@
  *
  * Two moods, because this thing is on screen for hours:
  *
- *   AMBIENT — grey, dim, slow. It is behind her head and it is not asking for
- *             attention. Readable as depth and activity, not as information.
+ *   AMBIENT — dim and slow, but in colour. It is behind her head and it is not asking for
+ *             attention. Readable as depth and activity, not as reading matter.
  *   FOCUS   — the viewer took hold of it, or SUNI highlighted something. It
  *             takes the colour of her current state, brightens, labels itself,
  *             and the head steps aside to the corner.
@@ -63,34 +63,42 @@
     varying float v_icon;
     varying float v_px;
     void main(){
-      /* Round, soft-edged halo. Square points read as pixels, not as things. */
-      vec2 d = gl_PointCoord - vec2(0.5);
-      float r = length(d) * 2.0;
-      float halo = smoothstep(1.0, 0.35, r);
-      if (halo <= 0.003) discard;
+      /* A sphere, not a smudge. The point is shaded as a ball lit from the
+         upper left: solid through the middle, falling off at the limb, with a
+         hard antialiased edge. Soft additive halos were why the palette looked
+         washed out — everything overlapped everything and the colours averaged
+         toward white. */
+      vec2 d = gl_PointCoord * 2.0 - 1.0;
+      d.y = -d.y;
+      float r2 = dot(d, d);
+      if (r2 > 1.0) discard;
+      float z = sqrt(max(0.0, 1.0 - r2));
+      vec3 n = vec3(d, z);
+      vec3 lightDir = normalize(vec3(-0.38, 0.52, 0.76));
+      float lam = clamp(dot(n, lightDir), 0.0, 1.0);
+      float rim = pow(1.0 - z, 2.5);
 
-      /* Ambient keeps the categories present but almost drained — enough that
-         the eye can tell a folder from a file without the palette shouting for
-         attention behind her head. Focus brings them fully up. */
-      vec3 grey = vec3(0.62, 0.66, 0.72);
-      vec3 cat  = mix(v_color, u_tint, 0.15);
-      vec3 col  = mix(mix(grey, cat, 0.35), cat, u_focus);
-      col = mix(col * 0.6, col, v_shade);
+      /* Category colour, saturated rather than averaged toward the tint. Both
+         moods are in colour; ambient is simply darker. */
+      vec3 cat = mix(v_color, u_tint, 0.10);
+      float luma = dot(cat, vec3(0.299, 0.587, 0.114));
+      cat = clamp(mix(vec3(luma), cat, 1.45), 0.0, 1.0);      /* more saturated */
+      vec3 col = cat * (0.34 + 0.86 * lam) * (0.72 + 0.28 * u_focus);
+      col += rim * 0.35 * cat;
+      col = mix(col * 0.74, col, v_shade);
 
-      /* The glyph, read from the atlas cell this node was given. Drawn inside
-         the halo so the point keeps its round silhouette at any size. */
+      /* The glyph sits on the ball, bright enough to read against it. Below
+         about thirteen pixels it would be mush, so it fades in with size. */
       vec2 cell = vec2(mod(v_icon, u_cols), floor(v_icon / u_cols));
-      vec2 uv = (cell + clamp((gl_PointCoord - 0.5) * 1.5 + 0.5, 0.0, 1.0)) / u_cols;
-      /* A glyph drawn into ten pixels is mush, and mush at a hundred points is
-         a smear. Below that the node stays an honest coloured dot; zooming in
-         brings the icon up. */
-      float room = smoothstep(13.0, 26.0, v_px) * u_focus;
+      vec2 uv = (cell + clamp(gl_PointCoord * 1.42 - 0.21, 0.0, 1.0)) / u_cols;
+      float room = smoothstep(13.0, 26.0, v_px) * (0.35 + 0.65 * u_focus);
       float glyph = texture2D(u_icons, uv).a * room;
+      col = mix(col, mix(vec3(1.0), cat + 0.55, 0.35), glyph * 0.85);
 
-      float fade = mix(1.0, 0.25, v_depth);
-      float a = max(halo * (0.62 - 0.25 * room), glyph);
-      col += glyph * 0.5;
-      gl_FragColor = vec4(col, a * u_alpha * fade);
+      /* Solid, with the far side of the field receding rather than vanishing. */
+      float edge = smoothstep(1.0, 0.88, r2);
+      float fade = mix(1.0, 0.55, v_depth);
+      gl_FragColor = vec4(col, edge * u_alpha * fade);
     }`;
 
   const LVS = `
@@ -120,16 +128,20 @@
     varying float v_depth;
     varying float v_t;
     void main(){
-      vec3 grey = vec3(0.50, 0.54, 0.60);
-      vec3 col  = mix(grey, u_tint, u_focus);
+      /* Edges take her state colour in both moods — they are the connective
+         tissue, not a category, so they should not compete with the nodes. */
+      vec3 col = u_tint * (0.55 + 0.45 * u_focus);
       float fade = mix(1.0, 0.18, v_depth);
-      /* A short bright run travelling from the hub outward. Deliberately one
-         short segment rather than a dashed line: dashes read as a border, a
-         single moving run reads as something being carried. */
-      float d = fract(v_t * 1.35 - u_time * 0.34);
-      float pulse = smoothstep(0.0, 0.05, d) * (1.0 - smoothstep(0.05, 0.22, d));
-      float a = v_shade + pulse * u_flow * (0.35 + 0.65 * u_focus);
-      col += pulse * u_flow * 0.5 * mix(vec3(0.8), u_tint, u_focus);
+      /* A bright run travelling from the hub outward, with a tail behind it.
+         The first version was too polite to notice at a glance: this one is
+         faster, brighter and longer, and the line it runs along is dimmer, so
+         the movement is the thing the eye catches rather than the wire. */
+      float d = fract(v_t * 1.5 - u_time * 0.55);
+      float head = smoothstep(0.0, 0.04, d) * (1.0 - smoothstep(0.04, 0.17, d));
+      float tail = (1.0 - smoothstep(0.0, 0.42, d)) * 0.35;
+      float pulse = clamp(head + tail, 0.0, 1.0);
+      float a = v_shade * 0.8 + pulse * u_flow * (0.7 + 0.5 * u_focus);
+      col += pulse * u_flow * 0.9 * mix(vec3(0.85), u_tint + 0.25, u_focus);
       gl_FragColor = vec4(col, a * u_alpha * fade);
     }`;
 
@@ -481,7 +493,7 @@
         const st = styleFor(nd);
         return {
           id: nd.id, label: nd.label, kind: nd.kind, meta: nd,
-          home, pos: home.slice(),
+          home, radial: home.slice(), target: home.slice(), pos: home.slice(),
           size: sizeFor(nd),
           color: st.color,
           icon: Math.max(0, ICON_ORDER.indexOf(st.icon)),
@@ -490,6 +502,7 @@
         };
       });
       this.center = { id: (graph && graph.focus) || 'root', pos: [0, 0, 0] };
+      if (this.clustered) this._clusterLayout();
       // Pull back far enough that the level fits. Six nodes and a hundred and
       // twenty need very different room, and a level whose edges are off-screen
       // reads as broken rather than as big.
@@ -555,6 +568,76 @@
       gl.bindBuffer(gl.ARRAY_BUFFER, this.bLineShade); gl.bufferData(gl.ARRAY_BUFFER, ls, gl.STATIC_DRAW);
     }
 
+    /* Pull the field apart into groups that sit clear of each other.
+
+       Grouped by category, because that is the question the separated view
+       answers: how much of this is documents, how much is tooling, what else is
+       there. A category with more members than a cluster can hold legibly is
+       split into several — thirty folders in one ball is the crowding this mode
+       exists to undo.
+
+       Only the destinations change; update() walks the nodes there, so the
+       toggle reads as the field rearranging rather than as a new screen. */
+    _clusterLayout() {
+      this._extent = 0;
+      const groups = new Map();
+      const seen = new Map();          // how many of each kind placed so far
+      const PER = 16;
+      // Which categories are too big for one ball. Counted first, because the
+      // decision has to be the same for every member of a kind.
+      const totals = new Map();
+      for (const nd of this.nodes) totals.set(nd.kind, (totals.get(nd.kind) || 0) + 1);
+      this._bigKinds = new Set([...totals.keys()].filter(k => totals.get(k) > PER));
+      for (const nd of this.nodes) {
+        const n = seen.get(nd.kind) || 0;
+        seen.set(nd.kind, n + 1);
+        // Chunk index from the running count. Deriving it from the FIRST
+        // bucket's length instead put every node after the sixteenth into one
+        // oversized second cluster — the crowding this mode exists to undo.
+        // Within a category, sub-group by initial so the split means something
+        // a viewer can use — "the S folders" rather than "the second sixteen".
+        const initial = String(nd.label || '?').trim().charAt(0).toUpperCase();
+        const band = /[A-Z]/.test(initial) ? String.fromCharCode(65 + Math.floor((initial.charCodeAt(0) - 65) / 4) * 4)
+                                           : '#';
+        const key = (this._bigKinds && this._bigKinds.has(nd.kind))
+          ? `${nd.kind} ${band}` : nd.kind;
+        const arr = groups.get(key) || [];
+        arr.push(nd);
+        groups.set(key, arr);
+      }
+      const keys = [...groups.keys()].filter(k => groups.get(k).length);
+      const gCount = Math.max(1, keys.length);
+      // Far enough apart that the gaps are the obvious feature. Clusters that
+      // merely touch look like one crowd with lumps in it.
+      const spread = 10 + gCount * 1.9;
+      keys.forEach((key, gi) => {
+        const c = fibSphere(gi, gCount);
+        const centre = [c[0] * spread, c[1] * spread * 0.62, c[2] * spread];
+        const members = groups.get(key);
+        const rad = 1.1 + Math.sqrt(members.length) * 0.52;
+        this._extent = Math.max(this._extent || 0, spread + rad);
+        members.forEach((nd, i) => {
+          const p = fibSphere(i, Math.max(2, members.length));
+          nd.target = [centre[0] + p[0] * rad,
+                       centre[1] + p[1] * rad,
+                       centre[2] + p[2] * rad];
+        });
+      });
+    }
+
+    setCluster(on) {
+      this.clustered = !!on;
+      if (this.clustered) this._clusterLayout();
+      else for (const nd of this.nodes) nd.target = nd.radial.slice();
+      this.wantFocus = true;
+      // Framed to the layout rather than by a guessed multiplier: groups pushed
+      // apart off the edges of the screen are not a separated view, they are a
+      // lost one.
+      this.distWant = this.clustered
+        ? Math.max(12, Math.min(52, (this._extent || 18) * 1.55))
+        : Math.max(9, Math.min(38, this.distWant * 0.62));
+    }
+
     /* ── camera ─────────────────────────────────────────────────────────── */
     orbit(dx, dy) {
       this.yaw += dx * 0.006;
@@ -580,7 +663,13 @@
       // Nodes breathe around their home so the field reads as alive.
       const amp = 0.16 + 0.10 * this.focus;
       let moved = false;
+      const k = Math.min(1, 2.6 * dt);
       for (const nd of this.nodes) {
+        if (nd.target) {
+          nd.home[0] += (nd.target[0] - nd.home[0]) * k;
+          nd.home[1] += (nd.target[1] - nd.home[1]) * k;
+          nd.home[2] += (nd.target[2] - nd.home[2]) * k;
+        }
         const s = Math.sin(this._t * 0.55 + nd.phase), c = Math.cos(this._t * 0.4 + nd.phase);
         nd.pos[0] = nd.home[0] + s * amp;
         nd.pos[1] = nd.home[1] + c * amp;
@@ -620,18 +709,23 @@
 
       gl.enable(gl.DEPTH_TEST);
       gl.enable(gl.BLEND);
-      // Additive: overlapping points accumulate into brightness the way a
-      // constellation does, instead of punching holes in each other.
+      // Edges stay additive — they are light, and light adds. The nodes below
+      // switch to ordinary blending and write depth, because a sphere that
+      // accumulates with the one behind it is not a sphere.
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
-      gl.depthMask(false);          // ...so they never occlude one another
+      gl.depthMask(false);
 
-      const alpha = 0.30 + 0.62 * this.focus;
+      // Solid spheres carry at a lower alpha than glows did, and the ambient
+      // view should still sit behind her rather than in front.
+      const alpha = 0.55 + 0.45 * this.focus;
 
       gl.useProgram(this.lprog);
       gl.uniformMatrix4fv(this.lu.mvp, false, this._mvp);
       gl.uniform3f(this.lu.tint, tint[0], tint[1], tint[2]);
       gl.uniform1f(this.lu.focus, this.focus);
-      gl.uniform1f(this.lu.alpha, alpha * 0.8);
+      // Grouped, every spoke crosses the gaps the grouping just opened, so the
+      // wires drop back and the clusters are what is left to look at.
+      gl.uniform1f(this.lu.alpha, alpha * (this.clustered ? 0.22 : 0.8));
       gl.uniform1f(this.lu.time, this._t);
       gl.uniform1f(this.lu.flow, this.flow);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.bLine);
@@ -645,6 +739,8 @@
       gl.vertexAttribPointer(this.la.t, 1, gl.FLOAT, false, 0, 0);
       gl.drawArrays(gl.LINES, 0, this.lineCount);
 
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.depthMask(true);
       gl.useProgram(this.prog);
       gl.uniformMatrix4fv(this.u.mvp, false, this._mvp);
       // Pixels per unit of a_size at one unit of depth. Sized so a folder
@@ -653,7 +749,8 @@
       // exactly what the first render did.
       // Bigger in focus, where the field is the thing being looked at rather
       // than the backdrop — and big enough there for a glyph to survive.
-      gl.uniform1f(this.u.scale, (canvasH || 900) * (0.013 + 0.012 * this.focus));
+      this._scalePx = (canvasH || 900) * (0.013 + 0.012 * this.focus);
+      gl.uniform1f(this.u.scale, this._scalePx);
       gl.uniform3f(this.u.tint, tint[0], tint[1], tint[2]);
       gl.uniform1f(this.u.focus, this.focus);
       gl.uniform1f(this.u.alpha, alpha);
@@ -710,6 +807,51 @@
     }
 
     screenPos(node, w, h) { return node ? this.project(node.pos, w, h) : null; }
+
+    /* Which nodes have earned a name on screen.
+
+       Zooming in makes points bigger, so keying off a node's drawn size is the
+       whole rule: far out, only the few large hubs are named; closer in, more
+       appear, and inside a folder everything is named because everything is big.
+       Sorted by size so the important ones win, and anything landing on top of
+       an already-placed label is dropped — overlapping names are less readable
+       than none, and the one underneath is usually the smaller node anyway. */
+    labels(w, h, opts) {
+      const o = opts || {};
+      const minPx = o.minPx || 15;
+      const max = o.max || 18;
+      const spacing = o.spacing || 62;
+      /* Her head is drawn over this field, so a name landing on it is a name
+         nobody can read. The caller passes where she currently is — centred, or
+         shrunk into the corner — and those candidates are dropped rather than
+         nudged: moving a label away from its node makes it point at nothing. */
+      const skip = o.exclude;
+      const scale = (this._scalePx || (h * 0.013));
+      const out = [];
+      const cand = [];
+      for (const nd of this.nodes) {
+        const p = this.project(nd.pos, w, h);
+        if (!p || p.w <= 0.05) continue;
+        if (p.x < 0 || p.y < 0 || p.x > w || p.y > h) continue;
+        const px = scale * nd.size / Math.max(p.w, 0.001);
+        if (px < minPx) continue;
+        if (skip && p.x > skip.x0 && p.x < skip.x1 && p.y > skip.y0 && p.y < skip.y1) continue;
+        cand.push({ node: nd, x: p.x, y: p.y, px, w: p.w });
+      }
+      cand.sort((a, b) => b.px - a.px || a.w - b.w);
+      for (const c of cand) {
+        if (out.length >= max) break;
+        let clear = true;
+        for (const placed of out) {
+          if (Math.abs(placed.x - c.x) < spacing && Math.abs(placed.y - c.y) < 16) {
+            clear = false;
+            break;
+          }
+        }
+        if (clear) out.push(c);
+      }
+      return out;
+    }
   }
 
   global.NetGraph = NetGraph;
