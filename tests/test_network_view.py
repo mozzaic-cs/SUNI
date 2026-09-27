@@ -222,3 +222,54 @@ def test_the_orchestrator_builder_does_not_reach_for_stores_it_cannot_see():
             f"_build_orchestrator reads {name}, which is not a parameter, "
             f"not assigned there, and not imported: that is a NameError at "
             f"import and a server that does not start")
+
+
+# ── recognising the ask without the model ───────────────────────────────────
+def _view_for(text):
+    from suni.core.orchestrator import _NETVIEW_ASK_RE, _NETVIEW_TARGETS
+    ask = _NETVIEW_ASK_RE.search(text)
+    if not ask:
+        return None
+    for name, pattern in _NETVIEW_TARGETS:
+        hit = pattern.search(text)
+        if hit and ask.start() < hit.start():
+            return name
+    return None
+
+
+@pytest.mark.parametrize("text,view", [
+    ("Quais os dispositivos na rede?", "machines"),
+    ("Mostra-me todos os equipamentos da rede", "machines"),
+    ("mostra-me a rede", "machines"),
+    ("Show all devices on the network", "machines"),
+    ("mostra os modelos que tens", "models"),
+    ("Que ferramentas tens disponiveis?", "tools"),
+    ("quais os canais configurados?", "channels"),
+    ("show me the agents", "agents"),
+    ("Mostra-me as pastas indexadas", "files"),
+    ("list the indexed files", "files"),
+])
+def test_asking_to_see_something_moves_the_view(text, view):
+    """The model was asked to call show_network and did not - [ROUTE] local, no
+    [TOOL] line, the answer in words and the picture never moving. Same as
+    schedules and named agents, where a 7B failed tool selection 4 times out of
+    4. If the intent can be recognised without the model, recognise it."""
+    assert _view_for(text) == view
+
+
+@pytest.mark.parametrize("text", [
+    "a rede esta muito lenta hoje",              # a statement about the network
+    "manda um email aos agentes comerciais",     # agents, but not to look at
+    "mostra-me a fatura do mes passado",         # an ask, but not for this
+    "o modelo que compraste ontem",              # "que" as a relative pronoun
+    "apaga os agentes que nao uso",              # an instruction, not a question
+    "os ficheiros que me mostraste ontem",       # the ask comes after the thing
+    "preciso de ferramentas para o jardim",
+    "que horas sao?",
+])
+def test_it_does_not_fire_on_everything_that_mentions_a_noun(text):
+    """Both halves alone are false-positive machines: "mostra" matches an
+    invoice, "rede" matches a complaint about wifi. Portuguese "que" is a
+    relative pronoun as often as an interrogative, which is why the ask has to
+    come before the thing asked for."""
+    assert _view_for(text) is None

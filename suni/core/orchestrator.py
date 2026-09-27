@@ -267,6 +267,49 @@ _IMAGE_REFINE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# "Show me the network" → move the field behind her head, deterministically.
+#
+# The model was asked to call show_network and did not: the log says [ROUTE]
+# local with no [TOOL] line, she answered the question in words, and the picture
+# never moved. That is the same thing that happened with schedules and named
+# agents, where a 7B tier failed tool selection 4 times out of 4. The lesson
+# taken then applies here: if the intent can be recognised without the model,
+# recognise it without the model.
+#
+# Two parts, both required, because either alone is a false positive machine.
+# "Mostra" alone matches "mostra-me a fatura"; "rede" alone matches "a rede
+# está lenta". Matched at the English list's SPECIFICITY rather than its
+# coverage, which is the rule this file already follows for the web prefetch:
+# bare "ver" is excluded because bare "see" is, and bare "tudo" because bare
+# "everything" is.
+_NETVIEW_ASK_RE = re.compile(
+    r'\b(show|display|list|visuali[sz]e|open|which|what)\b|'
+    r'\b(mostra|mostrar|mostre|mostra[- ]me|lista|listar|apresenta|apresentar|'
+    r'visualiza|visualizar|quais|que)\b',
+    re.IGNORECASE,
+)
+
+# Target → the view to move to. Ordered: the first match wins, and the more
+# specific categories come before the catch-all ones.
+_NETVIEW_TARGETS = (
+    ("machines", re.compile(
+        r'\b(network|lan|devices?|machines?|hosts?|computers?|'
+        r'rede|dispositivos?|equipamentos?|m[áa]quinas?|computadores?)\b', re.I)),
+    ("models", re.compile(r'\b(models?|llms?|modelos?)\b', re.I)),
+    ("tools", re.compile(r'\b(tools?|ferramentas?)\b', re.I)),
+    ("skills", re.compile(r'\b(skills?|compet[êe]ncias?|habilidades?)\b', re.I)),
+    ("channels", re.compile(r'\b(channels?|canais?|canal)\b', re.I)),
+    ("agents", re.compile(r'\b(agents?|agentes?)\b', re.I)),
+    ("files", re.compile(
+        r'\b(indexed|index|knowledge ?base|files?|folders?|documents?|drives?|'
+        r'indexad[oa]s?|[íi]ndice|ficheiros?|arquivos?|pastas?|documentos?|discos?)\b',
+        re.I)),
+    ("overview", re.compile(
+        r'\b(network view|the (whole )?(graph|field|map)|everything you can reach|'
+        r'grafo|o campo|o mapa|tudo o que|tudo aquilo que)\b', re.I)),
+)
+
+
 # Queries about SUNI's own content — never need a web prefetch
 _SKIP_PREFETCH_RE = re.compile(
     r'\b(article|articles|published|wrote|written|post|posts|'
@@ -779,6 +822,11 @@ class Orchestrator:
         ts = time.perf_counter()
         await self._maybe_prefetch(user_input, context)
         _tick("web prefetch", ts, "triggered" if triggered else "skipped")
+
+        # ── show me that ──────────────────────────────────────────────
+        ts = time.perf_counter()
+        _shown = await self._maybe_show_network(user_input, context)
+        _tick("network view", ts, _shown or "skipped")
 
         # ── task routing hint ─────────────────────────────────────────
         route = self._router.route(user_input)
@@ -2043,6 +2091,50 @@ class Orchestrator:
             ))
         except Exception as e:
             console.print(f"  [yellow]web prefetch failed: {e}[/yellow]")
+
+    async def _maybe_show_network(self, user_input: str, context: Context) -> str:
+        """Move the field behind her head when the user asks to see something.
+
+        Runs the tool rather than hoping the model calls it, and injects what it
+        found as context — so the picture and the words come from one read of
+        the graph instead of two, and the answer is right even if the Face is
+        not open.
+
+        Returns the view it moved to, or "" if the message was not asking.
+        """
+        ask = _NETVIEW_ASK_RE.search(user_input)
+        if not ask:
+            return ""
+        # The ask has to come BEFORE the thing asked for. Portuguese "que" is a
+        # relative pronoun as often as an interrogative, so "o modelo que
+        # compraste ontem" carries both halves of the pattern and asks for
+        # nothing at all. Order is what tells the two apart.
+        view = ""
+        for name, pattern in _NETVIEW_TARGETS:
+            hit = pattern.search(user_input)
+            if hit and ask.start() < hit.start():
+                view = name
+                break
+        if not view:
+            return ""
+        if "show_network" not in self.registry.names():
+            return ""
+        try:
+            out = await self.registry.execute("show_network", {"view": view})
+        except Exception as exc:              # noqa: BLE001 — a picture is not worth a failed turn
+            console.print(f"  [yellow]network view failed: {exc}[/yellow]")
+            return ""
+        context.add(Message(
+            role=Role.SYSTEM,
+            content=(
+                f"[The network view behind you now shows: {view}]\n{out}\n\n"
+                "Answer the user from this list, in their language. They are "
+                "looking at the same thing, so name what is there rather than "
+                "saying you opened a view."
+            ),
+            agent="orchestrator",
+        ))
+        return view
 
     async def _execute_tool_calls(self, tool_calls) -> list[tuple]:
         tasks = [
