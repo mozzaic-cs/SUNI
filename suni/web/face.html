@@ -332,6 +332,24 @@ header{
    to be clickable, which means it is pinned by a click rather than following
    the cursor. Right-click reaches anything; on a leaf a plain click opens it
    too, since a leaf has nothing to descend into. */
+/* Group by category. This was a keyboard shortcut, which was useless here:
+   the chat box takes focus on load and again after every reply, so the key
+   handler - which correctly ignores keys typed into an input - never saw it,
+   and pressing C simply typed a c into the message box. A visible button
+   cannot be swallowed by a text field, and it can show whether the mode is on,
+   which tells "it did not work" apart from "it never fired". */
+#net-group{position:absolute;left:2.2%;top:64px;z-index:8;opacity:0;pointer-events:none;
+  transition:opacity .3s ease;display:flex;gap:8px;align-items:center;
+  padding:7px 13px 7px 10px;border-radius:999px;cursor:pointer;
+  background:rgba(8,14,26,.72);border:1px solid rgba(120,170,220,.28);
+  backdrop-filter:blur(7px);
+  font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.04em;
+  color:rgba(215,230,250,.86)}
+#net-group.on{opacity:1;pointer-events:auto}
+#net-group:hover{border-color:rgba(0,212,255,.6);color:#fff;background:rgba(12,22,38,.86)}
+#net-group.active{border-color:rgba(0,212,255,.75);color:#fff;
+  background:rgba(0,212,255,.18)}
+#net-group b{font-size:13px;line-height:1;color:rgba(0,212,255,.9)}
 #net-menu{position:absolute;z-index:9;display:none;min-width:186px;
   padding:7px;border-radius:11px;
   background:rgba(8,14,26,.94);border:1px solid rgba(120,170,220,.3);
@@ -437,6 +455,7 @@ header{
   <div id="net-legend"></div>
   <div id="net-labels"></div>
   <div id="net-exit"><b>&#10005;</b> back to SUNI</div>
+  <div id="net-group"><b>&#9707;</b> <span>group by category</span></div>
   <div id="net-menu"></div>
   <!-- background scanlines removed — the head keeps its own scanlines from the FS2 shader -->
   <header>
@@ -2318,6 +2337,21 @@ const _netLabelPool = [];
 const _netExitBtn = document.getElementById('net-exit');
 const _netMenu = document.getElementById('net-menu');
 let _netPtr = null;         // last pointer position, for the centre's own hint
+const _netGroupBtn = document.getElementById('net-group');
+const _netGroupLbl = _netGroupBtn.querySelector('span');
+
+/* One place that changes the mode, so the button, the key and SUNI herself
+   cannot disagree about what state it is in. */
+function _netCluster(on){
+  if (!_net || !_net.ok) return;
+  _netSetFocus(true);
+  _net.setCluster(!!on);
+  console.log('[NET_CLUSTER]', on ? 'grouped' : 'merged',
+              'groups from', (_netData && (_netData.nodes || []).length) || 0, 'nodes');
+  _netGroupBtn.classList.toggle('active', !!on);
+  _netGroupLbl.textContent = on ? 'grouped — click to merge' : 'group by category';
+}
+_netGroupBtn.addEventListener('click', () => _netCluster(!(_net && _net.clustered)));
 _netExitBtn.addEventListener('click', _netExit);
 
 /* A one-line note over the field. Used when an action had nothing to act on —
@@ -2382,7 +2416,7 @@ function _netSpot(kind, force){
   if (!_net || !_net.ok) return;
   const same = !force && _net.spot === kind;
   _netSetFocus(true);
-  if (!same && !_net.clustered) _net.setCluster(true);
+  if (!same && !_net.clustered) _netCluster(true);
   const n = _net.spotlight(same ? null : kind);
   _netLegend.classList.toggle('picked', !same);
   _netLegend.querySelectorAll('.row[data-kind]').forEach(row => {
@@ -2402,6 +2436,22 @@ function _netUp(){
   _netLoad(String(t[t.length - 2].id));
 }
 
+/* One step back through where the viewer has been, or - having run out of
+   history - one step up the structure. Both are "out of here", and which one
+   is right depends only on whether there is a somewhere to go back to. */
+function _netBack(){
+  const prev = _netHist.pop();
+  if (prev) { _netLoad(prev.id, { back: true }); return; }
+  _netUp();
+}
+
+/* What the middle of the field will do if clicked, and what to call it. */
+function _netBackTarget(){
+  if (_netHist.length) return _netHist[_netHist.length - 1].label;
+  const t = (_netData && _netData.trail) || [];
+  return t.length > 1 ? t[t.length - 2].label : '';
+}
+
 function _netExit(){
   if (_net && _net.ok) {
     _net.spotlight(null);
@@ -2409,7 +2459,10 @@ function _netExit(){
   }
   _netLegend.classList.remove('picked');
   _netLegend.querySelectorAll('.row.on').forEach(r => r.classList.remove('on'));
+  _netGroupBtn.classList.remove('active');
+  _netGroupLbl.textContent = 'group by category';
   _netSetFocus(false);
+  _netHist.length = 0;
   _netLoad('overview');
 }
 
@@ -2512,7 +2565,6 @@ function _netBuildLegend(){
   });
   rows.push('<div class="hint">bigger node = more inside<br>'
             + 'drag to turn · wheel to zoom · click to open<br>'
-            + '<b style="color:rgba(0,212,255,.8)">C</b> groups by category<br>'
             + 'click a colour to go to it</div>');
   _netLegend.innerHTML = rows.join('');
   _netLegend.querySelectorAll('.row[data-kind]').forEach(row => {
@@ -2520,8 +2572,30 @@ function _netBuildLegend(){
   });
 }
 
-async function _netLoad(focus){
+/* Where the viewer has actually been, which is not the same question the
+   breadcrumb answers.
+
+   The trail says where a level SITS: a drive's parent is the knowledge base,
+   whatever route you arrived by. From the overview everything is one click
+   away, so opening the drive from there and then climbing the trail lands on
+   "knowledge" - a level the viewer has never seen and did not ask for. Back
+   has to remember, so it keeps a stack. */
+const _netHist = [];
+const _NET_HIST_MAX = 40;
+
+async function _netLoad(focus, opts){
   if (_netBusy) return;
+  const o = opts || {};
+  // Recorded before the fetch, from the level actually on screen - so a failed
+  // load cannot push a place the viewer was never at.
+  if (!o.back && _netData && _netData.focus && _netData.focus !== focus) {
+    _netHist.push({
+      id: _netData.focus,
+      label: (_netData.trail && _netData.trail.length
+              ? _netData.trail[_netData.trail.length - 1].label : _netData.focus),
+    });
+    if (_netHist.length > _NET_HIST_MAX) _netHist.shift();
+  }
   _netBusy = true;
   try {
     const r = await _apiFetch('/api/graph?focus=' + encodeURIComponent(focus || 'root'));
@@ -2542,6 +2616,7 @@ function _netDrawTrail(){
                        : `<span data-id="${_esc(x.id)}">${_esc(x.label)}</span>`
   ).join('<span style="opacity:.35"> / </span>');
   _netTrail.classList.toggle('on', _netFocus);
+  _netGroupBtn.classList.toggle('on', _netFocus);
 }
 _netTrail.addEventListener('click', e => {
   const id = e.target && e.target.getAttribute && e.target.getAttribute('data-id');
@@ -2572,10 +2647,11 @@ function _netPaint(){
       && _net.pickCentre(_netPtr.x, _netPtr.y,
                          canvas.clientWidth || W, canvas.clientHeight || H)) {
     const t = (_netData && _netData.trail) || [];
-    const up = t.length > 1 ? t[t.length - 2].label : '';
+    const where = _netBackTarget();
     _netPop.innerHTML = '<div class="k">here</div><div>'
       + _esc(t.length ? t[t.length - 1].label : 'SUNI') + '</div>'
-      + '<div class="hint">' + (up ? 'click to go up to ' + _esc(up) : 'the top level') + '</div>';
+      + '<div class="hint">'
+      + (where ? 'click to go back to ' + _esc(where) : 'the top level') + '</div>';
     _netPop.style.left = (_netPtr.x + 14) + 'px';
     _netPop.style.top  = (_netPtr.y + 10) + 'px';
     _netPop.classList.add('on');
@@ -2637,7 +2713,7 @@ canvas.addEventListener('pointerup', e => {
     if (_netFocus && _net.pickCentre(e.clientX, e.clientY,
                                      canvas.clientWidth || W, canvas.clientHeight || H)) {
       _netMenuHide();
-      _netUp();
+      _netBack();
     }
     return;
   }
@@ -2680,8 +2756,7 @@ window.addEventListener('keydown', e => {
   // different view — the same nodes, walking to different places.
   if ((e.key === 'c' || e.key === 'C') && _net && _net.ok
       && !/^(INPUT|TEXTAREA)$/.test((e.target && e.target.tagName) || '')) {
-    _netSetFocus(true);
-    _net.setCluster(!_net.clustered);
+    _netCluster(!_net.clustered);
   }
 });
 
@@ -3154,7 +3229,9 @@ async function send() {
               console.log('[NET_NAV] another load won; not lighting', ev.spot);
               return;
             }
-            if (ev.cluster) _net.setCluster(true);
+            if (ev.cluster) _netCluster(true);   // through the same door, or
+                                                 // the button goes stale when
+                                                 // SUNI is the one grouping
             if (ev.spot) _netSpot(ev.spot, true);
           }).catch(() => {});
         } else if (ev.type === 'collab') {

@@ -279,3 +279,42 @@ def test_the_middle_of_the_field_goes_up_a_level():
     assert up_hit.index("_net.pick(") < up_hit.index("pickCentre"), (
         "the centre is tested before the nodes, so a node in front of it "
         "would never be clickable")
+
+
+def test_grouping_has_a_control_the_keyboard_cannot_swallow():
+    """It was a keyboard shortcut, which was useless: the chat box takes focus
+    on load and again after every reply, so the key handler — which correctly
+    ignores keys typed into an input — never saw it. Pressing C typed a c into
+    the message box, and the mode had most likely never once been on."""
+    assert 'id="net-group"' in FACE, "grouping is keyboard-only again"
+    assert "_netGroupBtn.addEventListener('click'" in FACE
+    # One place changes the mode, so the button, the key and SUNI cannot
+    # disagree about which state it is in.
+    assert "function _netCluster(" in FACE
+    for caller in ("_netCluster(!_net.clustered)", "_netCluster(true)"):
+        assert caller in FACE, f"{caller} bypasses the single door"
+    # Exactly two direct calls are legitimate: the one inside _netCluster, and
+    # the reset in _netExit (which clears the label itself, and must not turn
+    # focus back on the way _netCluster does). Anything else - notably SUNI
+    # grouping the field herself - leaves the button claiming the opposite of
+    # what is on screen.
+    assert FACE.count("_net.setCluster(") == 2, (
+        "a third direct setCluster call: the button can now go stale")
+    # A visible state is what tells "it did not work" from "it never fired".
+    assert "[NET_CLUSTER]" in FACE and "classList.toggle('active'" in FACE
+
+
+def test_back_remembers_where_you_were_not_where_the_level_sits():
+    """The trail says where a level SITS: a drive's parent is the knowledge
+    base, whatever route you arrived by. From the overview everything is one
+    click away, so opening the drive and then climbing the trail lands on a
+    level the viewer has never seen."""
+    assert "const _netHist = []" in FACE
+    back = FACE[FACE.index("function _netBack()"):][:400]
+    assert "_netHist.pop()" in back
+    assert "_netUp()" in back, "running out of history should still go somewhere"
+    load = FACE[FACE.index("async function _netLoad"):][:1200]
+    assert "o.back" in load, "going back pushes the place you just left"
+    # Pushed from the level on screen, so a failed load cannot record a place
+    # the viewer was never at.
+    assert "_netData.focus !== focus" in load
