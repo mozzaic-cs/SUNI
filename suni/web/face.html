@@ -324,6 +324,20 @@ header{
 #net-pop .k{color:rgba(0,212,255,.75);font-size:10px;letter-spacing:.08em;text-transform:uppercase}
 #net-pop .p{color:rgba(228,236,255,.55);font-size:10px;word-break:break-all;margin-top:3px}
 #net-pop .hint{color:rgba(0,212,255,.6);font-size:10px;margin-top:5px}
+/* The key to the colours. Fades up with focus like the trail: in ambient it
+   would be a caption on something nobody is reading yet. */
+#net-legend{position:absolute;right:2.2%;bottom:132px;z-index:7;opacity:0;
+  transition:opacity .35s ease;pointer-events:none;
+  display:flex;flex-direction:column;gap:5px;
+  padding:9px 11px;border-radius:7px;
+  border:1px solid rgba(0,212,255,.16);background:rgba(6,10,24,.55);
+  backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
+  font-family:'DM Mono',monospace;font-size:10px;color:rgba(228,236,255,.75)}
+#net-legend.on{opacity:.92}
+#net-legend .row{display:flex;align-items:center;gap:7px;white-space:nowrap}
+#net-legend .sw{width:13px;height:13px;flex:0 0 13px;opacity:.95}
+#net-legend .hint{margin-top:3px;padding-top:5px;border-top:1px solid rgba(255,255,255,.08);
+  color:rgba(228,236,255,.45);font-size:9px;line-height:1.5}
 #net-trail{position:absolute;left:3.5%;bottom:132px;z-index:7;opacity:0;transition:opacity .3s ease;
   font-family:'DM Mono',monospace;font-size:12px;color:rgba(228,236,255,.6);pointer-events:none}
 #net-trail.on{opacity:1;pointer-events:auto}
@@ -374,6 +388,7 @@ header{
   <div id="content-stage"><div id="stage-body"><div id="stage-media"></div><div id="stage-text"></div></div></div>
   <div id="net-pop"></div>
   <div id="net-trail"></div>
+  <div id="net-legend"></div>
   <!-- background scanlines removed — the head keeps its own scanlines from the FS2 shader -->
   <header>
     <div class="wordmark"><span id="brand-name">SUNI</span><sub id="brand-tagline"></sub></div>
@@ -2243,6 +2258,25 @@ _camBtn.addEventListener('click', () => { if(_camStream) _camStop(); else _camSt
 // ══════════════════════════════════════════════════════════════════════
 const _netPop = document.getElementById('net-pop');
 const _netTrail = document.getElementById('net-trail');
+const _netLegend = document.getElementById('net-legend');
+
+/* Built from the module's own palette, never from a copy of it: a legend that
+   can disagree with the thing it explains is worse than no legend. Size is part
+   of the key too — a folder of 7,637 files draws larger than one of two, and
+   that is easy to read as importance without being told. */
+function _netBuildLegend(){
+  if (typeof NetGraph === 'undefined' || !NetGraph.legend) return;
+  const rows = NetGraph.legend().map(item => {
+    const rgb = item.color.map(v => Math.round(v * 255)).join(',');
+    const icon = NetGraph.iconDataURL(item.icon, 26);
+    return `<div class="row"><img class="sw" src="${icon}"
+             style="filter:drop-shadow(0 0 3px rgba(${rgb},.9));
+                    background:linear-gradient(rgba(${rgb},.18),rgba(${rgb},.18))">
+             <span style="color:rgb(${rgb})">${_esc(item.label)}</span></div>`;
+  });
+  rows.push('<div class="hint">bigger node = more inside<br>drag to turn · wheel to zoom · click to open</div>');
+  _netLegend.innerHTML = rows.join('');
+}
 
 async function _netLoad(focus){
   if (_netBusy) return;
@@ -2280,6 +2314,8 @@ function _netSetFocus(on){
   _netFocus = on;
   if (_net) _net.setFocus(on);
   _netTrail.classList.toggle('on', on);
+  if (on && !_netLegend.childElementCount) _netBuildLegend();
+  _netLegend.classList.toggle('on', on);
   if (!on) { _netPop.classList.remove('off'); _netPop.classList.remove('on'); _netHover = null; }
 }
 
