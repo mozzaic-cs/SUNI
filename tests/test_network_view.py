@@ -273,3 +273,25 @@ def test_it_does_not_fire_on_everything_that_mentions_a_noun(text):
     relative pronoun as often as an interrogative, which is why the ask has to
     come before the thing asked for."""
     assert _view_for(text) is None
+
+
+@pytest.mark.parametrize("view", ["overview", "machines", "models", "tools",
+                                  "skills", "channels", "agents", "files"])
+def test_every_view_actually_runs(view):
+    """Written after a live failure that every other test in this file missed.
+
+    `from ..config import config` is wrong - suni.config is a module of
+    functions, not an object - so the handler raised ImportError on its first
+    line of real work and returned "Could not read the machines view". The
+    module still imported, still parsed, and every check here was a string
+    search over source that could not possibly have noticed.
+
+    So: call it. No mocks, no fixtures, no stores - the point is to execute the
+    imports and the formatting on the real thing.
+    """
+    from suni.tools import network_view_tool as nv
+
+    out = nv.handler(view=view)
+    assert isinstance(out, str) and out
+    assert "Could not read" not in out, out[:200]
+    assert "Traceback" not in out

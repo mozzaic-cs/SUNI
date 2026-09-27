@@ -130,13 +130,13 @@ def handler(view: str = "overview", group: bool = False) -> str:
     user_id = USER_ID_CTX.get("")
 
     try:
-        from ..config import config as _cfg
+        from .. import config as _cfg
         data = _graph.build(
             level,
             doc_store=_SOURCES.get("doc_store"),
             registry=_SOURCES.get("registry"),
             skill_store=_SOURCES.get("skill_store"),
-            config=_cfg.all() if hasattr(_cfg, "all") else {},
+            config=_cfg.all(),
             user_id=user_id,
             user_role=_SOURCES.get("role_of", lambda _u: "")(user_id),
         )
@@ -158,8 +158,8 @@ def handler(view: str = "overview", group: bool = False) -> str:
     # there is nothing there, and the second is a much worse thing to tell
     # somebody who has seventeen machines on their LAN.
     if level == "network" and len([n for n in nodes if n.get("kind") == "machine"]) <= 1:
-        from ..config import config
-        if not config.get("network_neighbours", False):
+        from .. import config as _cfg
+        if not _cfg.get("network_neighbours", False):
             lines.append(
                 "Only this machine is listed: neighbour discovery is switched "
                 "off, so SUNI does not read the ARP cache and cannot name the "
