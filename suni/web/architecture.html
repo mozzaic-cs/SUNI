@@ -229,6 +229,7 @@ body.simple .section-gap{height:6px!important}
     <span class="badge phase">Phase 11 &middot; supervision &amp; reachability &mdash; runstate black box (heartbeat + unclean-stop detection, a killed process cannot log its own death) &middot; listener watchdog (alive-but-deaf accept loop &rarr; exit for supervisor restart) &middot; repeating scheduled task / systemd watchdog timer + port-guarded launchers &middot; client-disconnect noise filter (19,328 tracebacks were 97% of the log) &middot; AI Act Art 12 model traceability + Art 14(4)(e) stop button &middot; token refresh in every UI &middot; certificate SANs from the host (reachable by LAN IP) &middot; per-user output isolation &middot; 2026-09-05</span>
     <span class="badge phase">Phase 12 &middot; meeting recording &mdash; SUNI does NOT join Teams/Meet/Zoom; it records this machine's loopback + microphone alongside whoever is in the call, so it is platform-agnostic, never in a participant list, and the audio never leaves the box &middot; local CPU faster-whisper, installed by default (no GPU contention with qwen; 4.4x realtime) &middot; consent is a hard gate, not a setting &middot; 2026-09-05</span>
     <span class="badge phase">Phase 13 &middot; staffing &mdash; token ceilings beside run counts (the CLI reported no tokens at all until its usage was booked) &middot; a profile's pinned model now decides the PATH, not just the tier &middot; fan-out: ask several specialists, answer as the head &middot; assignments that outlive the request, with interrupted work failed at startup &middot; goal ancestry into delegated and scheduled runs &middot; bounded schedule recovery (one retry, then disabled with the reason) &middot; real streaming on both paths &middot; embedding stopped building an HTTP client per call: 873&thinsp;ms &rarr; 63&thinsp;ms &middot; 2026-09-26</span>
+    <span class="badge phase">Phase 14 &middot; the field behind her head &mdash; everything SUNI can reach as one navigable 3D graph (machine, models, tools, skills, agents, channels, LAN neighbours, indexed drives), drawn in raw WebGL on the Face's own GL context &middot; she can move it herself and answer from what is in it &middot; opening a file from it has its own door: role, index membership by real path, audit row &middot; ChatGPT joins Claude Code as a no-key subscription CLI tier &middot; 2026-09-27</span>
   </div>
 </header>
 
@@ -1672,6 +1673,106 @@ body.simple .section-gap{height:6px!important}
   </div>
 </div>
 
+<!-- ══ THE FIELD (Phase 14) ══ -->
+<div class="lane" id="field">
+  <div class="lane-header" style="color:#00d4ff"><span>The field behind her head <span class="new-badge" style="background:rgba(0,212,255,.15);color:var(--cyan)">Phase 14</span></span>
+    <span class="lane-sub">graph.py &middot; /api/graph &middot; netgraph.js &middot; show_network</span>
+  </div>
+  <div class="lane-body">
+
+    <div class="node" style="border-color:rgba(0,212,255,.35);min-width:250px">
+      <div class="node-tag" style="background:rgba(0,212,255,.06);color:var(--cyan)">graph.py &middot; build(focus) &rarr; nodes/edges/trail</div>
+      <div class="node-title" style="color:var(--cyan)">One level per request</div>
+      <div class="node-detail">
+        <span>A view, never a second source of truth &mdash; every node is something another part of SUNI already owns</span>
+        7,637 indexed files across 2,304 folders: sending that as a graph is
+        megabytes for a picture nobody can read, so a request asks about one
+        focus and gets its children, the way a directory listing does<br>
+        Children are capped and the remainder becomes one "+N more" node &mdash;
+        a view that quietly omits things is worse than one that says so<br>
+        <span style="color:var(--cyan)">Nothing here reads the filesystem: folders come from the document index, so this cannot become a way to enumerate a disk SUNI was never pointed at</span><br>
+        <span style="color:var(--red)">Neighbours are the OS's own ARP cache and nothing else &mdash; the test for that checks what the code CALLS, after an earlier version passed on the word "pings" in a docstring</span>
+      </div>
+    </div>
+
+    <div class="node" style="border-color:rgba(0,212,255,.35);min-width:250px">
+      <div class="node-tag" style="background:rgba(0,212,255,.06);color:var(--cyan)">netgraph.js &middot; shared GL context</div>
+      <div class="node-title" style="color:var(--cyan)">Drawn, not pasted over</div>
+      <div class="node-detail">
+        <span>Raw WebGL on the Face's own context &mdash; a second context for the same canvas fails</span>
+        Lit spheres that write depth, so the head occludes what is behind it;
+        additive halos were why the palette washed out<br>
+        Names appear by DRAWN SIZE, so zooming in names more of them, overlaps
+        are dropped rather than nudged, and nothing lands on her face<br>
+        <span style="color:var(--cyan)">Grouping lays the categories out on a disc facing the viewer: a sphere puts half of them edge-on and forces the camera so far back that every node becomes a dot</span><br>
+        <span style="color:var(--red)">One icon flickered and no other: its atlas index sat exactly on a row boundary, where floor(4.0/4.0) at mediump returns 0 about half the time. The cell is worked out in the vertex stage now.</span>
+      </div>
+    </div>
+
+    <div class="node" style="border-color:rgba(155,89,182,.4);min-width:250px">
+      <div class="node-tag" style="background:rgba(155,89,182,.06);color:var(--purple)">show_network &middot; net_view event</div>
+      <div class="node-title" style="color:var(--purple)">She can point at it</div>
+      <div class="node-detail">
+        <span>Asked which devices are on the network, the picture goes there and the words come from the same read</span>
+        The tool returns the node list as TEXT as well, so Telegram, a schedule
+        and the API get a working answer with no picture to move<br>
+        Recognised deterministically before the turn starts, in both languages:
+        the local tier was offered the tool, described it, and did not call it &mdash;
+        the same measurement that drove schedules and named agents<br>
+        <span style="color:var(--purple)">A view change is not consequential: an approval card in front of every "mostra-me a rede" is a feature nobody uses twice</span><br>
+        <span style="color:var(--red)">With neighbour discovery off it SAYS so and names the setting, rather than showing an empty view to someone with eighteen machines on their LAN</span>
+      </div>
+    </div>
+
+    <div class="node" style="border-color:rgba(255,69,96,.4);min-width:250px">
+      <div class="node-tag" style="background:rgba(255,69,96,.06);color:var(--red)">GET /api/graph/open</div>
+      <div class="node-title" style="color:var(--red)">Opening a file from a picture</div>
+      <div class="node-detail">
+        <span>Three locks, because a file read through a graph is still a file read</span>
+        The caller's ROLE must be allowed the knowledge base; the path must be
+        IN the index matched on its real path; every open writes an AUDIT row<br>
+        /api/files/serve could not be reused: it serves the caller's own output
+        and uploads, and widening it to reach the archive would have widened it
+        for every account at once<br>
+        <span style="color:var(--red)">The index is system-wide and single, so being in it is NOT a per-user permission &mdash; gating on membership alone hands every scanned file to the most restricted account</span><br>
+        <span style="color:var(--red)">Being under an indexed FOLDER is not enough either: that includes everything the scanner deliberately skipped</span>
+      </div>
+    </div>
+
+    <div class="node" style="border-color:rgba(20,217,140,.4);min-width:250px">
+      <div class="node-tag" style="background:rgba(20,217,140,.06);color:var(--teal)">_netHist &middot; _collapse / _live_steps</div>
+      <div class="node-title" style="color:var(--teal)">Back is not up</div>
+      <div class="node-detail">
+        <span>The breadcrumb says where a level SITS; back says where the viewer WAS</span>
+        A drive's parent is the knowledge base whatever route you took, so from
+        the overview &mdash; where everything is one click away &mdash; climbing the trail
+        lands somewhere never visited<br>
+        Opening a drive skips folders holding exactly one thing; the trail went
+        on offering every skipped folder as its own step, and all of them
+        resolved back to the folder on screen<br>
+        <span style="color:var(--teal)">Clicking the centre sphere goes back. It is drawn from buffer index 0 and is in no node list, so picking could never return it &mdash; the most obvious target on screen did nothing at all.</span>
+      </div>
+    </div>
+
+    <div class="node c-gold" style="min-width:250px">
+      <div class="node-tag">face.html &middot; _netSetFocus</div>
+      <div class="node-title">Controls that can be reached</div>
+      <div class="node-detail">
+        <span>Three of them were in the DOM, bound to handlers, and unreachable</span>
+        The page hides a control with opacity 0 and pointer-events none and
+        reveals it with a class. Nothing errors when the class never arrives:
+        the button exists, the handler is bound, the click never happens<br>
+        One was toggled nowhere; one only when a level loaded, which is not
+        when focus changes; one had its opacity restored and not its
+        pointer-events, so it was visible, hover-styled and untouchable<br>
+        <span style="color:var(--gold)">A keyboard shortcut was the wrong shape entirely: the chat box takes focus on load and after every reply, so a bare letter never reaches the handler</span><br>
+        <span style="color:var(--red)">The regression guard for it passed while the bug was present. It matched any toggle in the function rather than each element's own &mdash; now each of the three bugs, reinstated, fails it.</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
 <!-- ══ LEGEND ══ -->
 <div class="legend">
   <div class="legend-title">Legend</div>
@@ -1692,6 +1793,7 @@ body.simple .section-gap{height:6px!important}
   <div class="legend-item"><span class="new-badge" style="background:rgba(201,162,39,.14);color:var(--gold)">new</span> Phase 7: EU AI Act Art 50 — AI-interaction disclosure · AI-generated content marking (PDF/email) · risk classification · safeguard mapping</div>
   <div class="legend-item"><span class="new-badge" style="background:rgba(155,89,182,.15);color:var(--purple)">new</span> Phase 12: named agents (narrow-only grants, model pinning, delegation with a depth cap) &middot; panel agents &middot; scheduled invocations &middot; deterministic cadence parsing &middot; per-agent ceilings, dry-run and report</div>
 <div class="legend-item"><span class="new-badge" style="background:rgba(155,89,182,.15);color:var(--purple)">new</span> Phase 13: staffing &mdash; token ceilings &middot; pinned model decides the path &middot; fan-out with a per-turn budget &middot; assignments that outlive the request &middot; goal ancestry &middot; bounded schedule recovery &middot; streaming on both paths</div>
+  <div class="legend-item"><span class="new-badge" style="background:rgba(0,212,255,.15);color:var(--cyan)">new</span> Phase 14: the field &mdash; one navigable graph of everything reachable &middot; SUNI moves it herself and answers from it &middot; grouped by category on a disc &middot; back remembers where you were &middot; gated file opening (role + index + audit) &middot; ChatGPT as a no-key Codex CLI tier</div>
   <div class="legend-item"><span class="new-badge" style="background:rgba(20,217,140,.15);color:var(--teal)">new</span> Phase 11: deployment — Docker + compose · TLS generated on first run · first-run wizard · pip wheel · systemd unit · cross-platform boot path · local image generation</div>
 </div>
 
