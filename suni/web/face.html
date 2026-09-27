@@ -338,18 +338,18 @@ header{
    and pressing C simply typed a c into the message box. A visible button
    cannot be swallowed by a text field, and it can show whether the mode is on,
    which tells "it did not work" apart from "it never fired". */
-#net-group{position:absolute;left:2.2%;top:64px;z-index:8;opacity:0;pointer-events:none;
-  transition:opacity .3s ease;display:flex;gap:8px;align-items:center;
-  padding:7px 13px 7px 10px;border-radius:999px;cursor:pointer;
+#net-group{opacity:0;pointer-events:none;
+  transition:opacity .3s ease;display:flex;gap:6px;align-items:center;
+  padding:5px 10px 5px 8px;border-radius:999px;cursor:pointer;
   background:rgba(8,14,26,.72);border:1px solid rgba(120,170,220,.28);
-  backdrop-filter:blur(7px);
-  font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.04em;
+  backdrop-filter:blur(7px);white-space:nowrap;
+  font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.03em;
   color:rgba(215,230,250,.86)}
 #net-group.on{opacity:1;pointer-events:auto}
 #net-group:hover{border-color:rgba(0,212,255,.6);color:#fff;background:rgba(12,22,38,.86)}
 #net-group.active{border-color:rgba(0,212,255,.75);color:#fff;
   background:rgba(0,212,255,.18)}
-#net-group b{font-size:13px;line-height:1;color:rgba(0,212,255,.9)}
+#net-group b{font-size:11px;line-height:1;color:rgba(0,212,255,.9)}
 #net-menu{position:absolute;z-index:9;display:none;min-width:186px;
   padding:7px;border-radius:11px;
   background:rgba(8,14,26,.94);border:1px solid rgba(120,170,220,.3);
@@ -374,25 +374,37 @@ header{
 /* Leaving the network. Escape did this from the first version, which is no
    use at all to someone who does not already know it is there: the head
    shrinking into a corner with no visible way back is a trap, not a mode. */
-#net-exit{position:absolute;left:2.2%;top:22px;z-index:8;opacity:0;pointer-events:none;
-  transition:opacity .3s ease;display:flex;gap:8px;align-items:center;
-  padding:7px 13px 7px 10px;border-radius:999px;cursor:pointer;
+#net-exit{opacity:0;pointer-events:none;
+  transition:opacity .3s ease;display:flex;gap:6px;align-items:center;
+  padding:5px 10px 5px 8px;border-radius:999px;cursor:pointer;
   background:rgba(8,14,26,.72);border:1px solid rgba(120,170,220,.28);
-  backdrop-filter:blur(7px);
-  font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.04em;
+  backdrop-filter:blur(7px);white-space:nowrap;
+  font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.03em;
   color:rgba(215,230,250,.86)}
 #net-exit.on{opacity:1;pointer-events:auto}
 #net-exit:hover{border-color:rgba(0,212,255,.6);color:#fff;
   background:rgba(12,22,38,.86)}
-#net-exit b{font-size:13px;line-height:1;color:rgba(0,212,255,.9)}
-#net-legend{position:absolute;right:2.2%;bottom:132px;z-index:7;opacity:0;
+#net-exit b{font-size:11px;line-height:1;color:rgba(0,212,255,.9)}
+/* The field's own controls, in one column on the right: the legend, then the
+   things you can do to it. They were pinned to the top-left, where they sat on
+   top of her name in the header — and being separately positioned meant every
+   one of them needed its own coordinates to keep out of everything else. One
+   column has one position. */
+#net-side{position:absolute;right:2.2%;bottom:132px;z-index:7;
+  display:flex;flex-direction:column;align-items:flex-end;gap:7px;
+  pointer-events:none}
+#net-legend{opacity:0;
   transition:opacity .35s ease;pointer-events:none;
   display:flex;flex-direction:column;gap:5px;
   padding:9px 11px;border-radius:7px;
   border:1px solid rgba(0,212,255,.16);background:rgba(6,10,24,.55);
   backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
   font-family:'DM Mono',monospace;font-size:10px;color:rgba(228,236,255,.75)}
-#net-legend.on{opacity:.92}
+/* pointer-events too, not only opacity. The base rule disables them so the
+   legend never blocks a drag while it is invisible, and .on only restored the
+   opacity - so every row was visible, hover-styled, cursor:pointer, bound to a
+   handler, and unclickable. */
+#net-legend.on{opacity:.92;pointer-events:auto}
 #net-legend .row{cursor:pointer;border-radius:6px;padding:1px 5px;margin:0 -5px;
   transition:background .15s ease,opacity .15s ease}
 #net-legend .row:hover{background:rgba(120,170,220,.14)}
@@ -452,10 +464,12 @@ header{
   <div id="content-stage"><div id="stage-body"><div id="stage-media"></div><div id="stage-text"></div></div></div>
   <div id="net-pop"></div>
   <div id="net-trail"></div>
-  <div id="net-legend"></div>
   <div id="net-labels"></div>
-  <div id="net-exit"><b>&#10005;</b> back to SUNI</div>
-  <div id="net-group"><b>&#9707;</b> <span>group by category</span></div>
+  <div id="net-side">
+    <div id="net-legend"></div>
+    <div id="net-group"><b>&#9707;</b> <span>group by category</span></div>
+    <div id="net-exit"><b>&#10005;</b> back to SUNI</div>
+  </div>
   <div id="net-menu"></div>
   <!-- background scanlines removed — the head keeps its own scanlines from the FS2 shader -->
   <header>

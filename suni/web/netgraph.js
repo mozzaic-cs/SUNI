@@ -848,7 +848,11 @@
       gl.uniform1f(this.lu.focus, this.focus);
       // Grouped, every spoke crosses the gaps the grouping just opened, so the
       // wires drop back and the clusters are what is left to look at.
-      gl.uniform1f(this.lu.alpha, alpha * (this.clustered ? 0.07 : 0.8));
+      /* Grouped, every line runs from the middle out to a group, so the
+         bundle crossing the gaps is busier than it is useful — but at 0.07 it
+         had gone from quiet to absent, and the field stopped looking connected
+         to anything. Quiet, not gone. */
+      gl.uniform1f(this.lu.alpha, alpha * (this.clustered ? 0.34 : 0.8));
       gl.uniform1f(this.lu.time, this._t);
       gl.uniform1f(this.lu.flow, this.flow);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.bLine);

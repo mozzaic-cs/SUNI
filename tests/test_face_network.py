@@ -343,9 +343,12 @@ def test_every_control_that_hides_itself_is_shown_by_the_focus_switch():
         "net-labels": "a pool of spans, each turned on per frame by position",
     }
 
-    hidden = re.findall(r"#(net-[\w-]+)\{[^}]*opacity:0[^}]*\}", FACE)
-    revealed = set(re.findall(r"#(net-[\w-]+)\.on\{[^}]*opacity:1", FACE))
-    for el in sorted(set(hidden) & revealed):
+    hidden = re.findall(r"#(net-[\w-]+)\{([^}]*)\}", FACE)
+    hidden = {el: body for el, body in hidden if "opacity:0" in body}
+    # Any non-zero opacity counts as "revealed": the legend uses .92, so a rule
+    # looking only for opacity:1 skipped it entirely.
+    revealed = dict(re.findall(r"#(net-[\w-]+)\.on\{([^}]*)\}", FACE))
+    for el in sorted(set(hidden) & set(revealed)):
         if el in exempt:
             continue
         # Each element's OWN variable, read out of its getElementById line
@@ -359,3 +362,11 @@ def test_every_control_that_hides_itself_is_shown_by_the_focus_switch():
         assert f"{var}.classList.toggle('on', on)" in focus_fn, (
             f"#{el} hides itself and is never revealed by _netSetFocus, so it "
             f"is a control nobody can see or click")
+        # Opacity is not the only thing a hidden control switches off. The
+        # legend was visible, hover-styled, cursor:pointer, bound to a handler
+        # and unclickable, because .on restored the opacity and not the
+        # pointer-events its base rule had disabled.
+        if "pointer-events:none" in hidden[el]:
+            assert "pointer-events:auto" in revealed[el], (
+                f"#{el} becomes visible but stays untouchable: its base rule "
+                f"disables pointer-events and .on never restores them")
