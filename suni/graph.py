@@ -151,9 +151,9 @@ def _collapse(path: str, dirs: dict, files: dict) -> str:
     Somebody opening a drive wants the first real choice, not three clicks
     through a chain that never branches. Defined once because the breadcrumb
     has to know about it too: while only the focus resolution collapsed, the
-    trail offered J:\\ and J:\\MOZZAIC as separate steps that both landed on
-    Projects, so clicking either one loaded the view already on screen and the
-    navigation looked broken.
+    trail offered every skipped folder as a step of its own, and all of them
+    resolved back to the same place — so clicking any of them reloaded the view
+    already on screen and the navigation looked broken.
     """
     seen = 0
     while seen < 64:                      # a symlink loop is not a reason to hang
