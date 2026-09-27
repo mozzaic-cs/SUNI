@@ -643,6 +643,12 @@ let mouthOpen=0, gazeX=0, gazeY=0, gazeTX=0, gazeTY=0, gazeRetarget=0;
 let _audioSeen=false;
 let _camGaze={active:false, x:0, y:0, hold:0};   // webcam motion target (opt-in)
 let _stageMode=false, _stageT=0;   // Step A: 0 = head full/centre, 1 = head shrunk to top-right + content stage
+/* The network behind her. Declared HERE, with the other globals, because the
+   WebGL init below fills it and the rest of its code lives near the bottom of
+   this file: `let` at the bottom would leave this assignment in the temporal
+   dead zone, and the try/catch around it would quietly swallow the error — a
+   face with no field behind it and nothing in the log to say why. */
+let _net = null, _netData = null, _netFocus = false, _netHover = null, _netBusy = false;
 
 /* ── minimal mat4 (column-major) ── */
 function m4ident(){ const o=new Float32Array(16); o[0]=o[5]=o[10]=o[15]=1; return o; }
@@ -772,8 +778,13 @@ try{
     buildHead();
     // The field she sits in front of. Built here because it shares this
     // context; it stays empty and invisible until the graph arrives.
-    try { if (typeof NetGraph !== 'undefined') _net = new NetGraph(gl); }
-    catch(e) { console.warn('[NET] init:', e); }
+    // Say which of the three it is, in the console, every time: the module did
+    // not load, it loaded and refused to build, or it built. Without this the
+    // symptom for all three is the same — no field behind her head.
+    try {
+      if (typeof NetGraph === 'undefined') console.warn('[NET_BUILD] netgraph.js did not load');
+      else { _net = new NetGraph(gl); console.log('[NET_BUILD] field built, shaders', _net.ok ? 'ok' : 'FAILED'); }
+    } catch(e) { console.warn('[NET_BUILD] init threw:', e); }
     bPos=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,bPos); gl.bufferData(gl.ARRAY_BUFFER,headPos,gl.STATIC_DRAW);
     bJaw=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,bJaw); gl.bufferData(gl.ARRAY_BUFFER,headJaw,gl.STATIC_DRAW);
     bIdx=gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,bIdx); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,headIdx,gl.STATIC_DRAW);
@@ -1721,9 +1732,12 @@ const _sessionId  = localStorage.getItem('suni_session') || (() => {
     const uiLang = uSettings.response_language || uCfg.response_language || 'en';
     if (typeof setLang !== 'undefined') setLang(uiLang);
   } catch {}
-  // What she can reach, for the field behind her. Fire and forget: the page
-  // is perfectly usable without it, and a failure here must not stop boot.
-  _netLoad('root');
+  // What she can reach, for the field behind her. The ambient view is the
+  // OVERVIEW — a sample of everything at once — because the root's eight hubs
+  // read as eight dots rather than as a network. Its nodes are real, so
+  // clicking a folder in it descends properly. Fire and forget: the page is
+  // perfectly usable without it, and a failure here must not stop boot.
+  _netLoad('overview');
   // Load session info (role, mode, allowed modes)
   const info = await _apiFetch('/api/session/info',
     {headers:{'x-session-id':_sessionId}}).then(r=>r.json()).catch(()=>null);
@@ -2227,7 +2241,6 @@ _camBtn.addEventListener('click', () => { if(_camStream) _camStop(); else _camSt
 //  the viewer takes hold of it (drag, wheel, click) it takes her colour, the
 //  head steps aside, and it becomes something to read and move through.
 // ══════════════════════════════════════════════════════════════════════
-let _net = null, _netData = null, _netFocus = false, _netHover = null, _netBusy = false;
 const _netPop = document.getElementById('net-pop');
 const _netTrail = document.getElementById('net-trail');
 
@@ -2238,6 +2251,7 @@ async function _netLoad(focus){
     const r = await _apiFetch('/api/graph?focus=' + encodeURIComponent(focus || 'root'));
     if (!r.ok) return;
     _netData = await r.json();
+    console.log('[NET_BUILD] level', _netData.focus, 'with', (_netData.nodes || []).length, 'nodes');
     if (_net) _net.setData(_netData);
     _netDrawTrail();
   } catch(e) { console.warn('[NET] load:', e); }
@@ -2337,7 +2351,7 @@ canvas.addEventListener('wheel', e => {
   _net.zoom(e.deltaY);
 }, { passive: false });
 window.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && _netFocus) { _netSetFocus(false); _netLoad('root'); }
+  if (e.key === 'Escape' && _netFocus) { _netSetFocus(false); _netLoad('overview'); }
 });
 
 // ── Content stage toggle (Step A) — head to corner + content panel ────

@@ -2609,6 +2609,9 @@ def create_app() -> FastAPI:
         return Response(
             content=(Path(__file__).parent / "netgraph.js").read_text(encoding="utf-8"),
             media_type="application/javascript",
+            # A cached copy of this after an update arrives as a bug report
+            # saying the feature does not work.
+            headers={"Cache-Control": "no-store, must-revalidate"},
         )
 
     @app.get("/approval_ui.js")

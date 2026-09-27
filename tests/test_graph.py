@@ -275,3 +275,23 @@ def test_agents_and_schedules_are_the_callers_own(monkeypatch):
     assert labels == {"Researcher", "Weekly"}
     weekly = next(n for n in g["nodes"] if n["label"] == "Weekly")
     assert weekly.get("live", 0) == 0, "a disabled schedule should not look live"
+
+
+def test_the_overview_mixes_every_kind_so_it_reads_as_a_network():
+    """The root's handful of hubs reads as a handful of dots. The ambient view
+    samples across branches instead."""
+    store = FakeStore(_paths(*[f"a/f{i}.pdf" for i in range(30)]))
+    g = graph.build("overview", doc_store=store, registry=FakeRegistry(["t1", "t2"]),
+                    config={"model_chain": [{"model": "m1", "enabled": True}]})
+    kinds = {n["kind"] for n in g["nodes"]}
+    assert {"machine", "model", "tool", "file"} <= kinds
+    assert len(g["nodes"]) > 10
+
+
+def test_overview_nodes_are_real_so_clicking_one_descends():
+    store = FakeStore(_paths("a/one.pdf", "b/two.pdf"))
+    g = graph.build("overview", doc_store=store)
+    folder = next(n for n in g["nodes"] if n["kind"] == "folder")
+    assert folder["id"].startswith("dir:")
+    child = graph.build(folder["id"], doc_store=store)
+    assert child["nodes"], "a folder from the overview leads nowhere"

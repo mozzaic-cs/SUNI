@@ -212,7 +212,12 @@ def handler(reason: str = "", monitor: str = "active") -> str:
               len(saved), len(rects) or 1, user_id, reason[:60])
     lines = [f"Captured {len(saved)} screen(s) of {len(rects) or 1} on this machine:"]
     for number, path, size in saved:
+        # The serve URL is what puts the capture on the Face stage, the same way
+        # a generated image gets there — so she can point at the thing she is
+        # talking about with a ```suni-focus``` block instead of describing
+        # where on the screen it was.
         lines.append(f"  screen {number}: {size[0]}x{size[1]} — {path}")
+        lines.append(f"    /api/files/serve?path={path}")
     if blank:
         lines.append(f"  (screen{'s' if len(blank) > 1 else ''} "
                      f"{', '.join(map(str, blank))} showed nothing)")
@@ -220,5 +225,8 @@ def handler(reason: str = "", monitor: str = "active") -> str:
     lines.append("Open those files to see what is on their screen, then answer "
                  "their question from what is there. Say what you saw, not that "
                  "you took a screenshot, and mention the images are in their "
-                 "output folder if they may want them.")
+                 "output folder if they may want them. Include the serve URL of "
+                 "a screen you are discussing so they can see what you saw, and "
+                 "point at the part you mean with a suni-focus block rather than "
+                 "describing where on the screen it was.")
     return chr(10).join(lines)

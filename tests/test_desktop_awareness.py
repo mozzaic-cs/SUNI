@@ -289,3 +289,19 @@ def test_a_monitor_left_of_the_primary_still_captures(monkeypatch):
     from suni.tools import screen_tool
     src = inspect.getsource(screen_tool._capture)
     assert "all_screens=True" in src
+
+
+def test_a_capture_can_be_shown_back_on_the_stage(monkeypatch, tmp_path):
+    """The Face renders /api/files/serve URLs, which is how a generated image
+    reaches the stage — a screenshot she is discussing should get there too, so
+    she can point at the part she means instead of describing where it was."""
+    from suni.tools import registry as _reg
+    from suni.tools import screen_tool
+    _owner_can_look(monkeypatch, tmp_path, variation=40.0)
+    tok = _reg.USER_ID_CTX.set("owner")
+    try:
+        out = screen_tool.handler("what is this error")
+    finally:
+        _reg.USER_ID_CTX.reset(tok)
+    assert "/api/files/serve?path=" in out
+    assert "suni-focus" in out

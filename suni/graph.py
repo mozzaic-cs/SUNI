@@ -212,7 +212,54 @@ def build(focus: str = "root", *, doc_store=None, registry=None, skill_store=Non
     nodes: list[dict] = []
     trail: list[dict] = [{"id": "root", "label": "SUNI"}]
 
-    if focus == "root":
+    if focus == "overview":
+        # The ambient view. Not a level to navigate — a representative sample of
+        # everything at once, because eight hubs on their own read as eight dots
+        # rather than as a network. Clicking anything switches to the real
+        # levels, which is where counts and names actually mean something.
+        trail.append({"id": "overview", "label": "everything"})
+        from . import system_profile as sp
+        nodes.append(_node("machine", f"{sp.CPU_CORES}-core · {sp.RAM_GB:.0f} GB RAM", "machine",
+                           detail=f"{sp.VRAM_MB} MB VRAM"))
+        for tier in (cfg.get("model_chain") or [])[:6]:
+            m = str(tier.get("model") or "").strip()
+            if m:
+                nodes.append(_node(f"model:{m}", m, "model",
+                                   live=1 if tier.get("enabled") else 0))
+        for n in sorted(registry.names() if registry else [])[:24]:
+            nodes.append(_node(f"tool:{n}", n, "tool"))
+        try:
+            for sk in (skill_store.list() if skill_store else [])[:10]:
+                nodes.append(_node(f"skill:{sk.get('slug', '?')}",
+                                   sk.get("name") or sk.get("slug", "?"), "skill"))
+        except Exception:      # noqa: BLE001
+            pass
+        for ch in ("telegram", "discord", "slack", "whatsapp", "email"):
+            if cfg.get(f"{ch}_enabled") or cfg.get(f"{ch}_bot_token"):
+                nodes.append(_node(f"channel:{ch}", ch, "channel", live=1))
+        try:
+            from . import agents as _ag
+            for a in _ag.list_for_user(user_id or "", user_role or "admin")[:8]:
+                nodes.append(_node(f"agent:{a['slug']}", a.get("name") or a["slug"], "skill"))
+        except Exception:      # noqa: BLE001
+            pass
+        dirs, files = _tree(doc_store)
+        if dirs or files:
+            under = _tree_cache.get("under", {})
+            # The biggest folders, then a scatter of actual files: the shape of
+            # the archive rather than its first alphabetical corner.
+            top = sorted(under.items(), key=lambda kv: -kv[1])[:28]
+            for path, count in top:
+                nodes.append(_node(f"dir:{path}", os.path.basename(path) or path,
+                                   "folder", count=count))
+            sample = [p for group in files.values() for p in group]
+            step = max(1, len(sample) // 40)
+            for path in sample[::step][:40]:
+                nodes.append(_node(f"file:{path}", os.path.basename(path), "file",
+                                   ext=os.path.splitext(path)[1].lstrip(".").lower()))
+        nodes = _cap(nodes, focus)
+
+    elif focus == "root":
         from . import system_profile as sp
         nodes = [
             _node("machine", f"{sp.CPU_CORES}-core · {sp.RAM_GB:.0f} GB RAM", "machine",
