@@ -228,7 +228,9 @@
     machine: { color: [0.49, 0.83, 1.00], icon: "chip",    label: "machine / host" },
     model:   { color: [1.00, 0.71, 0.33], icon: "model",   label: "model" },
     tool:    { color: [0.61, 0.86, 0.42], icon: "tool",    label: "tool" },
-    skill:   { color: [0.82, 0.55, 1.00], icon: "skill",   label: "skill / agent" },
+    skill:   { color: [0.82, 0.55, 1.00], icon: "skill",   label: "skill" },
+    agent:   { color: [0.45, 1.00, 0.85], icon: "agent",   label: "agent" },
+    schedule:{ color: [0.98, 0.78, 0.30], icon: "clock",   label: "scheduled run" },
     channel: { color: [1.00, 0.54, 0.69], icon: "channel", label: "channel" },
     folder:  { color: [1.00, 0.84, 0.42], icon: "folder",  label: "folder" },
     file:    { color: [0.56, 0.64, 0.72], icon: "file",    label: "file" },
@@ -244,7 +246,8 @@
   ];
 
   const ICON_ORDER = ["hub", "chip", "model", "tool", "skill", "channel",
-                      "folder", "file", "ollama", "claude", "openai", "spark"];
+                      "folder", "file", "ollama", "claude", "openai", "spark",
+                      "agent", "clock"];
   const ATLAS_COLS = 4, ATLAS_CELL = 128;
 
   function _drawIcon(ctx, name, s) {
@@ -294,6 +297,20 @@
           ctx[P(i)](Math.cos(a) * rr, Math.sin(a) * rr);
         }
         ctx.closePath(); ctx.fill();
+        break;
+      case "agent":
+        ctx.beginPath(); ctx.arc(0, -R * 0.45, R * 0.36, 0, 6.283); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(-R * 0.72, R * 0.95);
+        ctx.quadraticCurveTo(-R * 0.72, R * 0.1, 0, R * 0.1);
+        ctx.quadraticCurveTo(R * 0.72, R * 0.1, R * 0.72, R * 0.95);
+        ctx.stroke();
+        break;
+      case "clock":
+        ctx.beginPath(); ctx.arc(0, 0, R * 0.92, 0, 6.283); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, -R * 0.52); ctx.lineTo(0, 0); ctx.lineTo(R * 0.44, R * 0.2);
+        ctx.stroke();
         break;
       case "channel":
         ctx.beginPath();
@@ -375,7 +392,7 @@
   function styleFor(node) {
     const base = KIND_STYLE[node.kind] || KIND_STYLE.file;
     const text = (node.label || "") + " " + (node.id || "");
-    if (node.kind === "model" || node.kind === "machine" || node.kind === "skill") {
+    if (node.kind === "model" || node.kind === "machine") {
       for (const b of BRANDS) {
         if (b.test.test(text)) return { color: b.color, icon: b.icon };
       }
@@ -680,7 +697,11 @@
       this._uploadShade();
       if (!kind) { this.lookWant = [0, 0, 0]; return; }
       const members = this.nodes.filter(nd => nd.kind === kind);
-      if (!members.length) return;
+      if (!members.length) {
+        this.spot = null;
+        this._uploadShade();
+        return 0;
+      }
       const c = [0, 0, 0];
       for (const nd of members) for (let i = 0; i < 3; i++) c[i] += nd.home[i] / members.length;
       let far = 0;

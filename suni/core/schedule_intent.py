@@ -131,15 +131,36 @@ def parse(text: str, known_agents: list[dict] | None = None) -> dict[str, Any]:
     if wants_email and not out["email_to"]:
         out["missing"].append("which email address to send it to")
 
-    # Agent name: prefer a quoted phrase, else "the X agent".
+    # Agent name: prefer a quoted phrase, else the noun and the name together.
+    #
+    # Both word orders, in both languages. English puts the noun last ("the
+    # Reviewer agent"); Portuguese puts it first and spells it differently ("o
+    # agente Revisor"). Only the English form was matched, so the whole
+    # deterministic delegation path was dead for a pt-PT user: naming an agent
+    # fell through to an ordinary turn and SUNI answered as herself, with no
+    # sign that the agent had been asked for at all. Same failure as _WEB_RE
+    # before Portuguese was added to it.
+    #
+    # A capital letter is what separates a name from the common noun: "o agente
+    # da policia" must not resolve to an agent called "Da".
     named = ""
     q = _QUOTED.search(text)
-    if q and re.search(r"\bagent\b", q.group(1), re.IGNORECASE):
+    # agent / agents / agente / agentes — the optional "e" is what makes this
+    # cover both languages. "agentes?" alone quietly stopped matching the
+    # English "Agent", which is the form every existing test uses.
+    if q and re.search(r"\bagente?s?\b", q.group(1), re.IGNORECASE):
         named = q.group(1).strip()
     if not named:
-        m = re.search(r"\b(?:the\s+)?([A-Z][\w-]*(?:\s+[A-Z][\w-]*){0,3}\s+agent)\b", text)
-        if m:
-            named = m.group(1).strip()
+        _NAME = r"[A-Z][\w-]*(?:\s+[A-Z][\w-]*){0,3}"
+        for _pattern in (
+            rf"\b(?:the\s+)?({_NAME}\s+agent)\b",     # "the Reviewer agent"
+            rf"\bagentes?\s+({_NAME})\b",             # "o agente Revisor"
+            rf"\bagent\s+({_NAME})\b",                # "use agent Reviewer"
+        ):
+            m = re.search(_pattern, text)
+            if m:
+                named = m.group(1).strip()
+                break
     if named:
         out["agent_named"] = named
         want = named.lower()

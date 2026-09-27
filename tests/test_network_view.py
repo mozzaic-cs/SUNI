@@ -295,3 +295,35 @@ def test_every_view_actually_runs(view):
     assert isinstance(out, str) and out
     assert "Could not read" not in out, out[:200]
     assert "Traceback" not in out
+
+
+# ── naming an agent, in both languages ──────────────────────────────────────
+@pytest.mark.parametrize("text,slug", [
+    ("usa o agente Revisor para ler isto", "revisor"),
+    ("Pede ao agente Revisor um resumo", "revisor"),
+    ("ask the Reviewer agent to check this", "reviewer"),
+    ("use agent Reviewer on this file", "reviewer"),
+])
+def test_an_agent_can_be_named_in_either_language(text, slug):
+    """English puts the noun last, Portuguese puts it first and spells it
+    differently. Only the English order was matched, so naming an agent in
+    pt-PT fell through to an ordinary turn and SUNI answered as herself with
+    no sign the agent had been asked for."""
+    from suni.core.schedule_intent import parse
+    known = [{"slug": "revisor", "name": "Revisor"},
+             {"slug": "reviewer", "name": "Reviewer"}]
+    assert parse(text, known)["agent_slug"] == slug
+
+
+@pytest.mark.parametrize("text", [
+    "o agente da policia passou aqui",     # the common noun, not a name
+    "preciso de um agente de viagens",
+    "os agentes comerciais ligaram",
+    "manda isto para revisao",
+])
+def test_the_common_noun_is_not_an_agent_name(text):
+    """A capital letter is what separates the two. "o agente da policia" must
+    not resolve to an agent called "Da"."""
+    from suni.core.schedule_intent import parse
+    known = [{"slug": "revisor", "name": "Revisor"}]
+    assert not parse(text, known)["agent_slug"]

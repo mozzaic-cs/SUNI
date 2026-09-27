@@ -52,6 +52,8 @@ VIEWS = {
 SPOT_FOR = {
     "network": "machine", "models": "model", "tools": "tool",
     "skills": "skill", "channels": "channel", "agents": "agent", "kb": "folder",
+    # "agents" is the one level with two kinds in it - the named agents and the
+    # scheduled runs - and the agents are what was asked for.
 }
 
 SCHEMA = {

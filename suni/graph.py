@@ -29,7 +29,8 @@ MAX_CHILDREN = 120          # per level, before the remainder is summarised
 _LABEL_MAX = 42
 
 # kind → how the client draws it. Kept here so the palette is one decision.
-KINDS = ("root", "machine", "model", "tool", "skill", "channel", "folder", "file")
+KINDS = ("root", "machine", "model", "tool", "skill", "agent", "schedule",
+         "channel", "folder", "file")
 
 
 def _label(text: str) -> str:
@@ -371,7 +372,7 @@ def build(focus: str = "root", *, doc_store=None, registry=None, skill_store=Non
         try:
             from . import agents as _ag
             for a in _ag.list_for_user(user_id or "", user_role or "admin"):
-                nodes.append(_node(f"agent:{a['slug']}", a.get("name") or a["slug"], "skill",
+                nodes.append(_node(f"agent:{a['slug']}", a.get("name") or a["slug"], "agent",
                                    live=1 if a.get("enabled", True) else 0,
                                    detail=a.get("model") or ""))
         except Exception:      # noqa: BLE001 — a branch that cannot load is empty, not fatal
@@ -379,7 +380,7 @@ def build(focus: str = "root", *, doc_store=None, registry=None, skill_store=Non
         try:
             from . import schedules as _sc
             for x in _sc.list_for_user(user_id or "", user_role or "admin"):
-                nodes.append(_node(f"sched:{x['id']}", x.get("name") or x["id"], "channel",
+                nodes.append(_node(f"sched:{x['id']}", x.get("name") or x["id"], "schedule",
                                    live=1 if x.get("enabled") else 0,
                                    detail=x.get("cadence") or ""))
         except Exception:      # noqa: BLE001
