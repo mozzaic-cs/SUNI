@@ -318,3 +318,44 @@ def test_back_remembers_where_you_were_not_where_the_level_sits():
     # Pushed from the level on screen, so a failed load cannot record a place
     # the viewer was never at.
     assert "_netData.focus !== focus" in load
+
+
+def test_every_control_that_hides_itself_is_shown_by_the_focus_switch():
+    """Written because two of them were not, and I said they were.
+
+    The pattern in this page is: base rule hides the element (opacity 0,
+    pointer-events none), a class of "on" reveals it. An element that follows
+    that pattern and is never given the class is invisible forever, and nothing
+    errors — the button is in the DOM, the handler is bound, the click can just
+    never happen. The exit pill was toggled nowhere at all; the group pill was
+    toggled only when a level loaded, which is not when focus changes.
+
+    So this finds them in the stylesheet rather than listing them, and any new
+    one is caught the day it is added.
+    """
+    focus_fn = FACE[FACE.index("function _netSetFocus"):]
+    focus_fn = focus_fn[:focus_fn.index(chr(10) + "}")]
+
+    # Driven by something other than focus, with the reason it is exempt.
+    exempt = {
+        "net-pop": "follows the pointer: shown on hover, hidden on leave",
+        "net-menu": "opened by a click on a node, closed by the next one",
+        "net-labels": "a pool of spans, each turned on per frame by position",
+    }
+
+    hidden = re.findall(r"#(net-[\w-]+)\{[^}]*opacity:0[^}]*\}", FACE)
+    revealed = set(re.findall(r"#(net-[\w-]+)\.on\{[^}]*opacity:1", FACE))
+    for el in sorted(set(hidden) & revealed):
+        if el in exempt:
+            continue
+        # Each element's OWN variable, read out of its getElementById line
+        # rather than guessed from the id — the first version of this test
+        # matched any _net*.classList.toggle in the function, so one real
+        # toggle made every element pass and the test proved nothing.
+        m = re.search(rf"(?:const|let|var)\s+(\w+)\s*=\s*document\.getElementById\("
+                      rf"'{re.escape(el)}'\)", FACE)
+        assert m, f"#{el} has no element variable to check"
+        var = m.group(1)
+        assert f"{var}.classList.toggle('on', on)" in focus_fn, (
+            f"#{el} hides itself and is never revealed by _netSetFocus, so it "
+            f"is a control nobody can see or click")

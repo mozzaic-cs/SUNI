@@ -2616,7 +2616,6 @@ function _netDrawTrail(){
                        : `<span data-id="${_esc(x.id)}">${_esc(x.label)}</span>`
   ).join('<span style="opacity:.35"> / </span>');
   _netTrail.classList.toggle('on', _netFocus);
-  _netGroupBtn.classList.toggle('on', _netFocus);
 }
 _netTrail.addEventListener('click', e => {
   const id = e.target && e.target.getAttribute && e.target.getAttribute('data-id');
@@ -2630,7 +2629,14 @@ function _netSetFocus(on){
   if (_netFocus === on) return;
   _netFocus = on;
   if (_net) _net.setFocus(on);
+  // Everything that is only for someone holding the field. All of it here,
+  // because this is the one function that owns the focus state: the exit pill
+  // was toggled nowhere at all and so was never once visible, and the group
+  // pill was toggled only when a level loaded, which is not when focus
+  // changes. Two controls I had described as being on screen were not.
   _netTrail.classList.toggle('on', on);
+  _netExitBtn.classList.toggle('on', on);
+  _netGroupBtn.classList.toggle('on', on);
   if (on && !_netLegend.childElementCount) _netBuildLegend();
   _netLegend.classList.toggle('on', on);
   if (!on) { _netPop.classList.remove('off'); _netPop.classList.remove('on'); _netHover = null; }
