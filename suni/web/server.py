@@ -283,7 +283,8 @@ def _build_orchestrator(
     registry.register(claude_code_advanced.INIT_SCHEMA, claude_code_advanced.init_handler)
     registry.register(claude_code_advanced.SCHEDULE_SCHEMA, claude_code_advanced.schedule_handler)
     registry.register(claude_code_advanced.ADVISOR_SCHEMA, claude_code_advanced.advisor_handler)
-    from ..tools import agent_tool, schedule_tool, network_tool, memory_tool, screen_tool
+    from ..tools import (agent_tool, schedule_tool, network_tool, memory_tool,
+                         screen_tool, network_view_tool)
     # network_tool and memory_tool were registered in main.py's CLI registry and
     # NOT here, so the web UI silently lacked ping_host and memory_save/search.
     # run() already calls memory_tool.bind() every request, which does nothing
@@ -328,6 +329,14 @@ def _build_orchestrator(
     # Only offered when the machine's owner is the one asking; it refuses for
     # anyone else, so registering it unconditionally costs a tool slot, not a leak.
     registry.register(screen_tool.SCHEMA, screen_tool.handler)
+    # Moving the field behind her head is a view change, not an action: it
+    # reads what the graph already knows and shows it. The stores it reads from
+    # are handed over in create_app, where they exist - they are not in scope
+    # here, and the registry it is being added to is built before they are.
+    registry.register(network_view_tool.SCHEMA, network_view_tool.handler)
+    network_view_tool.set_sources(
+        registry=registry, skill_store=skill_store,
+        role_of=lambda uid: (_auth.get_user(uid) or {}).get("role", ""))
     registry.register(task_tool.LIST_SCHEMA,   task_tool.list_handler)
     registry.register(task_tool.STATUS_SCHEMA, task_tool.status_handler)
     registry.register(project_tool.CREATE_SCHEMA,  project_tool.create_handler)
@@ -480,6 +489,10 @@ def create_app() -> FastAPI:
         meta_path="memory/doc_meta.json",
     )
     kb_tool.set_doc_store(doc_store)
+    # The same store the /api/graph route reads, so "show me the files" and the
+    # picture behind her head are looking at one index.
+    from ..tools import network_view_tool as _netview
+    _netview.set_sources(doc_store=doc_store)
     memory      = MemoryManager(store_path=MEMORY_PATH, embed_model=EMBED_MODEL,
                                 doc_store=doc_store)
     skill_store = SkillStore()
@@ -3722,6 +3735,78 @@ def create_app() -> FastAPI:
             user_id=user["id"],
             user_role=user.get("role", ""),
         ))
+
+    @app.get("/api/graph/open")
+    async def graph_open(
+        path: str,
+        token: str | None = None,
+        authorization: str | None = Header(default=None),
+        x_api_key: str | None = Header(default=None, alias="x-api-key"),
+    ):
+        """Open one indexed file, from the network view.
+
+        /api/files/serve cannot do this: it serves the caller's OWN output and
+        upload folders, and the indexed archive is neither. Widening it to
+        reach the archive would have widened it for every caller at once.
+
+        So this is its own door with its own three locks:
+
+          The role. Opening an indexed file is reading the knowledge base by
+          another route, so it takes the same permission - if the caller's role
+          cannot call search_knowledge_base, it cannot read the files behind it
+          either. The index is system-wide and single; membership in it is NOT
+          a per-user allow-list, and treating it as one would have let the most
+          restricted account read anything that had ever been scanned.
+
+          The index. Only a file the index actually holds, matched on the
+          resolved real path, so a symlink or a ".." cannot walk out of it.
+          Being under an indexed FOLDER is not enough: that would include
+          everything the scanner deliberately skipped.
+
+          The audit. Every open is a row, because a file read through a
+          picture is still a file read.
+        """
+        try:
+            user = get_current_user(authorization, x_api_key)
+        except HTTPException:
+            user = None
+            if token:
+                user = _auth.verify_token(token) or _auth.verify_api_token(token)
+            if not user:
+                raise HTTPException(status_code=401, detail="Not authenticated")
+
+        from .. import rbac as _rbac
+        role = user.get("role", "")
+        allowed = _rbac.allowed_tools(role)
+        if (allowed is not None and "search_knowledge_base" not in allowed)                 or "search_knowledge_base" in _rbac.blocked_tools(role):
+            raise HTTPException(403, "This account cannot read the knowledge base")
+
+        p = Path(path)
+        if p.suffix.lower() in _BLOCKED_DL_EXTS:
+            raise HTTPException(403, "File type not allowed")
+        from .. import graph as _graph
+        if not _graph.is_indexed(doc_store, str(p)):
+            # Loudly, and the same refusal whether it exists or not: which files
+            # are on the disk but unindexed is not an answer to hand out.
+            raise HTTPException(403, "Not an indexed file")
+        real = Path(os.path.realpath(str(p)))
+        if not real.exists() or not real.is_file():
+            raise HTTPException(404, "File not found")
+
+        try:
+            _audit.log(user["id"], user.get("username", ""), route="/api/graph/open",
+                       query_preview=f"open {real.name}", tools_called=["graph_open"])
+        except Exception:                 # noqa: BLE001 — never fail the read on the log
+            log.warning("[GRAPH] could not audit an open of %s", real.name)
+
+        import mimetypes as _mt
+        mime = _mt.guess_type(str(real))[0] or "application/octet-stream"
+        return Response(
+            content=real.read_bytes(),
+            media_type=mime,
+            headers={"Content-Disposition":
+                     f'inline; filename="{real.name}"'},
+        )
 
     @app.get("/api/knowledge/status", dependencies=[Depends(_check_token)])
     async def knowledge_status():

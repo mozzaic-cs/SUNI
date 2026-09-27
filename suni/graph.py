@@ -90,6 +90,50 @@ def _tree(doc_store) -> tuple[dict, dict]:
     return dirs, files
 
 
+def indexed_files(doc_store) -> set[str]:
+    """Every file the index holds, lower-cased and resolved.
+
+    This is the allow-list for opening something from the field. It is built
+    from the same walk the tree is, and cached the same way, so asking whether
+    one path is in it costs a set lookup rather than a walk of 77k entries.
+
+    Resolved on both sides at comparison time: a path that is not resolved is
+    not an allow-list, it is a suggestion that ".." can talk its way around.
+    """
+    if doc_store is None:
+        return set()
+    _tree(doc_store)                      # populates/validates the cache
+    cached = _tree_cache.get("indexed")
+    if cached is not None and _tree_cache.get("indexed_key") == _tree_cache.get("key"):
+        return cached
+    out: set[str] = set()
+    for group in _tree_cache.get("files", {}).values():
+        for p in group:
+            try:
+                out.add(os.path.realpath(p).lower())
+            except Exception:             # noqa: BLE001 — a bad path is simply not in it
+                continue
+    _tree_cache["indexed"] = out
+    _tree_cache["indexed_key"] = _tree_cache.get("key")
+    return out
+
+
+def is_indexed(doc_store, path: str) -> bool:
+    """Is this exact file one the index holds?
+
+    Folder membership is deliberately not enough: the index holds the files it
+    was told to read, and "somewhere under an indexed folder" would include
+    everything the scanner skipped, which is not the same set at all.
+    """
+    if not path:
+        return False
+    try:
+        real = os.path.realpath(path).lower()
+    except Exception:                     # noqa: BLE001
+        return False
+    return real in indexed_files(doc_store)
+
+
 def _drives(dirs: dict, files: dict) -> list[str]:
     """The top of each indexed tree, uncollapsed — "D:\\" rather than the first
     folder that happens to contain something.

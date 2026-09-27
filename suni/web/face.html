@@ -328,6 +328,25 @@ header{
    would be a caption on something nobody is reading yet. */
 /* Node names. A pool of spans reused every frame — creating and destroying
    elements at sixty hertz is how a smooth canvas gets a stuttering overlay. */
+/* What you can DO to a node. The hover popup describes; this acts, so it has
+   to be clickable, which means it is pinned by a click rather than following
+   the cursor. Right-click reaches anything; on a leaf a plain click opens it
+   too, since a leaf has nothing to descend into. */
+#net-menu{position:absolute;z-index:9;display:none;min-width:186px;
+  padding:7px;border-radius:11px;
+  background:rgba(8,14,26,.94);border:1px solid rgba(120,170,220,.3);
+  backdrop-filter:blur(9px);box-shadow:0 12px 34px rgba(0,0,0,.6);
+  font-family:'DM Mono',monospace;font-size:11px}
+#net-menu.on{display:block}
+#net-menu .t{padding:3px 7px 7px;color:rgba(228,236,255,.95);font-size:12px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px}
+#net-menu .t i{display:block;font-style:normal;font-size:10px;letter-spacing:.06em;
+  color:rgba(150,180,215,.7);text-transform:uppercase}
+#net-menu button{display:block;width:100%;text-align:left;cursor:pointer;
+  padding:7px 9px;margin:2px 0;border-radius:7px;border:0;
+  background:transparent;color:rgba(215,230,250,.9);
+  font-family:inherit;font-size:11px;letter-spacing:.02em}
+#net-menu button:hover{background:rgba(0,212,255,.17);color:#fff}
 #net-labels{position:absolute;inset:0;z-index:6;pointer-events:none;overflow:hidden}
 #net-labels span{position:absolute;transform:translate(-50%,0);
   font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.02em;
@@ -418,6 +437,7 @@ header{
   <div id="net-legend"></div>
   <div id="net-labels"></div>
   <div id="net-exit"><b>&#10005;</b> back to SUNI</div>
+  <div id="net-menu"></div>
   <!-- background scanlines removed — the head keeps its own scanlines from the FS2 shader -->
   <header>
     <div class="wordmark"><span id="brand-name">SUNI</span><sub id="brand-tagline"></sub></div>
@@ -2296,6 +2316,7 @@ const _netLegend = document.getElementById('net-legend');
 const _netLabels = document.getElementById('net-labels');
 const _netLabelPool = [];
 const _netExitBtn = document.getElementById('net-exit');
+const _netMenu = document.getElementById('net-menu');
 _netExitBtn.addEventListener('click', _netExit);
 
 /* A one-line note over the field. Used when an action had nothing to act on —
@@ -2356,9 +2377,9 @@ function _netPaintLabels(){
    It groups first if the field is not already grouped, because "go to the
    machines" is meaningless while the machines are scattered through everything
    else. Clicking the same one again puts it all back. */
-function _netSpot(kind){
+function _netSpot(kind, force){
   if (!_net || !_net.ok) return;
-  const same = _net.spot === kind;
+  const same = !force && _net.spot === kind;
   _netSetFocus(true);
   if (!same && !_net.clustered) _net.setCluster(true);
   const n = _net.spotlight(same ? null : kind);
@@ -2380,6 +2401,85 @@ function _netExit(){
   _netLegend.querySelectorAll('.row.on').forEach(r => r.classList.remove('on'));
   _netSetFocus(false);
   _netLoad('overview');
+}
+
+/* The actions a given node offers.
+
+   Per kind, because the sensible things to do to a file and to a machine on
+   the LAN have almost nothing in common - and a machine offers nothing that
+   touches it. Reading the ARP cache is as close to the network as this gets;
+   an "open" on a neighbour would be the scan this view has always refused. */
+function _netActions(node){
+  const m = node.meta || {};
+  const id = String(m.id || '');
+  const out = [];
+  if (id.startsWith('file:')) {
+    const path = id.slice(5);
+    out.push(['Open it', () => _netOpenFile(path)]);
+    out.push(['Show its folder', () => _netLoad('dir:' + path.replace(/[\\/][^\\/]*$/, ''))]);
+    out.push(['Ask SUNI about it', () => _netAsk('Open ' + path + ' and tell me what is in it.')]);
+    out.push(['Copy the path', () => _netCopy(path)]);
+  } else if (id.startsWith('dir:')) {
+    const path = id.slice(4);
+    out.push(['Open it here', () => _netLoad(id)]);
+    out.push(['Ask SUNI about it', () => _netAsk('What is in ' + path + '? Summarise what you have indexed there.')]);
+    out.push(['Copy the path', () => _netCopy(path)]);
+  } else if (m.kind === 'machine') {
+    // Nothing here reaches out and touches it. That is the point.
+    out.push(['Ask SUNI about it', () => _netAsk('What do you know about ' + node.label + ' on this network?')]);
+    if (m.detail) out.push(['Copy the address', () => _netCopy(String(m.detail))]);
+  } else {
+    out.push(['Ask SUNI about it', () => _netAsk('Tell me about ' + node.label + '.')]);
+    if (['kb','tools','skills','channels','models','agents','network'].includes(id))
+      out.unshift(['Open it here', () => _netLoad(id)]);
+  }
+  return out;
+}
+
+function _netMenuAt(node, x, y){
+  const acts = _netActions(node);
+  if (!acts.length) return;
+  const m = node.meta || {};
+  _netMenu.innerHTML = '<div class="t"><i>' + _esc(m.kind || '') + '</i>'
+                     + _esc(node.label || '') + '</div>';
+  acts.forEach(pair => {
+    const b = document.createElement('button');
+    b.textContent = pair[0];
+    b.addEventListener('click', () => { _netMenuHide(); pair[1](); });
+    _netMenu.appendChild(b);
+  });
+  _netMenu.classList.add('on');
+  // Placed after it is shown, so its real size is known and it can be pushed
+  // back inside the window rather than opening off the edge.
+  const r = _netMenu.getBoundingClientRect();
+  const w = canvas.clientWidth || W, h = canvas.clientHeight || H;
+  _netMenu.style.left = Math.max(6, Math.min(x, w - r.width - 6)) + 'px';
+  _netMenu.style.top  = Math.max(6, Math.min(y, h - r.height - 6)) + 'px';
+}
+
+function _netMenuHide(){ _netMenu.classList.remove('on'); }
+
+/* Opening an indexed file. The server decides whether this account may - the
+   index is system-wide, so being in it is not permission - and the token rides
+   in the query because this opens in a tab with no session behind it. */
+function _netOpenFile(path){
+  // _ST is the live access token: _apiFetch replaces it on refresh, so reading
+  // it here rather than localStorage means a tab opened after a refresh still
+  // carries a token the server will accept.
+  const url = '/api/graph/open?path=' + encodeURIComponent(path)
+            + (_ST ? '&token=' + encodeURIComponent(_ST) : '');
+  window.open(url, '_blank', 'noopener');
+}
+
+function _netAsk(prompt){
+  inputEl.value = prompt;
+  _netExit();                 // she is about to answer: give her the screen back
+  send();
+}
+
+function _netCopy(text){
+  try { navigator.clipboard.writeText(text); _netToast('path copied'); }
+  catch (e) { _netToast('could not copy'); }
 }
 
 function _netHideLabels(){
@@ -2511,8 +2611,28 @@ canvas.addEventListener('pointerup', e => {
   const id = String((hit.meta && hit.meta.id) || '');
   // Folders and the section hubs open. A file is a leaf: it describes itself
   // and waits — opening one is a separate decision, gated server-side.
-  if (id.startsWith('dir:') || ['kb','tools','skills','channels','models'].includes(id)) _netLoad(id);
+  if (id.startsWith('dir:') || ['kb','tools','skills','channels','models'].includes(id)) {
+    _netMenuHide();
+    _netLoad(id);
+  } else {
+    // A leaf has nothing to descend into, so a click there opens its actions
+    // rather than doing nothing at all.
+    _netMenuAt(hit, e.clientX + 10, e.clientY + 8);
+  }
 });
+
+// Right-click reaches the actions of anything, including the folders a plain
+// click descends into.
+canvas.addEventListener('contextmenu', e => {
+  if (!_net || !_net.ok || !_netFocus) return;
+  const hit = _net.pick(e.clientX, e.clientY, canvas.clientWidth || W, canvas.clientHeight || H);
+  if (!hit) { _netMenuHide(); return; }
+  e.preventDefault();
+  _netHover = hit; _netDescribe(hit);
+  _netMenuAt(hit, e.clientX + 10, e.clientY + 8);
+});
+
+canvas.addEventListener('pointerdown', () => _netMenuHide());
 canvas.addEventListener('wheel', e => {
   if (!_net || !_net.ok) return;
   e.preventDefault();
@@ -2983,6 +3103,25 @@ async function send() {
                                 showSub(t('chat.approval_required')); },
             onAnswered: () => { hideSub(); setState('thinking'); },
           });
+        } else if (ev.type === 'net_view') {
+          /* SUNI took the view somewhere. Asked which devices are on the
+             network, she answers in words AND moves the field to the machines,
+             so the picture behind her agrees with what she is saying.
+
+             The load is async and the spotlight needs the nodes to exist, so
+             the category is lit after it lands rather than alongside it. */
+          console.log('[NET_NAV] ->', ev.level, ev.spot || '', ev.cluster ? 'grouped' : '');
+          _netSetFocus(true);
+          const want = ev.level || 'overview';
+          _netLoad(want).then(() => {
+            if (!_net || !_net.ok) return;
+            if (_netData && _netData.focus && _netData.focus !== want) {
+              console.log('[NET_NAV] another load won; not lighting', ev.spot);
+              return;
+            }
+            if (ev.cluster) _net.setCluster(true);
+            if (ev.spot) _netSpot(ev.spot, true);
+          }).catch(() => {});
         } else if (ev.type === 'collab') {
           // Multi-model collaboration phases (Mode 2) — keep the face "working"
           // and surface the current phase as a sub-caption for the multi-minute run.
