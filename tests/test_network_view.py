@@ -327,3 +327,53 @@ def test_the_common_noun_is_not_an_agent_name(text):
     from suni.core.schedule_intent import parse
     known = [{"slug": "revisor", "name": "Revisor"}]
     assert not parse(text, known)["agent_slug"]
+
+
+# ── the models view tells the truth about what answers ──────────────────────
+def _models(cfg):
+    from suni import graph
+    return graph.build("models", config=cfg)["nodes"]
+
+
+def test_a_tier_with_no_model_string_is_still_a_model():
+    """The Claude Code tier carries no model name - the CLI chooses its own -
+    and the old code required one, so the tier that answered most turns was the
+    one thing missing from "which models do you have"."""
+    cfg = {"model": "qwen2.5:7b", "model_chain": [
+        {"id": "tier-cc", "label": "Claude Code (T5)", "provider": "claude-code",
+         "model": "", "enabled": True}]}
+    labels = [n["label"] for n in _models(cfg)]
+    assert any("Claude Code" in x for x in labels), labels
+
+
+def test_an_empty_switched_off_tier_is_a_slot_not_a_model():
+    """Listing "Large (T3)" as something she can think with is worse than
+    listing nothing: it is an answer that is not true."""
+    cfg = {"model": "qwen2.5:7b", "model_chain": [
+        {"id": "tier-large", "label": "Large (T3)", "provider": "ollama",
+         "model": "", "enabled": False}]}
+    labels = [n["label"] for n in _models(cfg)]
+    assert not any("Large" in x for x in labels), labels
+
+
+def test_the_embedding_and_image_models_are_models_too():
+    cfg = {"model": "m", "embed_model": "nomic-embed-text",
+           "image_gen_enabled": True, "image_gen_model": "runwayml/stable-diffusion-v1-5"}
+    nodes = _models(cfg)
+    labels = [n["label"] for n in nodes]
+    assert "nomic-embed-text" in labels
+    assert "stable-diffusion-v1-5" in labels, labels
+    detail = {n["label"]: n.get("detail", "") for n in nodes}
+    assert "embeddings" in detail["nomic-embed-text"]
+
+
+def test_a_remote_openai_compatible_model_appears_without_being_in_the_chain():
+    """It is configured on its own, so a chain-only view never showed it."""
+    cfg = {"model": "m", "vllm_model": "gpt-4o-mini",
+           "vllm_base_url": "https://api.example.com/v1", "backend": "vllm"}
+    nodes = _models(cfg)
+    hit = [n for n in nodes if n["label"] == "gpt-4o-mini"]
+    assert hit, [n["label"] for n in nodes]
+    # The host is named but never its credentials.
+    assert "api.example.com" in hit[0].get("detail", "")
+    assert "@" not in hit[0].get("detail", "")
