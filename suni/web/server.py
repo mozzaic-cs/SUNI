@@ -4017,8 +4017,17 @@ def create_app() -> FastAPI:
         # single backend field) must preserve every other setting rather than
         # resetting it. (config.save() itself merges over DEFAULTS.)
         merged = suni_config.all()
+        # What these keys held BEFORE the merge overwrites them. The admin form
+        # submits every field on Save, so "present in the payload" says nothing
+        # about whether a value moved — and everything below that reacts to a
+        # change was reacting to every save instead. That restarted all three
+        # channel gateways each time (dropping whatever was mid-flight, which
+        # silently ate an inbound Telegram message) and logged a backend
+        # "switch" to the backend it was already using.
+        _before = {k: merged.get(k) for k in filtered}
         merged.update(filtered)
         suni_config.save(merged)
+        _changed = {k for k, v in filtered.items() if _before.get(k) != v}
         # Apply live-applicable settings immediately
         if "num_ctx" in filtered:
             orchestrator.primary.num_ctx = int(filtered["num_ctx"])
@@ -4029,7 +4038,7 @@ def create_app() -> FastAPI:
         # variable (silent no-op risk) or drop the registry (loses MCP tools).
         # In-flight requests finish on the old agent; new ones use the new one.
         if {"vllm_base_url", "vllm_model", "vllm_api_key",
-            "model_chain_routing", "model_chain"} & set(filtered.keys()):
+            "model_chain_routing", "model_chain"} & _changed:
             try:
                 from ..models import factory as _factory
                 new_primary, new_tiers = _make_backend_agents(
@@ -4044,9 +4053,8 @@ def create_app() -> FastAPI:
                 raise HTTPException(500, f"Backend switch failed: {e}")
         # Live channel start/stop/restart — reconcile any channel whose enable
         # flag or token(s) changed, so the admin never needs to restart SUNI.
-        _touched = set(filtered.keys())
         for _cname, (_r, _d, _c, _keys) in _CHANNELS.items():
-            if _keys & _touched:
+            if _keys & _changed:
                 try:
                     await _reconcile_channel(_cname)
                     _log.info("[CHANNEL] %s reconciled after config change", _cname)

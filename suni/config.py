@@ -259,6 +259,13 @@ DEFAULTS: dict[str, Any] = {
     "backend_breaker":           True,  # fast-fail + auto-recover when the local model backend is down
     "backend_breaker_threshold": 3,     # consecutive CONNECTION failures before opening
     "backend_probe_interval_s":  30,    # seconds between recovery probes of an open backend
+    # The ollama client's own default is None, which means WAIT FOR EVER. One
+    # request that never came back hung a whole turn silently — no reply, no
+    # error, nothing logged after the tier line — and the breaker above could
+    # not see it, because it counts failures and a hang never becomes one.
+    # Read is generous: generation here legitimately runs into tens of seconds.
+    "ollama_timeout_s":          300,   # per-request read timeout
+    "ollama_connect_timeout_s":  5,     # a backend that is not listening says so at once
     # ── vLLM backend (dual-mode) ──────────────────────────────────────────
     # Set vllm_base_url (e.g. http://gpu-1:8000/v1) to switch chat/generation to
     # vLLM; empty = Ollama (default, unchanged). Embeddings are NOT affected.

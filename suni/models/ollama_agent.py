@@ -1,6 +1,7 @@
 from __future__ import annotations
 import time
 import uuid
+import httpx
 import ollama
 from rich.console import Console
 from ..core.base_agent import BaseAgent
@@ -27,7 +28,22 @@ class OllamaAgent(BaseAgent):
         # Resolved here rather than in the signature: a default argument is
         # evaluated at import, which no configuration can move afterwards.
         self.host = host or _cfg.ollama_host()
-        self.client = ollama.AsyncClient(host=self.host)
+        # A TIMEOUT, because the library's default is None and None means wait
+        # for ever. A request that never comes back took a Telegram turn with
+        # it: no reply, no error, nothing in the log after "[TIER] start=2",
+        # while the model sat loaded and idle. The circuit breaker could not
+        # help either — it counts failures, and a hang never becomes one.
+        #
+        # Generous on read, because generation on this box legitimately takes
+        # tens of seconds and a 30 s cap would cut off honest work; short on
+        # connect, because a backend that is not listening says so at once.
+        self.client = ollama.AsyncClient(
+            host=self.host,
+            timeout=httpx.Timeout(
+                float(_cfg.get("ollama_timeout_s", 300) or 300),
+                connect=float(_cfg.get("ollama_connect_timeout_s", 5) or 5),
+            ),
+        )
         # None = follow config num_ctx per call; set explicitly (admin panel's
         # live apply) it pins the value.
         self.num_ctx: int | None = None
