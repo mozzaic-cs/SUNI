@@ -41,3 +41,8 @@ venv/
 *.swp
 .DS_Store
 Thumbs.db
+
+# The explicit backup of the flat architecture page. Git already holds every
+# version of it; this is a copy to open side by side while the redesign is
+# being judged, and a 128 KB duplicate is not something to publish.
+suni/web/architecture_v1_*.html

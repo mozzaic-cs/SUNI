@@ -1,0 +1,578 @@
+{
+ "version": 1,
+ "title": "SUNI architecture",
+ "note": "A prototype over four subsystems. The other nine lanes of the flat page are not in here yet.",
+ "groups": [
+  {
+   "id": "orchestrator",
+   "title": "Orchestrator",
+   "where": "orchestrator.py",
+   "lead": "Every request walks the same nine steps, in order",
+   "tone": "gold",
+   "kind": "sequence",
+   "items": [
+    {
+     "id": "step-01",
+     "title": "Language",
+     "where": "step 01",
+     "lead": "Inject SYSTEM msg",
+     "body": [
+      "response_language",
+      "pt-PT / en-GB"
+     ],
+     "phase": ""
+    },
+    {
+     "id": "step-02",
+     "title": "Skills L0",
+     "where": "step 02",
+     "lead": "Inject skill catalog",
+     "body": [
+      "name+desc only",
+      "~3k tok / 50 skills"
+     ],
+     "phase": ""
+    },
+    {
+     "id": "step-03",
+     "title": "Memory",
+     "where": "step 03",
+     "lead": "User T2a + Collective T2b",
+     "body": [
+      "Scoped KB T3a/3b",
+      "[FACT][COLLECTIVE][DOC]",
+      "SYSTEM msg replaced each turn (no accumulation)"
+     ],
+     "phase": ""
+    },
+    {
+     "id": "step-04",
+     "title": "Web Prefetch",
+     "where": "step 04",
+     "lead": "Auto web_search",
+     "body": [
+      "live-data queries",
+      "weather/news/price"
+     ],
+     "phase": ""
+    },
+    {
+     "id": "step-05",
+     "title": "Task Router",
+     "where": "step 05",
+     "lead": "Pattern classifier",
+     "body": [
+      "pdf·email·browser",
+      "browser history persist",
+      "web_url → web_fetch hint (no playwright)",
+      "pdf hint uses resolve_output_dir(user)"
+     ],
+     "phase": ""
+    },
+    {
+     "id": "step-06",
+     "title": "Compressor",
+     "where": "step 06",
+     "lead": "S0: dedup (A1)",
+     "body": [
+      "S1: tool results→60w",
+      "S2: roll-up→150w",
+      "fires at ~9 502 tok"
+     ],
+     "phase": ""
+    },
+    {
+     "id": "step-07",
+     "title": "Direct Paths\nbypasses LLM",
+     "where": "step 07",
+     "lead": "pdf→create_pdf",
+     "body": [
+      "email→send_email",
+      "cc→Claude Code T5 new",
+      "blocked in read-only"
+     ],
+     "phase": ""
+    },
+    {
+     "id": "step-08",
+     "title": "Agent Loop",
+     "where": "step 08",
+     "lead": "T1→T4 OllamaAgent",
+     "body": [
+      "complexity_score → tier",
+      "needs_escalation → retry",
+      "max 8 iter · task mode"
+     ],
+     "phase": ""
+    },
+    {
+     "id": "step-09",
+     "title": "Post-Process",
+     "where": "step 09",
+     "lead": "memory.add_exchange",
+     "body": [
+      "auto_config detect",
+      "skill gen if ≥5 tools",
+      "_sanitize_response: strip DOC-EXCERPT tags",
+      "_inject_dl_token: JWT appended to file links"
+     ],
+     "phase": ""
+    }
+   ]
+  },
+  {
+   "id": "models",
+   "title": "Tiered models",
+   "where": "model_tier.py · factory.py",
+   "lead": "Which brain answers, decided before a brain is asked",
+   "tone": "purple",
+   "kind": "set",
+   "items": [
+    {
+     "id": "direct-to-claude-code-text-bool",
+     "title": "direct_to_claude_code(text) → bool",
+     "where": "",
+     "lead": "~0 ms · regex only · no LLM call",
+     "body": [
+      "Code / system patterns → T5 bypass",
+      "_SUNI_TOOLS_RE exclusion: email / KB / memory",
+      "RBAC gate: claude_task not blocked · not read-only",
+      "False-negative safe: local fallback always available"
+     ],
+     "phase": ""
+    },
+    {
+     "id": "complexity-score-text-1-4",
+     "title": "complexity_score(text) → 1–4",
+     "where": "",
+     "lead": "Word count + keyword signals → starting tier",
+     "body": [
+      "Simple: T1 · Multi-step: T2 · Complex: T3 · Long: T4",
+      "Capped at system_profile.MAX_LOCAL_TIER",
+      "Selects tier for OllamaAgent loop"
+     ],
+     "phase": ""
+    },
+    {
+     "id": "needs-escalation-response-bool",
+     "title": "needs_escalation(response) → bool",
+     "where": "",
+     "lead": "Post-response escalation signal",
+     "body": [
+      "\"I cannot\" / \"beyond my capabilities\" → next tier",
+      "Short hedging (<60 words) → retry",
+      "T4 = local ceiling — no further escalation"
+     ],
+     "phase": ""
+    },
+    {
+     "id": "model-inventory-py",
+     "title": "model_inventory.py",
+     "where": "",
+     "lead": "Ollama network scanner — runs at startup",
+     "body": [
+      "Queries each endpoint in config.ollama_endpoints",
+      "params_to_tier() → T1–T4 assignment",
+      "Cached · GET /api/models/inventory (admin)",
+      "?refresh=1 forces rescan"
+     ],
+     "phase": ""
+    },
+    {
+     "id": "system-profile-py",
+     "title": "system_profile.py",
+     "where": "",
+     "lead": "VRAM detection at startup",
+     "body": [
+      "nvidia-smi → available VRAM",
+      "Sets MAX_LOCAL_TIER + DEFAULT_TIER",
+      "RTX 4000 8 GB → T2 default, T2 max local"
+     ],
+     "phase": ""
+    },
+    {
+     "id": "claudecodeagent",
+     "title": "ClaudeCodeAgent",
+     "where": "",
+     "lead": "suni/models/claude_code_agent.py",
+     "body": [
+      "Registered as T5 if `claude` in PATH",
+      "CLAUDE_API_KEY_CTX per-user injection",
+      "--resume session_id persisted per-conversation (conversations.db)",
+      "cwd=~ + --system-prompt → isolated SUNI persona, no project leak",
+      "Every task: KB index path (doc_meta.json) + your document folders direct-read hint",
+      "Every turn folds Tier 2a/2b memory + lang context · _run_claude() · _parse_json_output()"
+     ],
+     "phase": ""
+    },
+    {
+     "id": "codexagent",
+     "title": "CodexAgent",
+     "where": "",
+     "lead": "suni/models/codex_agent.py",
+     "body": [
+      "2nd no-key frontier provider (ChatGPT subscription)",
+      "codex exec --skip-git-repo-check --ephemeral -s read-only -o <file> -",
+      "Prompt via real-file stdin · final answer read from -o",
+      "Binary auto-discovered (versioned path) · factory provider \"codex\"",
+      "Optional OPENAI_API_KEY for API mode"
+     ],
+     "phase": "10"
+    },
+    {
+     "id": "collaborate-mode",
+     "title": "collaborate mode",
+     "where": "",
+     "lead": "suni/core/orchestrate.py · opt-in conv_mode",
+     "body": [
+      "DRAFT (all models ∥) → CROSS-CRITIQUE (peer-review ∥) → SYNTHESISE (1 merges, speaks as SUNI)",
+      "Decorrelated frontier pool (Claude Code + Codex, admin-editable)",
+      "Live phase events (draft·critique·synthesize) · fast/full dial",
+      "Self-contained branch in _run_inner — Mode 1 pipeline untouched",
+      "power-user/admin only · cloud (data leaves box) · per-message toggle"
+     ],
+     "phase": "10"
+    },
+    {
+     "id": "provider-registry",
+     "title": "Provider registry",
+     "where": "",
+     "lead": "factory.make_provider_agent(provider, …)",
+     "body": [
+      "ollama · vllm · openai · anthropic · gemini · claude-code · codex",
+      "Both auth modes: API keys AND no-key subscription CLIs",
+      "Admin drag-ordered model chain · collaborate pool"
+     ],
+     "phase": "10"
+    }
+   ]
+  },
+  {
+   "id": "agents",
+   "title": "Named agents",
+   "where": "agents.py · schedules.py · fanout.py",
+   "lead": "A saved way to be, and a way to be asked again tomorrow",
+   "tone": "teal",
+   "kind": "set",
+   "items": [
+    {
+     "id": "agent-profiles",
+     "title": "Agent Profiles",
+     "where": "agents.py · memory/agents/{slug}/AGENT.md",
+     "lead": "A prompt, an optional model, an optional narrowing of tools",
+     "body": [
+      "Stored as Markdown + YAML frontmatter beside a SQLite index, so a",
+      "definition stays readable and editable outside the app",
+      "Sharing mirrors project_members: owner / editor / viewer",
+      "Model pinned by a profile suppresses tier escalation — otherwise the choice would be swapped out mid-run",
+      "routes_to_cli() makes the pin decide the PATH too: force_claude_code used to route",
+      "before the tier loop was reached, so a pinned agent went to the CLI anyway and the",
+      "cheap specialist cost what the expensive one does. \"claude-code\" pins the CLI in reverse.",
+      "A profile naming an UNREGISTERED tool is warned about: the intersection",
+      "keeps the name, the registry returns nothing, and the model narrates",
+      "instead of calling — which reads as a weak model and is not"
+     ],
+     "phase": ""
+    },
+    {
+     "id": "narrowing-never-widening",
+     "title": "Narrowing, never widening",
+     "where": "effective_grants() · resolved per invocation",
+     "lead": "Tools & MCP INTERSECT with the caller's role; blocks UNION",
+     "body": [
+      "Re-derived every run, never stored — AGENT.md is a file a user can edit",
+      "A profile cannot grant a conversation mode the role lacks",
+      "Without this an admin-authored agent in a dropdown would be privilege escalation for whoever picked it"
+     ],
+     "phase": ""
+    },
+    {
+     "id": "deterministic-intent",
+     "title": "Deterministic intent",
+     "where": "schedule_intent.py · _handle_schedule_direct",
+     "lead": "Cadence, delivery and agent parsed by regex, not chosen by the model",
+     "body": [
+      "Measured: at the core tier the same prompt picked four different wrong",
+      "tools across four runs, with the right one registered and hinted",
+      "Missing detail is ASKED for, never invented",
+      "No capable local tier → automatic escalation to T5"
+     ],
+     "phase": ""
+    },
+    {
+     "id": "scheduled-invocations",
+     "title": "Scheduled Invocations",
+     "where": "schedules.py · _schedule_runner",
+     "lead": "Replays a PROMPT through the orchestrator, not an OS command",
+     "body": [
+      "Runs as the owner, role read AT FIRE TIME — not a snapshot, which would",
+      "preserve permissions the owner has since lost",
+      "Delivery performed by the runner: unattended runs have no approver, so",
+      "the model never chooses a recipient",
+      "Unknown cadence refused, never rounded · missed slots do not stack",
+      "A failure used to do exactly what a success did — write the status and wait for the next",
+      "slot, so a job whose password expired failed every morning for as long as nobody read the",
+      "list. Now: one retry five minutes later, then DISABLED with the reason on the record.",
+      "Disabled, not deleted: the owner has to see it and switch it back on. A success clears the streak."
+     ],
+     "phase": ""
+    },
+    {
+     "id": "delegation",
+     "title": "Delegation",
+     "where": "invoke_agent · list_agents · _handle_agent_direct",
+     "lead": "\"Ask the X agent to…\" hands the task to that agent",
+     "body": [
+      "The NAME is extracted by regex, not chosen by the model — measured, the",
+      "core tier picked four different wrong tools across four runs",
+      "Sub-turn grants intersect the CALLING turn's, not the raw role, or a",
+      "narrow agent delegates its way back to full reach",
+      "An agent that DECLARES tools is floored at a tier that can emit",
+      "well-formed calls, and escalates to T5 when no local tier qualifies — a",
+      "pinned model is never overridden",
+      "Depth cap 1: agents may be invoked, may not invoke · unknown name refused, never self-handled"
+     ],
+     "phase": ""
+    },
+    {
+     "id": "panel-agents",
+     "title": "Panel Agents",
+     "where": "mode=collaborate → orchestrate.py",
+     "lead": "An agent whose model is a PANEL, not a model",
+     "body": [
+      "Draft → cross-critique → synthesise across the pool, answered in",
+      "that agent's voice. Per-agent pool override",
+      "Persona shapes only the SYNTHESIS — applying it to every seat would",
+      "correlate the models, which is the whole point of a panel",
+      "Cloud models: this leaves the machine, unlike the single-model path"
+     ],
+     "phase": ""
+    },
+    {
+     "id": "ceilings",
+     "title": "Ceilings",
+     "where": "max_steps · max_runs_day · max_tokens_day",
+     "lead": "The instance cap bounds one turn; these bound a day of them",
+     "body": [
+      "A schedule firing every 15 minutes has no natural stopping point",
+      "max_steps applies as a MINIMUM against the instance cap — a profile can",
+      "tighten it, never raise it, the same rule as its tool grants",
+      "A run count is a poor proxy for spend: one turn that delegates to the CLI",
+      "and reads forty documents costs orders of magnitude more than a one-line",
+      "reply, and both counted as one run — hence a TOKEN ceiling beside it",
+      "Runs and tokens both counted from the audit trail, not a profile counter that would drift on a failed run",
+      "The CLI reported no tokens at all until its usage was booked (cache reads included) — every budget read zero on the path that spends most: \"say only: ready\" costs ~26k input tokens"
+     ],
+     "phase": ""
+    },
+    {
+     "id": "fan-out",
+     "title": "Fan-out",
+     "where": "fanout.py · agents:[…] · compose_prompt",
+     "lead": "Ask several specialists at once, then answer as the head",
+     "body": [
+      "Each one runs the ORDINARY request path with its own profile, so grants,",
+      "model pins and daily ceilings all still apply — the fan-out decides who",
+      "is asked, never what they may do",
+      "Skipped and failed agents reach the composer BY NAME: an answer built",
+      "from two of five must not read like an answer from five",
+      "fanout_token_budget is checked BEFORE each specialist starts, against what the turn has already spent — an expensive first answer stops the rest instead of being noticed afterwards",
+      "Measured 2026-09-26: with OLLAMA_NUM_PARALLEL=2, one generation 57 tok/s, two at once 88 tok/s aggregate. With one slot they merely queue."
+     ],
+     "phase": "13"
+    },
+    {
+     "id": "assignments",
+     "title": "Assignments",
+     "where": "POST /api/assignments · task_queue.py",
+     "lead": "Work handed to an agent that outlives the request asking for it",
+     "body": [
+      "The caller gets the record back at once; the agent works through the",
+      "ordinary path and the result waits, with a notification if configured",
+      "A task lives in SQLite but RUNS in memory, so a stopped process left rows claiming \"running\" with nothing running them — interrupted work is failed at startup instead"
+     ],
+     "phase": "13"
+    },
+    {
+     "id": "why-the-work-exists",
+     "title": "Why the work exists",
+     "where": "ancestry.py · CURRENT_REQUEST",
+     "lead": "A delegated or scheduled run starts from a bare instruction in a fresh context",
+     "body": [
+      "The specialist is handed \"summarise the Q3 numbers\" with no hint that a",
+      "board pack is being assembled, and a job firing every Monday cannot tell",
+      "a first attempt from a fourth",
+      "The originating request travels with the delegation; a scheduled run is",
+      "told that it recurs and how the last attempt went",
+      "Background, not instruction — and it says so in itself, because a reply that narrates SUNI's plumbing is a bug this codebase has already shipped once"
+     ],
+     "phase": "13"
+    },
+    {
+     "id": "preview-before-trust",
+     "title": "Preview before trust",
+     "where": "POST /api/agents/{slug}/dry-run",
+     "lead": "What it WOULD call, and what it may reach — executing nothing",
+     "body": [
+      "Reports the resolved grants too: what an agent could reach is the",
+      "governance question, and another task might choose differently",
+      "Unlike task mode, the plan is NOT stashed — an executable plan left behind turns a preview into something one word could fire"
+     ],
+     "phase": ""
+    },
+    {
+     "id": "traceable-by-agent",
+     "title": "Traceable by agent",
+     "where": "audit_log.agent_slug · agent.invoked",
+     "lead": "Which agent answered, and what it was allowed to reach then",
+     "body": [
+      "Per-request row carries agent_slug; a governance event records the",
+      "RESOLVED grants — model, mode, tool count, MCP prefixes",
+      "Grants are re-derived each run, so the profile as it stands later is not evidence of what applied",
+      "report(slug, days) reads it back — what it DID vs what it COULD reach,",
+      "identical grant states collapsed because only a change is signal"
+     ],
+     "phase": ""
+    }
+   ]
+  },
+  {
+   "id": "field",
+   "title": "The field",
+   "where": "graph.py · netgraph.js",
+   "lead": "Everything she can reach, as one navigable graph",
+   "tone": "cyan",
+   "kind": "set",
+   "items": [
+    {
+     "id": "one-level-per-request",
+     "title": "One level per request",
+     "where": "graph.py · build(focus) → nodes/edges/trail",
+     "lead": "A view, never a second source of truth — every node is something another part of SUNI already owns",
+     "body": [
+      "7,637 indexed files across 2,304 folders: sending that as a graph is",
+      "megabytes for a picture nobody can read, so a request asks about one",
+      "focus and gets its children, the way a directory listing does",
+      "Children are capped and the remainder becomes one \"+N more\" node —",
+      "a view that quietly omits things is worse than one that says so",
+      "Nothing here reads the filesystem: folders come from the document index, so this cannot become a way to enumerate a disk SUNI was never pointed at",
+      "Neighbours are the OS's own ARP cache and nothing else — the test for that checks what the code CALLS, after an earlier version passed on the word \"pings\" in a docstring"
+     ],
+     "phase": "14"
+    },
+    {
+     "id": "drawn-not-pasted-over",
+     "title": "Drawn, not pasted over",
+     "where": "netgraph.js · shared GL context",
+     "lead": "Raw WebGL on the Face's own context — a second context for the same canvas fails",
+     "body": [
+      "Lit spheres that write depth, so the head occludes what is behind it;",
+      "additive halos were why the palette washed out",
+      "Names appear by DRAWN SIZE, so zooming in names more of them, overlaps",
+      "are dropped rather than nudged, and nothing lands on her face",
+      "Grouping lays the categories out on a disc facing the viewer: a sphere puts half of them edge-on and forces the camera so far back that every node becomes a dot",
+      "One icon flickered and no other: its atlas index sat exactly on a row boundary, where floor(4.0/4.0) at mediump returns 0 about half the time. The cell is worked out in the vertex stage now."
+     ],
+     "phase": "14"
+    },
+    {
+     "id": "she-can-point-at-it",
+     "title": "She can point at it",
+     "where": "show_network · net_view event",
+     "lead": "Asked which devices are on the network, the picture goes there and the words come from the same read",
+     "body": [
+      "The tool returns the node list as TEXT as well, so Telegram, a schedule",
+      "and the API get a working answer with no picture to move",
+      "Recognised deterministically before the turn starts, in both languages:",
+      "the local tier was offered the tool, described it, and did not call it —",
+      "the same measurement that drove schedules and named agents",
+      "A view change is not consequential: an approval card in front of every \"mostra-me a rede\" is a feature nobody uses twice",
+      "With neighbour discovery off it SAYS so and names the setting, rather than showing an empty view to someone with eighteen machines on their LAN"
+     ],
+     "phase": "14"
+    },
+    {
+     "id": "opening-a-file-from-a-picture",
+     "title": "Opening a file from a picture",
+     "where": "GET /api/graph/open",
+     "lead": "Three locks, because a file read through a graph is still a file read",
+     "body": [
+      "The caller's ROLE must be allowed the knowledge base; the path must be",
+      "IN the index matched on its real path; every open writes an AUDIT row",
+      "/api/files/serve could not be reused: it serves the caller's own output",
+      "and uploads, and widening it to reach the archive would have widened it",
+      "for every account at once",
+      "The index is system-wide and single, so being in it is NOT a per-user permission — gating on membership alone hands every scanned file to the most restricted account",
+      "Being under an indexed FOLDER is not enough either: that includes everything the scanner deliberately skipped"
+     ],
+     "phase": "14"
+    },
+    {
+     "id": "back-is-not-up",
+     "title": "Back is not up",
+     "where": "_netHist · _collapse / _live_steps",
+     "lead": "The breadcrumb says where a level SITS; back says where the viewer WAS",
+     "body": [
+      "A drive's parent is the knowledge base whatever route you took, so from",
+      "the overview — where everything is one click away — climbing the trail",
+      "lands somewhere never visited",
+      "Opening a drive skips folders holding exactly one thing; the trail went",
+      "on offering every skipped folder as its own step, and all of them",
+      "resolved back to the folder on screen",
+      "Clicking the centre sphere goes back. It is drawn from buffer index 0 and is in no node list, so picking could never return it — the most obvious target on screen did nothing at all."
+     ],
+     "phase": "14"
+    },
+    {
+     "id": "controls-that-can-be-reached",
+     "title": "Controls that can be reached",
+     "where": "face.html · _netSetFocus",
+     "lead": "Three of them were in the DOM, bound to handlers, and unreachable",
+     "body": [
+      "The page hides a control with opacity 0 and pointer-events none and",
+      "reveals it with a class. Nothing errors when the class never arrives:",
+      "the button exists, the handler is bound, the click never happens",
+      "One was toggled nowhere; one only when a level loaded, which is not",
+      "when focus changes; one had its opacity restored and not its",
+      "pointer-events, so it was visible, hover-styled and untouchable",
+      "A keyboard shortcut was the wrong shape entirely: the chat box takes focus on load and after every reply, so a bare letter never reaches the handler",
+      "The regression guard for it passed while the bug was present. It matched any toggle in the function rather than each element's own — now each of the three bugs, reinstated, fails it."
+     ],
+     "phase": "14"
+    }
+   ]
+  }
+ ],
+ "edges": [
+  {
+   "from": "orchestrator",
+   "to": "models",
+   "type": "calls",
+   "note": "the router picks a tier, the factory builds the agent"
+  },
+  {
+   "from": "orchestrator",
+   "to": "agents",
+   "type": "calls",
+   "note": "a named agent runs the ordinary request path under its profile"
+  },
+  {
+   "from": "agents",
+   "to": "models",
+   "type": "pins",
+   "note": "a profile's pinned model decides the path, not just the tier"
+  },
+  {
+   "from": "orchestrator",
+   "to": "field",
+   "type": "emits",
+   "note": "show_network moves the view through the event channel"
+  },
+  {
+   "from": "field",
+   "to": "agents",
+   "type": "reads",
+   "note": "the agents level lists the caller's own profiles and schedules"
+  }
+ ]
+}

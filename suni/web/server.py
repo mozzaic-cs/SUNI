@@ -2682,6 +2682,34 @@ def create_app() -> FastAPI:
         if redir: return redir
         return _page(_inject_token(ARCH_FILE.read_text(encoding="utf-8")))
 
+    # The architecture page as panels in 3D, on its own URL while it is a
+    # prototype: the flat page stays exactly where it is and keeps working,
+    # which is the only way to judge one against the other.
+    @app.get("/architecture/next")
+    async def architecture_next(request: Request):
+        user, redir = _check_page_auth(request)
+        if redir: return redir
+        return _page(_inject_token(
+            (Path(__file__).parent / "architecture_next.html").read_text(encoding="utf-8")))
+
+    @app.get("/archgraph.js")
+    async def archgraph_js():
+        return Response(
+            content=(Path(__file__).parent / "archgraph.js").read_text(encoding="utf-8"),
+            media_type="application/javascript",
+            headers={"Cache-Control": "no-store"})
+
+    @app.get("/architecture.json")
+    async def architecture_json(request: Request):
+        """The page's content as data. Same auth as the page it feeds: the
+        component names alone say what this machine is built to do."""
+        user, redir = _check_page_auth(request)
+        if redir: return redir
+        return Response(
+            content=(Path(__file__).parent / "architecture.json").read_text(encoding="utf-8"),
+            media_type="application/json",
+            headers={"Cache-Control": "no-store"})
+
     @app.get("/chat")
     async def chat_page(request: Request):
         user, redir = _check_page_auth(request)

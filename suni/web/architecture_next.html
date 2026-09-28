@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SUNI · architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
+<script src="/archgraph.js"></script>
+<style>
+:root{
+  --bg:#05070e; --ink:#e4ecff; --muted:#7f8ba3;
+  --gold:#c9a227; --cyan:#00d4ff; --teal:#14d98c; --purple:#9b59b6; --red:#ff4560;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+  font-family:'DM Mono',monospace;overflow:hidden}
+#stage{position:fixed;inset:0;cursor:grab}
+#stage.dragging{cursor:grabbing}
+#edges{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+#panels{position:absolute;inset:0}
+
+/* ── a panel ───────────────────────────────────────────────────────────────
+   Positioned by the 3D projection, but drawn by the browser as ordinary text.
+   transform-origin is the centre so the scale reads as distance.            */
+.panel{position:absolute;transform-origin:50% 50%;will-change:transform;
+  width:228px;padding:11px 13px;border-radius:10px;cursor:pointer;
+  background:rgba(8,13,26,.88);border:1px solid rgba(120,150,200,.22);
+  backdrop-filter:blur(4px);
+  transition:border-color .18s ease,background .18s ease}
+.panel:hover{border-color:rgba(0,212,255,.55);background:rgba(12,20,38,.94)}
+.panel .where{font-size:8.5px;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:5px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.panel .title{font-family:'Syne',sans-serif;font-weight:700;font-size:14px;
+  line-height:1.2;margin-bottom:5px}
+.panel .lead{font-size:10px;line-height:1.5;color:rgba(228,236,255,.72)}
+.panel .count{margin-top:7px;padding-top:6px;font-size:9px;color:var(--muted);
+  border-top:1px solid rgba(255,255,255,.07)}
+.panel.group{width:252px}
+.panel.item{width:206px}
+.panel .n{display:inline-block;min-width:17px;font-size:9px;color:var(--muted)}
+.panel.dim{opacity:.34}
+
+/* ── chrome ─────────────────────────────────────────────────────────────── */
+header{position:absolute;top:0;left:0;right:0;z-index:20;padding:16px 22px;
+  display:flex;align-items:baseline;gap:16px;pointer-events:none}
+header h1{font-family:'Syne',sans-serif;font-weight:800;font-size:17px;margin:0;
+  letter-spacing:.12em;color:var(--gold)}
+header .sub{font-size:10px;color:var(--muted);letter-spacing:.06em}
+header .proto{margin-left:auto;font-size:9px;letter-spacing:.08em;
+  color:var(--muted);border:1px solid rgba(120,150,200,.25);
+  padding:4px 9px;border-radius:999px;pointer-events:auto}
+header .proto a{color:var(--cyan);text-decoration:none}
+
+#trail{position:absolute;left:22px;bottom:18px;z-index:20;font-size:11px;
+  color:rgba(228,236,255,.6);display:flex;gap:6px;align-items:center}
+#trail span{cursor:pointer;padding:2px 6px;border-radius:4px}
+#trail span:hover{color:var(--cyan);background:rgba(0,212,255,.08)}
+#trail b{font-weight:400;color:var(--ink);padding:2px 6px}
+#hint{position:absolute;right:22px;bottom:18px;z-index:20;font-size:10px;
+  color:var(--muted);text-align:right;line-height:1.7}
+
+/* ── the reading panel ──────────────────────────────────────────────────── */
+#read{position:absolute;top:0;right:0;bottom:0;width:min(470px,42vw);z-index:30;
+  background:rgba(5,9,18,.97);border-left:1px solid rgba(120,150,200,.22);
+  transform:translateX(102%);transition:transform .3s cubic-bezier(.4,0,.2,1);
+  display:flex;flex-direction:column}
+#read.on{transform:none}
+#read .head{padding:20px 24px 14px;border-bottom:1px solid rgba(255,255,255,.07)}
+#read .head .where{font-size:9px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:7px}
+#read .head h2{font-family:'Syne',sans-serif;font-size:19px;margin:0 0 8px;font-weight:700}
+#read .head .lead{font-size:12px;line-height:1.6;color:rgba(228,236,255,.8)}
+#read .body{padding:18px 24px 40px;overflow-y:auto;font-size:11.5px;line-height:1.75}
+#read .body p{margin:0 0 13px;color:rgba(228,236,255,.78)}
+#read .body p.scar{color:rgba(255,120,140,.92);border-left:2px solid rgba(255,69,96,.45);
+  padding-left:11px}
+#read .x{position:absolute;top:16px;right:18px;cursor:pointer;font-size:14px;
+  color:var(--muted);padding:4px 8px;border-radius:6px}
+#read .x:hover{color:#fff;background:rgba(255,255,255,.08)}
+#read .body::-webkit-scrollbar{width:3px}
+#read .body::-webkit-scrollbar-thumb{background:rgba(0,212,255,.3)}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>SUNI</h1>
+  <span class="sub" id="sub">architecture</span>
+  <span class="proto">prototype · four subsystems · <a href="/architecture">the full flat page</a></span>
+</header>
+
+<div id="stage">
+  <canvas id="edges"></canvas>
+  <div id="panels"></div>
+</div>
+
+<div id="trail"></div>
+<div id="hint">drag to turn · wheel to zoom<br>click a panel to open it · Esc to go back</div>
+
+<aside id="read">
+  <div class="x" id="read-x">&#10005;</div>
+  <div class="head">
+    <div class="where" id="read-where"></div>
+    <h2 id="read-title"></h2>
+    <div class="lead" id="read-lead"></div>
+  </div>
+  <div class="body" id="read-body"></div>
+</aside>
+
+<script>
+'use strict';
+
+const stage = document.getElementById('stage');
+const cv = document.getElementById('edges');
+const ctx = cv.getContext('2d');
+const panelsEl = document.getElementById('panels');
+const trailEl = document.getElementById('trail');
+const readEl = document.getElementById('read');
+
+let G = null;                    // the ArchGraph
+let DOC = null;
+const pool = new Map();          // id -> element, reused frame to frame
+
+function esc(v){ return String(v == null ? '' : v)
+  .replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* A line the original page coloured red is a scar: something that went wrong
+   and was found the hard way. They are the most useful sentences on the page,
+   so they keep a mark of their own rather than being flattened into the body. */
+function isScar(line){
+  return /^(Caught|Measured|Unlike|A task lives|The CLI reported|Runs and tokens|Nothing here|Neighbours|Being under|The index is|The regression|A keyboard)/.test(line)
+      || /\b(was|were) (never|not)\b/.test(line)
+      || /never once|silently|quietly|had no callers|did nothing/.test(line);
+}
+
+/* ── panels ───────────────────────────────────────────────────────────── */
+function keyOf(nd){ return (nd.kind === 'group' ? 'g:' : 'i:') + nd.ref.id; }
+
+function build(nd){
+  const el = document.createElement('div');
+  const r = nd.ref;
+  const tone = ArchGraph.tone(nd.kind === 'group' ? r.tone : (nd.group && nd.group.tone));
+  el.className = 'panel ' + nd.kind;
+  el.style.borderColor = `rgba(${tone},.3)`;
+  const count = nd.kind === 'group'
+    ? `${(r.items || []).length} ${r.kind === 'sequence' ? 'steps, in order' : 'components'}`
+    : (r.body && r.body.length ? `${r.body.length} more line${r.body.length > 1 ? 's' : ''}` : '');
+  el.innerHTML =
+    `<div class="where">${esc(r.where || '')}</div>` +
+    `<div class="title" style="color:rgb(${tone})">${esc(r.title)}</div>` +
+    `<div class="lead">${esc(r.lead || '')}</div>` +
+    (count ? `<div class="count">${esc(count)}</div>` : '');
+  el.addEventListener('click', ev => {
+    ev.stopPropagation();
+    if (nd.kind === 'group') {
+      if (G.open === r.id) openRead(r, nd); else { G.openGroup(r.id); drawTrail(); }
+    } else {
+      openRead(r, nd);
+    }
+  });
+  panelsEl.appendChild(el);
+  return el;
+}
+
+function frame(dt){
+  const w = stage.clientWidth, h = stage.clientHeight;
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  G.update(dt);
+  const list = G.placed(w, h);
+  G.drawEdges(ctx, w, h, list);
+
+  const seen = new Set();
+  list.forEach((p, i) => {
+    const k = keyOf(p.nd);
+    seen.add(k);
+    let el = pool.get(k);
+    if (!el) { el = build(p.nd); pool.set(k, el); }
+    el.style.transform =
+      `translate(-50%,-50%) translate(${p.x.toFixed(1)}px,${p.y.toFixed(1)}px) scale(${p.scale.toFixed(3)})`;
+    el.style.zIndex = String(10 + i);
+    el.style.opacity = String(Math.max(0.15, Math.min(1, 26 / p.d)));
+    el.classList.toggle('dim', !!p.nd.dim);
+    el.style.display = '';
+  });
+  for (const [k, el] of pool) if (!seen.has(k)) el.style.display = 'none';
+}
+
+/* ── the reading panel ────────────────────────────────────────────────── */
+function openRead(r, nd){
+  document.getElementById('read-where').textContent = r.where || '';
+  document.getElementById('read-title').textContent = r.title;
+  document.getElementById('read-lead').textContent = r.lead || '';
+  const tone = ArchGraph.tone(nd && nd.kind === 'group' ? r.tone : (nd && nd.group && nd.group.tone));
+  document.getElementById('read-title').style.color = `rgb(${tone})`;
+  document.getElementById('read-body').innerHTML =
+    (r.body || []).map(l => `<p class="${isScar(l) ? 'scar' : ''}">${esc(l)}</p>`).join('')
+    || '<p style="color:var(--muted)">Nothing more than the line above.</p>';
+  readEl.classList.add('on');
+}
+document.getElementById('read-x').addEventListener('click', () => readEl.classList.remove('on'));
+
+/* ── trail ────────────────────────────────────────────────────────────── */
+function drawTrail(){
+  const g = (DOC.groups || []).find(x => x.id === G.open);
+  trailEl.innerHTML = g
+    ? `<span data-id="">${esc(DOC.title)}</span><span style="opacity:.35">/</span><b>${esc(g.title)}</b>`
+    : `<b>${esc(DOC.title)}</b>`;
+  trailEl.querySelectorAll('span[data-id]').forEach(s =>
+    s.addEventListener('click', () => { G.openGroup(null); readEl.classList.remove('on'); drawTrail(); }));
+  document.getElementById('sub').textContent = g ? g.lead : (DOC.note || 'architecture');
+}
+
+/* ── input ────────────────────────────────────────────────────────────── */
+let drag = null, moved = 0;
+stage.addEventListener('pointerdown', e => { drag = {x:e.clientX,y:e.clientY}; moved = 0;
+  stage.classList.add('dragging'); });
+window.addEventListener('pointerup', () => { drag = null; stage.classList.remove('dragging'); });
+window.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  moved += Math.abs(dx) + Math.abs(dy);
+  drag = {x:e.clientX, y:e.clientY};
+  G.orbit(dx, dy);
+});
+stage.addEventListener('wheel', e => { e.preventDefault(); G.zoom(e.deltaY); }, {passive:false});
+stage.addEventListener('click', () => { if (moved < 5 && G.open) { /* empty space: stay */ } });
+window.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (readEl.classList.contains('on')) { readEl.classList.remove('on'); return; }
+  if (G.open) { G.openGroup(null); drawTrail(); }
+});
+
+/* ── boot ─────────────────────────────────────────────────────────────── */
+fetch('/architecture.json', {cache:'no-store'})
+  .then(r => r.json())
+  .then(doc => {
+    DOC = doc;
+    G = new ArchGraph(doc);
+    console.log('[ARCH_BUILD]', (doc.groups||[]).length, 'groups,',
+                (doc.groups||[]).reduce((n,g)=>n+(g.items||[]).length,0), 'items');
+    // Deep link: /architecture/next?open=field lands inside a subsystem.
+    // Useful for pointing somebody at one, and the only way to screenshot the
+    // opened state without a hand on the mouse.
+    const want = new URLSearchParams(location.search).get('open');
+    if (want && (doc.groups || []).some(g => g.id === want)) G.openGroup(want);
+    drawTrail();
+    let last = 0;
+    requestAnimationFrame(function loop(ts){
+      const dt = Math.min((ts - last) / 1000, 0.05); last = ts;
+      frame(dt);
+      requestAnimationFrame(loop);
+    });
+  })
+  .catch(e => {
+    console.warn('[ARCH] load failed:', e);
+    document.getElementById('sub').textContent = 'could not load architecture.json';
+  });
+</script>
+</body>
+</html>
