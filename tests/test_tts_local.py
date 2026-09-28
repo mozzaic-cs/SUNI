@@ -178,3 +178,43 @@ def test_the_decision_table_holds(saved, backend, expect_local):
     use_local = chose_local or backend in ("piper", "local") or (
         backend == "auto" and not chose_edge)
     assert use_local is expect_local
+
+
+# ── whose language is it ────────────────────────────────────────────────────
+def test_transcription_uses_the_speakers_language_not_the_instance_default():
+    """Measured, not argued. The same clip of European Portuguese:
+
+        told "pt-PT"  -> "Quer ver os ficheres indexados com o resumo por cliente."
+        told "en-GB"  -> "want to see the indexed screws with the client's resume."
+        told nothing  -> "want to see the indexed screws with the client's resume."
+
+    The instance default is en-GB and this speaker is pt-PT, so reading config
+    instead of the user's settings had whisper transcribing Portuguese speech
+    into English — and it was confident about it, which is how it reached the
+    user as a plausible-looking sentence rather than as an error.
+    """
+    stt_src = (ROOT / "suni/stt.py").read_text(encoding="utf-8")
+    assert "language: str = \"\"" in stt_src, "transcribe() cannot be told a language"
+    i = stt_src.index("async def _transcribe_local")
+    block = stt_src[i:i + 1800]
+    assert "language or" in block, "the caller's language is ignored"
+
+    server = (ROOT / "suni/web/server.py").read_text(encoding="utf-8-sig")
+    j = server.index("async def stt_transcribe")
+    route = server[j:j + 1800]
+    assert "_user_settings.get(user[\"id\"])" in route, (
+        "the route sends the instance default rather than the speaker's language")
+    assert "language=_stt_lang" in route
+
+
+def test_detection_is_not_trusted_over_a_stated_language():
+    """I claimed detection beats a possibly-wrong label, then measured it: on a
+    short clip whisper detected English for Portuguese speech. A stated
+    language wins, and the instance default is the last resort rather than
+    letting it guess."""
+    stt_src = (ROOT / "suni/stt.py").read_text(encoding="utf-8")
+    i = stt_src.index("async def _transcribe_local")
+    block = stt_src[i:i + 1800]
+    assert '_cfg.get("stt_language"' in block, "nothing to fall back to"
+    assert block.index("language or") < block.index('_cfg.get("stt_language"'), (
+        "the instance default is consulted before the speaker's own language")

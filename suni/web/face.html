@@ -3432,12 +3432,61 @@ if (SR) {
     }
   };
 
-  micBtn.addEventListener('click', () => {
-    if (listening) { _stopAndSend(); return; }
+  function _startListening() {
+    if (listening) return;
     accTranscript = '';
     finalTranscript = '';
     inputEl.value = '';
     try { recognition.start(); } catch(err) { console.warn('STT start:', err); }
+  }
+
+  micBtn.addEventListener('click', () => {
+    if (listening) { _stopAndSend(); return; }
+    _startListening();
+  });
+
+  /* PUSH TO TALK - hold space, talk, let go.
+
+     Clicking a button is fine when you are already holding a mouse, and
+     graceless when you are sitting back talking to a face on a screen. The mic
+     is closed except while the key is down, which is also the honest
+     arrangement: nothing records in the background, ever.
+
+     Holding the key doubles as the interruption. If she is mid-sentence when
+     you start talking, she stops - which is what a person would do, and the
+     thing that separates a voice interface worth using from one you wait out.
+     It reuses the pause the stop button already drives rather than inventing a
+     second way to silence her.
+
+     Space repeats while held, so the first keydown starts and the rest are
+     ignored; and it is suppressed while typing, where a space is a space. */
+  let _pttDown = false;
+  window.addEventListener('keydown', e => {
+    if (e.code !== 'Space' || e.repeat || _pttDown) return;
+    const t = e.target;
+    if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
+    if (micBtn.disabled) return;
+    e.preventDefault();          // or the page scrolls under her
+    _pttDown = true;
+    if (_ttsSpeaking()) {        // barge-in: she yields the floor
+      audioEl.pause();
+      _ttsGen++;                 // abandon the queue rather than resume into it
+      _ttsQueue.length = 0;
+      setState('idle');
+    }
+    _startListening();
+  });
+  window.addEventListener('keyup', e => {
+    if (e.code !== 'Space' || !_pttDown) return;
+    _pttDown = false;
+    e.preventDefault();
+    _stopAndSend();
+  });
+  // A key held while the tab loses focus would otherwise stay down for ever.
+  window.addEventListener('blur', () => {
+    if (!_pttDown) return;
+    _pttDown = false;
+    _stopAndSend();
   });
 
   // Warn proactively if on HTTP (VPN/IP access) — mic will be blocked by browser
@@ -3451,6 +3500,113 @@ if (SR) {
   micBtn.disabled = true;
   micBtn.title = t('orb.speech_unavail');
 }
+
+/* ═══ SERVER-SIDE SPEECH — record here, transcribe here ═══════════════════
+
+   The browser's recogniser heard "Quero ver os ficheiros indexados, com um
+   resumo por cliente" as "Nós estamos ficheiros, OK? Quer dizer, de facto, os
+   incluídos são muito circulos nessas coisas". Google's free Web Speech is
+   markedly weaker on European Portuguese than on Brazilian, and worse again at
+   any distance from the microphone. Measured on the same sentence in a natural
+   voice, the whisper model already installed for meeting transcription
+   returned "Quer ver os ficheres indexados com o resumo por cliente" —
+   imperfect, and a different category of imperfect.
+
+   So when stt_backend is not 'browser' this takes the microphone over
+   entirely: hold the key, MediaRecorder captures, release, the audio is posted
+   once and comes back as text. No interim results, no restarts, no engine
+   re-delivering its own prefixes — the three things that made the Web Speech
+   path take three attempts to get right.
+
+   The audio goes to SUNI and nowhere else, which is the other half of the
+   point: the browser path ships your microphone to Google.                  */
+let _sttRec = null, _sttChunks = [], _sttStream = null, _sttBusy = false;
+
+async function _sttStart() {
+  if (_sttRec || _sttBusy) return;
+  try {
+    if (!_sttStream) {
+      _sttStream = await navigator.mediaDevices.getUserMedia({audio: true});
+    }
+    _sttChunks = [];
+    _sttRec = new MediaRecorder(_sttStream);
+    _sttRec.ondataavailable = ev => { if (ev.data && ev.data.size) _sttChunks.push(ev.data); };
+    _sttRec.start();
+    micBtn.classList.add('listening');
+    inputEl.placeholder = 'Listening… ' + STT_SERVER_BUILD;
+  } catch (err) {
+    console.warn('[STT_SERVER] mic:', err);
+    _showToast('I cannot reach the microphone.');
+    _sttRec = null;
+  }
+}
+
+async function _sttStop() {
+  const rec = _sttRec;
+  if (!rec) return;
+  _sttRec = null;
+  micBtn.classList.remove('listening');
+  inputEl.placeholder = 'Transcribing…';
+  _sttBusy = true;
+  try {
+    await new Promise(res => { rec.onstop = res; rec.stop(); });
+    const blob = new Blob(_sttChunks, {type: rec.mimeType || 'audio/webm'});
+    _sttChunks = [];
+    if (blob.size < 2000) { inputEl.placeholder = ''; return; }   // a tap, not speech
+    const fd = new FormData();
+    fd.append('audio', blob, 'speech.webm');   // the field name the route reads
+    const r = await _apiFetch('/api/stt/transcribe', {method: 'POST', body: fd});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const text = ((await r.json()).text || '').trim();
+    console.log('[STT_SERVER] heard:', text);
+    if (!text) { _showToast('I heard nothing.'); return; }
+    inputEl.value = text;
+    send();
+  } catch (err) {
+    console.warn('[STT_SERVER] transcribe:', err);
+    _showToast('I could not transcribe that.');
+  } finally {
+    _sttBusy = false;
+    inputEl.placeholder = '';
+  }
+}
+
+const STT_SERVER_BUILD = 'stt-server-v1';
+
+_apiFetch('/api/config').then(r => r.json()).then(cfg => {
+  const backend = String(cfg.stt_backend || 'browser').toLowerCase();
+  if (backend === 'browser') return;
+  console.log('[STT_SERVER]', STT_SERVER_BUILD, '— taking the microphone,',
+              'backend =', backend);
+  // Replacing the element drops every listener the Web Speech path attached,
+  // which is cleaner than asking each of them to check a flag and is the only
+  // way to be sure two recognisers are never live at once.
+  const fresh = micBtn.cloneNode(true);
+  micBtn.parentNode.replaceChild(fresh, micBtn);
+  const mic = document.getElementById('mic-btn');
+  mic.disabled = false;
+  mic.title = 'Hold space, or click to start and stop';
+  mic.addEventListener('click', () => (_sttRec ? _sttStop() : _sttStart()));
+
+  let down = false;
+  window.addEventListener('keydown', e => {
+    if (e.code !== 'Space' || e.repeat || down) return;
+    const t = e.target;
+    if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
+    e.preventDefault();
+    down = true;
+    if (_ttsSpeaking()) {          // barge-in: she yields the floor
+      audioEl.pause();
+      _ttsGen++;
+      _ttsQueue.length = 0;
+      setState('idle');
+    }
+    _sttStart();
+  });
+  const release = () => { if (down) { down = false; _sttStop(); } };
+  window.addEventListener('keyup', e => { if (e.code === 'Space') { e.preventDefault(); release(); } });
+  window.addEventListener('blur', release);
+}).catch(e => console.warn('[STT_SERVER] config:', e));
 
 function _showToast(msg) {
   const t = document.createElement('div');

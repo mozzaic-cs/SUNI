@@ -2656,10 +2656,17 @@ def create_app() -> FastAPI:
         if len(data) > _stt._MAX_AUDIO_BYTES:
             raise HTTPException(413, "Audio too large.")
         try:
+            # The SPEAKER's language, not the instance default. This user is
+            # pt-PT while the instance is en-GB, and passing the instance
+            # default had whisper transcribing Portuguese speech into English.
+            # Empty means "detect it", which beats asserting the wrong one.
+            _stt_lang = str((_user_settings.get(user["id"]) or {}).get(
+                "stt_language", "") or "").strip()
             text = await _stt.transcribe(
                 data,
                 filename=getattr(audio, "filename", None) or "audio.webm",
                 content_type=getattr(audio, "content_type", None) or "audio/webm",
+                language=_stt_lang,
             )
         except _stt.STTError as e:
             raise HTTPException(502, str(e))
