@@ -48,7 +48,14 @@ _queue: queue.Queue | None = None
 # Anything that looks like a credential, in any string we are about to log.
 _CRED_IN_URL = re.compile(r"(?<=://)([^/@\s:]+):([^/@\s]+)(?=@)")
 _SECRETISH = re.compile(
-    r"(?i)\b(pass(word)?|token|secret|api[_-]?key|authorization)\b\s*[=:]\s*\S+")
+    r"(?i)[\w.\-]*"
+    r"(?:password|passwd|token|secret|api[_-]?key|apikey|authorization|auth)"
+    r"[\w.\-]*"
+    r"\s*[=:]\s*(?:bearer|basic|token)?\s*[^\s,;&'\"]+")
+# Credentials that carry no key name at all, because somebody pasted one in.
+# A Telegram bot token is unmistakable and arrived in this repo inside a
+# screenshot; an OpenAI-style key is equally distinctive.
+_BARE_SECRET = re.compile(r"\b(?:\d{6,12}:[A-Za-z0-9_-]{30,}|sk-[A-Za-z0-9_-]{16,})\b")
 
 
 def _safe(text: Any, *secrets: str) -> str:
@@ -63,7 +70,23 @@ def _safe(text: Any, *secrets: str) -> str:
         if sec and len(sec) >= 3:
             s = s.replace(sec, "***")
     s = _CRED_IN_URL.sub(r"\1:***", s)
-    s = _SECRETISH.sub(lambda m: m.group(0).split("=")[0].split(":")[0] + "=***", s)
+
+    def _mask(m: "re.Match") -> str:
+        """Keep the key, drop everything after the separator.
+
+        The old form took group(0) up to its first "=" or ":", which failed two
+        real shapes. "Authorization: Bearer <token>" split at the colon and kept
+        the token, because only the word "Bearer" had been consumed. And
+        "telegram_bot_token=..." never matched at all: \\btoken\\b finds no word
+        boundary after an underscore, so the one key name SUNI actually stores a
+        bot token under went through untouched.
+        """
+        text = m.group(0)
+        cut = [p for p in (text.find("="), text.find(":")) if p >= 0]
+        return (text[:min(cut) + 1] if cut else text) + "***"
+
+    s = _SECRETISH.sub(_mask, s)
+    s = _BARE_SECRET.sub("***", s)
     return s
 
 

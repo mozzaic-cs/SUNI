@@ -284,7 +284,7 @@ def _build_orchestrator(
     registry.register(claude_code_advanced.SCHEDULE_SCHEMA, claude_code_advanced.schedule_handler)
     registry.register(claude_code_advanced.ADVISOR_SCHEMA, claude_code_advanced.advisor_handler)
     from ..tools import (agent_tool, schedule_tool, network_tool, memory_tool,
-                         screen_tool, network_view_tool)
+                         screen_tool, network_view_tool, diagnose_tool)
     # network_tool and memory_tool were registered in main.py's CLI registry and
     # NOT here, so the web UI silently lacked ping_host and memory_save/search.
     # run() already calls memory_tool.bind() every request, which does nothing
@@ -334,6 +334,11 @@ def _build_orchestrator(
     # are handed over in create_app, where they exist - they are not in scope
     # here, and the registry it is being added to is built before they are.
     registry.register(network_view_tool.SCHEMA, network_view_tool.handler)
+    # Reads its own logs and says what is wrong. Registered for everyone and
+    # refusing inside for anyone who is not an administrator: the alternative
+    # is a role-shaped hole where a channel user asks how she is feeling and
+    # gets the contents of the machine's log.
+    registry.register(diagnose_tool.SCHEMA, diagnose_tool.handler)
     network_view_tool.set_sources(
         registry=registry, skill_store=skill_store,
         role_of=lambda uid: (_auth.get_user(uid) or {}).get("role", ""))
