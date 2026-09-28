@@ -981,6 +981,16 @@ def create_app() -> FastAPI:
                 await _reconcile_channel(_ch)
             except Exception as _e:
                 _log.warning("[STARTUP] channel %s start failed: %s", _ch, _e)
+        # Load the local voice and push one phrase through it. The first
+        # synthesis after a load costs ~2s of ONNX warm-up; paying it here
+        # means the first thing anybody hears is not the slowest thing they
+        # will ever hear. Backgrounded — startup does not wait on a voice.
+        try:
+            from .. import tts_local as _tts_local
+            if _tts_local.available():
+                asyncio.create_task(_tts_local.warm())
+        except Exception as _e:      # noqa: BLE001
+            _log.debug("[TTS] no local voice to warm: %s", _e)
         # Daily briefing scheduler
         from .. import briefing as _briefing_mod
         asyncio.create_task(_briefing_mod.start_briefing_scheduler())
@@ -2578,6 +2588,27 @@ def create_app() -> FastAPI:
         # 503. We deliberately ignore any client-sent voice for this decision: the
         # browser echoes back a possibly-English global default, which must not
         # override a Portuguese speaker's language.
+        # The local voice first, when there is one. Measured on this machine,
+        # per sentence: edge-tts ~2.0-2.5s to first audio, piper 0.12s. Replies
+        # are spoken sentence by sentence, so that two seconds is paid before
+        # the first one and then raced against playback for every one after —
+        # and it is a dependency on Microsoft being reachable, which has
+        # returned 503 here merely because the box was busy.
+        _tts_backend = str(suni_config.get("tts_backend", "auto") or "auto").lower()
+        if _tts_backend in ("auto", "piper", "local"):
+            try:
+                from .. import tts_local as _local
+                if _local.available():
+                    _wav = await _local.speak(clean)
+                    if _wav:
+                        return Response(content=_wav, media_type="audio/wav")
+                    # Fell through on purpose: a failed clip must not cost
+                    # somebody their voice output when the cloud still works.
+                elif _tts_backend != "auto":
+                    _log.info("[TTS] no local voice installed — using the cloud voice")
+            except Exception as exc:      # noqa: BLE001
+                _log.warning("[TTS] local voice failed, using the cloud: %s", exc)
+
         if _saved_voice in _EDGE_TTS_VOICE_SET:
             voice = _saved_voice
         else:

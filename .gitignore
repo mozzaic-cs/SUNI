@@ -58,3 +58,7 @@ suni/web/architecture_v1_*.html
 /*.gif
 /*.webp
 /nul
+
+# Local speech voices. 63 MB of ONNX per voice, downloaded from the piper
+# project — a build artefact, not source.
+models/piper/

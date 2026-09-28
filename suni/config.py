@@ -323,7 +323,16 @@ DEFAULTS: dict[str, Any] = {
     # 'edge' (default) = edge-tts (Microsoft cloud). 'server' = a self-hosted
     # OpenAI-compatible speech endpoint (audio stays in your infra). The voice
     # string comes from the existing tts_voice setting.
-    "tts_backend":  "edge",                        # edge | server
+    # auto  = the local voice when one is installed, else the cloud one
+    # edge  = always the cloud voice
+    # piper = the local one, still falling back rather than going silent
+    # Measured here, per sentence: edge-tts ~2.0–2.5 s to first audio, piper
+    # 0.12 s. Replies are spoken sentence by sentence, so the cloud round trip
+    # is paid before the first one and then raced against playback for each one
+    # after it — and it needs Microsoft reachable, which has returned 503 here
+    # merely because the box was busy.
+    "tts_backend": "auto",
+    "piper_voice":  "",                            # voice file in models/piper; "" = the one that is there
     "tts_base_url": "",                            # OpenAI-compatible base incl. /v1 (e.g. http://gpu-5:8080/v1)
     "tts_model":    "tts-1",                       # model name the server expects
     "tts_api_key":  "",                            # optional
