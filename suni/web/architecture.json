@@ -1,18 +1,204 @@
 {
- "version": 1,
+ "version": 2,
  "title": "SUNI architecture",
- "note": "A prototype over four subsystems. The other nine lanes of the flat page are not in here yet.",
+ "note": "Everything this machine is built out of, one level at a time.",
  "groups": [
+  {
+   "id": "interfaces",
+   "title": "Client interfaces",
+   "where": "browser-first · all interactions via HTTPS",
+   "lead": "Three browser surfaces over one HTTPS API",
+   "tone": "cyan",
+   "kind": "set",
+   "items": [
+    {
+     "id": "orb-ui-ui-html",
+     "title": "Orb UI — ui.html",
+     "where": "browser · /",
+     "lead": "WebGL orb · 6 Gaussian blobs · Lissajous paths",
+     "body": [
+      "States: idle / thinking / speaking / working / browsing",
+      "SSE: token · done · error · tool_start · tool_end · skill_used · cc_note · fanout",
+      "STT Web Speech API · streaming TTS edge-tts · mode selector",
+      "Drag-drop upload · opt-in webcam presence (orb wakes) · snapshot"
+     ],
+     "phase": "",
+     "icon": ""
+    },
+    {
+     "id": "chat-ui-chat-html",
+     "title": "Chat UI — chat.html",
+     "where": "browser · /chat",
+     "lead": "Persistent conversations · sidebar · markdown",
+     "body": [
+      "Live activity feed — tool calls stream in real-time",
+      "File upload (drag-drop) · download link detection",
+      "Per-user settings · mode selector · STT/TTS"
+     ],
+     "phase": "",
+     "icon": ""
+    },
+    {
+     "id": "persona-ui-face-html",
+     "title": "Persona UI — face.html",
+     "where": "browser · /face",
+     "lead": "Raw-WebGL holographic 3D head · Cortana-style",
+     "body": [
+      "Voice-first: retractable dock + stream-driven live caption",
+      "Solid mesh hologram · jaw driven by TTS amplitude · procedural eyes",
+      "Opt-in webcam head/eye-tracking · vision snapshot · colour picker",
+      "Drag-drop upload · shares orb SSE/TTS/STT/auth · ORB/CHAT/FACE nav"
+     ],
+     "phase": "",
+     "icon": ""
+    },
+    {
+     "id": "admin-panel-admin-html",
+     "title": "Admin Panel — admin.html",
+     "where": "browser · /admin",
+     "lead": "Dashboard · Users · Roles · Audit · Skills",
+     "body": [
+      "MCP catalog · Backup · Config · Logs",
+      "GPU/VRAM charts · activity log · KB compress button",
+      "Skills tab: browse / edit / delete learned skills",
+      "Ollama Endpoints panel · Model Tiers inventory",
+      "Per-user API key field (Fernet encrypted)",
+      "Files & Output → global_output_dir (default files/output)",
+      "per-user subfolder · serve scoped to the caller"
+     ],
+     "phase": "",
+     "icon": ""
+    },
+    {
+     "id": "external-mcp-clients",
+     "title": "External MCP Clients",
+     "where": "optional · suni_mcp.py",
+     "lead": "Claude Desktop / Claude Code / any MCP client",
+     "body": [
+      "Loads suni_mcp.py: search_memory · add_memory",
+      "chat_with_suni · run_shell (hardened) · articles",
+      "Not required — SUNI runs standalone"
+     ],
+     "phase": "",
+     "icon": ""
+    }
+   ],
+   "inventory": []
+  },
+  {
+   "id": "channels",
+   "title": "Messaging channels",
+   "where": "reach SUNI from anywhere · connect-out · no public URL · allow-list fail-closed · role sta",
+   "lead": "Reach her from Telegram, Discord or Slack — no public URL, ever",
+   "tone": "blue",
+   "kind": "set",
+   "items": [
+    {
+     "id": "telegram-long-poll",
+     "title": "Telegram — long-poll",
+     "where": "suni/telegram",
+     "lead": "getUpdates long-poll (calls OUT to Telegram)",
+     "body": [
+      "deleteWebhook first (avoids 409) · offset backlog-skip",
+      "stop-race for instant live disable · config bot token",
+      "mutually exclusive with /telegram webhook"
+     ],
+     "phase": "",
+     "icon": ""
+    },
+    {
+     "id": "discord-gateway-ws",
+     "title": "Discord — Gateway WS",
+     "where": "suni/discord",
+     "lead": "hand-rolled Gateway (websockets, no discord.py)",
+     "body": [
+      "intents 37376 (privileged Message Content) · op-1 heartbeat",
+      "fatal-close 4004/4013/4014 terminal · RESUME skipped",
+      "loop-guard: drop bot/self messages"
+     ],
+     "phase": "",
+     "icon": ""
+    },
+    {
+     "id": "slack-socket-mode",
+     "title": "Slack — Socket Mode",
+     "where": "suni/slack",
+     "lead": "apps.connections.open → WSS (no public URL)",
+     "body": [
+      "two tokens: xapp (connections:write) + xoxb (chat:write)",
+      "ACK every envelope ≤3s · fatal auth terminal",
+      "WS ping/pong keepalive — no manual heartbeat"
+     ],
+     "phase": "",
+     "icon": ""
+    },
+    {
+     "id": "channel-supervisor",
+     "title": "Channel supervisor",
+     "where": "",
+     "lead": "server.py · live start/stop, no restart",
+     "body": [
+      "per-channel task + stop Event · _reconcile_channel",
+      "POST /api/config reconciles on token/enable change",
+      "_handle_tg/_dc/_sk → allow-list gate → orchestrator (role standard)",
+      "per-channel memory: pseudo user-id → own MemoryManager"
+     ],
+     "phase": "10",
+     "icon": ""
+    },
+    {
+     "id": "whatsapp-email",
+     "title": "WhatsApp · Email",
+     "where": "webhook · legacy",
+     "lead": "WhatsApp via Twilio webhook (needs public URL)",
+     "body": [
+      "Email ingestion watcher (IMAP poll)",
+      "/telegram · /whatsapp webhooks also exist"
+     ],
+     "phase": "",
+     "icon": ""
+    }
+   ],
+   "inventory": []
+  },
+  {
+   "id": "server",
+   "title": "Web server",
+   "where": "server.py · FastAPI · uvicorn · slowapi",
+   "lead": "One process holding every route, and a gate in front of each",
+   "tone": "gold",
+   "kind": "set",
+   "items": [
+    {
+     "id": "fastapi-uvicorn-port-8765-https-self-signed-",
+     "title": "FastAPI · uvicorn · port 8765 · HTTPS self-signed TLS (10yr)",
+     "where": "",
+     "lead": "Rate limiting: 20/min chat · 40/min TTS · 2/hr compress · Body: 64 KB · 12 000 char · 100 MB upload",
+     "body": [],
+     "phase": "",
+     "icon": ""
+    }
+   ],
+   "inventory": [
+    "/api/status · /api/config",
+    "/api/dashboard · /api/metrics/history",
+    "/api/conversations CRUD",
+    "/api/knowledge/compress",
+    "/api/users · /api/roles · /api/audit",
+    "/api/backup · /api/auth/*",
+    "/api/approval/history (audit trail)"
+   ]
+  },
   {
    "id": "orchestrator",
    "title": "Orchestrator",
-   "where": "orchestrator.py",
+   "where": "orchestrator.py · sequential per request · event_cb → SSE queue",
    "lead": "Every request walks the same nine steps, in order",
    "tone": "gold",
    "kind": "sequence",
    "items": [
     {
-     "id": "step-01",
+     "id": "language",
      "title": "Language",
      "where": "step 01",
      "lead": "Inject SYSTEM msg",
@@ -20,10 +206,11 @@
       "response_language",
       "pt-PT / en-GB"
      ],
-     "phase": ""
+     "phase": "",
+     "icon": ""
     },
     {
-     "id": "step-02",
+     "id": "skills-l0",
      "title": "Skills L0",
      "where": "step 02",
      "lead": "Inject skill catalog",
@@ -31,10 +218,11 @@
       "name+desc only",
       "~3k tok / 50 skills"
      ],
-     "phase": ""
+     "phase": "",
+     "icon": ""
     },
     {
-     "id": "step-03",
+     "id": "memory",
      "title": "Memory",
      "where": "step 03",
      "lead": "User T2a + Collective T2b",
@@ -43,10 +231,11 @@
       "[FACT][COLLECTIVE][DOC]",
       "SYSTEM msg replaced each turn (no accumulation)"
      ],
-     "phase": ""
+     "phase": "",
+     "icon": ""
     },
     {
-     "id": "step-04",
+     "id": "web-prefetch",
      "title": "Web Prefetch",
      "where": "step 04",
      "lead": "Auto web_search",
@@ -54,10 +243,11 @@
       "live-data queries",
       "weather/news/price"
      ],
-     "phase": ""
+     "phase": "",
+     "icon": ""
     },
     {
-     "id": "step-05",
+     "id": "task-router",
      "title": "Task Router",
      "where": "step 05",
      "lead": "Pattern classifier",
@@ -67,10 +257,11 @@
       "web_url → web_fetch hint (no playwright)",
       "pdf hint uses resolve_output_dir(user)"
      ],
-     "phase": ""
+     "phase": "",
+     "icon": ""
     },
     {
-     "id": "step-06",
+     "id": "compressor",
      "title": "Compressor",
      "where": "step 06",
      "lead": "S0: dedup (A1)",
@@ -79,11 +270,12 @@
       "S2: roll-up→150w",
       "fires at ~9 502 tok"
      ],
-     "phase": ""
+     "phase": "",
+     "icon": ""
     },
     {
-     "id": "step-07",
-     "title": "Direct Paths\nbypasses LLM",
+     "id": "direct-paths",
+     "title": "Direct Paths",
      "where": "step 07",
      "lead": "pdf→create_pdf",
      "body": [
@@ -91,10 +283,11 @@
       "cc→Claude Code T5 new",
       "blocked in read-only"
      ],
-     "phase": ""
+     "phase": "",
+     "icon": ""
     },
     {
-     "id": "step-08",
+     "id": "agent-loop",
      "title": "Agent Loop",
      "where": "step 08",
      "lead": "T1→T4 OllamaAgent",
@@ -103,10 +296,11 @@
       "needs_escalation → retry",
       "max 8 iter · task mode"
      ],
-     "phase": ""
+     "phase": "",
+     "icon": ""
     },
     {
-     "id": "step-09",
+     "id": "post-process",
      "title": "Post-Process",
      "where": "step 09",
      "lead": "memory.add_exchange",
@@ -116,14 +310,16 @@
       "_sanitize_response: strip DOC-EXCERPT tags",
       "_inject_dl_token: JWT appended to file links"
      ],
-     "phase": ""
+     "phase": "",
+     "icon": ""
     }
-   ]
+   ],
+   "inventory": []
   },
   {
    "id": "models",
    "title": "Tiered models",
-   "where": "model_tier.py · factory.py",
+   "where": "model_tier.py · model_inventory.py · system_profile.py",
    "lead": "Which brain answers, decided before a brain is asked",
    "tone": "purple",
    "kind": "set",
@@ -139,7 +335,8 @@
       "RBAC gate: claude_task not blocked · not read-only",
       "False-negative safe: local fallback always available"
      ],
-     "phase": ""
+     "phase": "",
+     "icon": ""
     },
     {
      "id": "complexity-score-text-1-4",
@@ -151,7 +348,8 @@
       "Capped at system_profile.MAX_LOCAL_TIER",
       "Selects tier for OllamaAgent loop"
      ],
-     "phase": ""
+     "phase": "",
+     "icon": ""
     },
     {
      "id": "needs-escalation-response-bool",
@@ -163,7 +361,8 @@
       "Short hedging (<60 words) → retry",
       "T4 = local ceiling — no further escalation"
      ],
-     "phase": ""
+     "phase": "",
+     "icon": ""
     },
     {
      "id": "model-inventory-py",
@@ -176,7 +375,8 @@
       "Cached · GET /api/models/inventory (admin)",
       "?refresh=1 forces rescan"
      ],
-     "phase": ""
+     "phase": "",
+     "icon": ""
     },
     {
      "id": "system-profile-py",
@@ -188,7 +388,8 @@
       "Sets MAX_LOCAL_TIER + DEFAULT_TIER",
       "RTX 4000 8 GB → T2 default, T2 max local"
      ],
-     "phase": ""
+     "phase": "",
+     "icon": ""
     },
     {
      "id": "claudecodeagent",
@@ -203,7 +404,8 @@
       "Every task: KB index path (doc_meta.json) + your document folders direct-read hint",
       "Every turn folds Tier 2a/2b memory + lang context · _run_claude() · _parse_json_output()"
      ],
-     "phase": ""
+     "phase": "",
+     "icon": ""
     },
     {
      "id": "codexagent",
@@ -217,7 +419,8 @@
       "Binary auto-discovered (versioned path) · factory provider \"codex\"",
       "Optional OPENAI_API_KEY for API mode"
      ],
-     "phase": "10"
+     "phase": "10",
+     "icon": ""
     },
     {
      "id": "collaborate-mode",
@@ -231,7 +434,8 @@
       "Self-contained branch in _run_inner — Mode 1 pipeline untouched",
       "power-user/admin only · cloud (data leaves box) · per-message toggle"
      ],
-     "phase": "10"
+     "phase": "10",
+     "icon": ""
     },
     {
      "id": "provider-registry",
@@ -243,14 +447,498 @@
       "Both auth modes: API keys AND no-key subscription CLIs",
       "Admin drag-ordered model chain · collaborate pool"
      ],
-     "phase": "10"
+     "phase": "10",
+     "icon": ""
     }
+   ],
+   "inventory": []
+  },
+  {
+   "id": "core",
+   "title": "Core components",
+   "where": "",
+   "lead": "What every request leans on: memory, skills, tools, context",
+   "tone": "cyan",
+   "kind": "set",
+   "items": [
+    {
+     "id": "ollamaagent-t1-t4",
+     "title": "OllamaAgent · T1–T4",
+     "where": "",
+     "lead": "Tier-selected per request complexity · native Ollama",
+     "body": [
+      "Default: T2 core · qwen2.5:7b · keep_alive -1",
+      "num_ctx 16 384 · FLASH_ATTENTION=1 · timing→dashboard",
+      "Higher tiers: T3/T4 if model installed + VRAM permits"
+     ],
+     "phase": "",
+     "icon": ""
+    },
+    {
+     "id": "openaicompatagent-vllm",
+     "title": "OpenAICompatAgent · vLLM",
+     "where": "",
+     "lead": "Dual-mode backend · admin-panel switch (live, in-place)",
+     "body": [
+      "vllm_base_url set → chat on vLLM, Ollama bypassed",
+      "models/factory.py make_agent() · active_backend()",
+      "json.loads tool args · preserves server tool_call ids",
+      "SMB=Ollama simplicity · enterprise=vLLM concurrency"
+     ],
+     "phase": "",
+     "icon": ""
+    },
+    {
+     "id": "circuit-breaker",
+     "title": "Circuit Breaker",
+     "where": "",
+     "lead": "models/health.py · per-host · fast-fail + auto-recover",
+     "body": [
+      "Classifies CONNECTION vs request-level failures",
+      "In-band open (N conn fails) · 30s liveness probe closes",
+      "GET /api/backend/health · shared by chat/embed/stt/vision/tts"
+     ],
+     "phase": "",
+     "icon": ""
+    },
+    {
+     "id": "embeddings-configurable",
+     "title": "Embeddings · configurable",
+     "where": "",
+     "lead": "nomic-embed-text 768-dim · episodic + collective",
+     "body": [
+      "embed_backend ollama|openai · host-swap safe",
+      "dimension guard: model change → refuse writes (recall guard)",
+      "all-MiniLM-L6-v2 384-dim CPU → FAISS doc_store (untouched)"
+     ],
+     "phase": "",
+     "icon": ""
+    },
+    {
+     "id": "capability-fleet",
+     "title": "Capability Fleet",
+     "where": "",
+     "lead": "1 SUNI → N specialized model endpoints (config map)",
+     "body": [
+      "STT: browser | self-hosted Whisper (stt.py)",
+      "Vision: OpenAI-compatible VLM · image → answer (vision.py)",
+      "TTS: edge-tts | self-hosted /v1/audio/speech (tts.py)",
+      "No router — config convention IS the map · ClaudeCodeAgent T5"
+     ],
+     "phase": "",
+     "icon": ""
+    }
+   ],
+   "inventory": [
+    "send_email",
+    "list_emails",
+    "read_email",
+    "run_shell ⛔",
+    "read_file",
+    "write_file",
+    "download_file",
+    "create_pdf",
+    "web_search",
+    "web_fetch",
+    "search_knowledge_base",
+    "claude_task",
+    "claude_code",
+    "claude_create_agents",
+    "claude_advisor",
+    "skills_list",
+    "skill_view",
+    "skill_save",
+    "skill_delete",
+    "filesystem_read/write/list",
+    "playwright_navigate",
+    "playwright_screenshot",
+    "+30 more"
    ]
+  },
+  {
+   "id": "auth",
+   "title": "Auth, roles & users",
+   "where": "auth.py · oidc.py · rbac.py · policy.py · user_settings.py · audit.py",
+   "lead": "Who is asking, and what that lets them reach",
+   "tone": "red",
+   "kind": "set",
+   "items": [
+    {
+     "id": "jwt-auth",
+     "title": "JWT Auth",
+     "where": "",
+     "lead": "memory/users.db · bcrypt 12 rounds",
+     "body": [
+      "JWT access 8h + refresh token 30d httpOnly",
+      "Every UI refreshes on 401 and replays the call. Two of the three did not, so a tab left open past 8h went inert — indistinguishable from the server being down",
+      "Per-user API tokens · static service token",
+      "Roles: read-only · standard · power-user · admin"
+     ],
+     "phase": "",
+     "icon": ""
+    },
+    {
+     "id": "oidc-sso",
+     "title": "OIDC / SSO",
+     "where": "",
+     "lead": "oidc.py · Auth-Code + PKCE · any .well-known provider",
+     "body": [
+      "JIT provisioning · claim→role · !oidc sentinel pw",
+      "ID-token: JWKS sig · aud · iss · exp · nonce",
+      "Env-configured · setup-guard · off unless set"
+     ],
+     "phase": "",
+     "icon": ""
+    },
+    {
+     "id": "rbac",
+     "title": "RBAC",
+     "where": "",
+     "lead": "memory/role_config.json · admin editable",
+     "body": [
+      "allowed_tools · blocked_tools",
+      "mcp_prefixes · allowed_modes · default_mode",
+      "skill_save/delete gated (power-user+)"
+     ],
+     "phase": "",
+     "icon": ""
+    },
+    {
+     "id": "per-user-settings",
+     "title": "Per-User Settings",
+     "where": "",
+     "lead": "memory/users/{uid}/settings.json",
+     "body": [
+      "stt_language · response_language · tts_voice",
+      "allowed_mcp_servers (list | null)",
+      "anthropic_api_key (Fernet encrypted · crypto_utils.py)",
+      "Auto-configured from conversation (A-cfg)",
+      "output_dir (must be under global_output_dir)",
+      "default: <root>/<username>-<id8> · one folder per user"
+     ],
+     "phase": "",
+     "icon": ""
+    },
+    {
+     "id": "audit-trail-usage",
+     "title": "Audit Trail + Usage",
+     "where": "",
+     "lead": "memory/audit.db · append-only",
+     "body": [
+      "Every chat: user · query · route · tools · ms",
+      "prompt_tokens + gen_tokens per request (usage.py accumulator)",
+      "GET /api/usage — per-user token totals (SMB cost view)",
+      "models — which model(s) actually answered, in call order (a tier escalation reads qwen2.5:7b,qwen2.5:32b)",
+      "route=\"chat.stopped\" — a human interrupted the run",
+      "route=\"approval\": allow · deny · timeout · cancelled"
+     ],
+     "phase": "",
+     "icon": ""
+    }
+   ],
+   "inventory": []
+  },
+  {
+   "id": "background",
+   "title": "Background services",
+   "where": "always running · asyncio tasks",
+   "lead": "What runs when nobody asked it to",
+   "tone": "teal",
+   "kind": "set",
+   "items": [
+    {
+     "id": "meeting-recorder",
+     "title": "Meeting Recorder",
+     "where": "meetings.py · ffmpeg dshow → 16 kHz mono WAV",
+     "lead": "Loopback (people on the call) + mic (people in the room), amix",
+     "body": [
+      "Writes into the user's OWN output dir — same isolation as any generated file",
+      "Consent is a GATE: start refuses without participants_informed=True, no config can default it, and the tool is approval-gated. No audit row → no recording",
+      "transcription.py · faster-whisper on CPU, chunked on segment boundaries (an hour overflows num_ctx 8192)",
+      "Installed by default (install.py, --no-meetings skips); ffmpeg is checked for separately because pip cannot supply it",
+      "local_files_only load: 174s → 4.9s. faster-whisper contacted the HF hub on EVERY load — the same trap that cost image generation 208s→29s",
+      "Measured: 4.4x realtime, so a 60-min meeting transcribes in ~14 min",
+      "Runstate Black Box new",
+      "runstate.py · memory/runstate.json",
+      "Heartbeat + listening flag on the 30s tick",
+      "A killed process cannot log its own death, so the NEXT start reports it: status still \"running\" = died unclean, with the last-alive time",
+      "Listener Watchdog new",
+      "listener_watchdog.py · config listener_watchdog",
+      "Probes the port each tick; exits after 3 consecutive misses so a supervisor restarts",
+      "Catches alive-but-deaf: the accept loop dies, everything else keeps running and every other signal reads healthy",
+      "Will not act until a probe has SUCCEEDED once — otherwise the probe is what is broken",
+      "Session Watcher",
+      "Polls Claude Code JSONL every 60s",
+      "Ingests → Tier 2a episodic memory",
+      "Inbox Watcher",
+      "IMAP SSL every 30 min · seen_uids.json",
+      "NEVER passes content to model",
+      "Document Scanner",
+      "watchdog ReadDirectoryChangesW + 24h rescan",
+      "scope=\"collective\" | \"user:{uid}\" tagging",
+      "GPU embed when qwen idle · batch=255",
+      "Excerpts: sentence-boundary trimmed (A5)",
+      "Metrics Collector",
+      "nvidia-smi + Ollama every 30s",
+      "Ring buffer 120 samples = 60 min",
+      "Memory Consolidator new",
+      "Weekly · interval_days=7 · all active users",
+      "extract → supersede → dedup → conv-dedup → age-out",
+      "Soft-deprecate (lifecycle) — reversible, never deleted",
+      "consolidator.py · asyncio.Lock per user"
+     ],
+     "phase": "",
+     "icon": ""
+    },
+    {
+     "id": "meeting-recorder-2",
+     "title": "Meeting Recorder",
+     "where": "meetings.py · ffmpeg dshow → 16 kHz mono WAV",
+     "lead": "Loopback (people on the call) + mic (people in the room), amix",
+     "body": [
+      "Writes into the user's OWN output dir — same isolation as any generated file",
+      "Consent is a GATE: start refuses without participants_informed=True, no config can default it, and the tool is approval-gated. No audit row → no recording",
+      "transcription.py · faster-whisper on CPU, chunked on segment boundaries (an hour overflows num_ctx 8192)",
+      "Installed by default (install.py, --no-meetings skips); ffmpeg is checked for separately because pip cannot supply it",
+      "local_files_only load: 174s → 4.9s. faster-whisper contacted the HF hub on EVERY load — the same trap that cost image generation 208s→29s",
+      "Measured: 4.4x realtime, so a 60-min meeting transcribes in ~14 min"
+     ],
+     "phase": "",
+     "icon": ""
+    },
+    {
+     "id": "runstate-black-box",
+     "title": "Runstate Black Box",
+     "where": "runstate.py · memory/runstate.json",
+     "lead": "Heartbeat + listening flag on the 30s tick",
+     "body": [
+      "A killed process cannot log its own death, so the NEXT start reports it: status still \"running\" = died unclean, with the last-alive time"
+     ],
+     "phase": "",
+     "icon": ""
+    },
+    {
+     "id": "listener-watchdog",
+     "title": "Listener Watchdog",
+     "where": "listener_watchdog.py · config listener_watchdog",
+     "lead": "Probes the port each tick; exits after 3 consecutive misses so a supervisor restarts",
+     "body": [
+      "Catches alive-but-deaf: the accept loop dies, everything else keeps running and every other signal reads healthy",
+      "Will not act until a probe has SUCCEEDED once — otherwise the probe is what is broken"
+     ],
+     "phase": "",
+     "icon": ""
+    },
+    {
+     "id": "session-watcher",
+     "title": "Session Watcher",
+     "where": "Polls Claude Code JSONL every 60s",
+     "lead": "Ingests → Tier 2a episodic memory",
+     "body": [],
+     "phase": "",
+     "icon": ""
+    },
+    {
+     "id": "inbox-watcher",
+     "title": "Inbox Watcher",
+     "where": "IMAP SSL every 30 min · seen_uids.json",
+     "lead": "NEVER passes content to model",
+     "body": [],
+     "phase": "",
+     "icon": ""
+    },
+    {
+     "id": "document-scanner",
+     "title": "Document Scanner",
+     "where": "watchdog ReadDirectoryChangesW + 24h rescan",
+     "lead": "scope=\"collective\" | \"user:{uid}\" tagging",
+     "body": [
+      "GPU embed when qwen idle · batch=255",
+      "Excerpts: sentence-boundary trimmed (A5)"
+     ],
+     "phase": "",
+     "icon": ""
+    },
+    {
+     "id": "metrics-collector",
+     "title": "Metrics Collector",
+     "where": "nvidia-smi + Ollama every 30s",
+     "lead": "Ring buffer 120 samples = 60 min",
+     "body": [],
+     "phase": "",
+     "icon": ""
+    },
+    {
+     "id": "memory-consolidator",
+     "title": "Memory Consolidator",
+     "where": "Weekly · interval_days=7 · all active users",
+     "lead": "extract → supersede → dedup → conv-dedup → age-out",
+     "body": [
+      "Soft-deprecate (lifecycle) — reversible, never deleted",
+      "consolidator.py · asyncio.Lock per user"
+     ],
+     "phase": "",
+     "icon": ""
+    }
+   ],
+   "inventory": []
+  },
+  {
+   "id": "external",
+   "title": "External systems",
+   "where": "",
+   "lead": "Everything outside this process that it talks to",
+   "tone": "orange",
+   "kind": "set",
+   "items": [
+    {
+     "id": "ollama-multi-endpoint",
+     "title": "Ollama · multi-endpoint",
+     "where": "config: ollama_endpoints [ ]",
+     "lead": "localhost:11434 (primary · T2 qwen2.5:7b)",
+     "body": [
+      "nomic-embed-text: /api/embed 768-dim episodic",
+      "model_inventory.py scans all endpoints",
+      "keep_alive -1 · GPU_LAYERS=48"
+     ],
+     "phase": "",
+     "icon": "🤖"
+    },
+    {
+     "id": "smtp-imap",
+     "title": "SMTP / IMAP",
+     "where": "mail.example.com",
+     "lead": "SMTP :587 · IMAP :993 SSL",
+     "body": [
+      "noreply@example.com"
+     ],
+     "phase": "",
+     "icon": "📧"
+    },
+    {
+     "id": "your-organization-network-share",
+     "title": "your organization Network Share",
+     "where": "your document folders\\Projects · SMB",
+     "lead": "scope=\"collective\"",
+     "body": [
+      "watchdog real-time events"
+     ],
+     "phase": "",
+     "icon": "🗄️"
+    },
+    {
+     "id": "mcp-servers",
+     "title": "MCP Servers",
+     "where": "stdio · catalog 20 servers",
+     "lead": "playwright · filesystem",
+     "body": [
+      "+ admin-configurable"
+     ],
+     "phase": "",
+     "icon": "🔧"
+    },
+    {
+     "id": "suniverse-db",
+     "title": "SUNIverse DB",
+     "where": "SQL Server :1433",
+     "lead": "1 900+ articles · pyodbc",
+     "body": [],
+     "phase": "",
+     "icon": "🗃️"
+    },
+    {
+     "id": "telegram",
+     "title": "Telegram",
+     "where": "api.telegram.org · Bot API",
+     "lead": "Webhook → /telegram",
+     "body": [
+      "httpx · HTML parse mode"
+     ],
+     "phase": "",
+     "icon": "✈️"
+    },
+    {
+     "id": "whatsapp",
+     "title": "WhatsApp",
+     "where": "Twilio · api.twilio.com",
+     "lead": "Webhook → /whatsapp",
+     "body": [
+      "HMAC signature validation"
+     ],
+     "phase": "",
+     "icon": "💬"
+    }
+   ],
+   "inventory": []
+  },
+  {
+   "id": "compliance",
+   "title": "Compliance & transparency",
+   "where": "Art 50 transparency · applies 2 Aug 2026",
+   "lead": "Saying what it is, and letting people undo it",
+   "tone": "gold",
+   "kind": "set",
+   "items": [
+    {
+     "id": "ai-interaction-disclosure",
+     "title": "AI-Interaction Disclosure",
+     "where": "Art 50(1) · main.py · ui.html · chat.html",
+     "lead": "Users are informed they interact with an AI system",
+     "body": [
+      "SUNI_SYSTEM: never claim to be human — identify as \"AI assistant\"",
+      "Persistent UI notice below composer (orb + chat)",
+      "i18n key common.ai_disclosure · en + pt-PT"
+     ],
+     "phase": "",
+     "icon": ""
+    },
+    {
+     "id": "ai-generated-content-marking",
+     "title": "AI-Generated Content Marking",
+     "where": "Art 50(2) · pdf_tool.py · email_notify.py",
+     "lead": "Synthetic output marked machine-readable + visible",
+     "body": [
+      "PDF: /Info Creator·Subject·Keywords + footer \"AI-generated by SUNI\"",
+      "Email: Auto-Submitted (RFC 3834) + X-Generated-By headers",
+      "+ visible body disclosure (plain + HTML), both send paths"
+     ],
+     "phase": "",
+     "icon": ""
+    },
+    {
+     "id": "risk-classification",
+     "title": "Risk Classification",
+     "where": "risk posture",
+     "lead": "Limited-risk assistant (general productivity)",
+     "body": [
+      "GPAI obligations sit with model maker — SUNI runs stock qwen2.5 (no fine-tune)",
+      "Provider + deployer · flips to high-risk only for Annex III use (HR/credit)",
+      "Not legal advice — informs a compliance review"
+     ],
+     "phase": "",
+     "icon": ""
+    },
+    {
+     "id": "mapped-safeguards",
+     "title": "Mapped Safeguards",
+     "where": "existing controls → AI Act articles",
+     "lead": "Foundations already aligned to high-risk themes",
+     "body": [
+      "audit.db append-only → Art 12 record-keeping",
+      "approval gate (Allow/Deny) → Art 14 human oversight",
+      "RBAC · shell denylist · UNTRUSTED markers → Art 15 robustness",
+      "Note: GDPR erasure needs hard-delete, not deprecate"
+     ],
+     "phase": "",
+     "icon": ""
+    }
+   ],
+   "inventory": []
   },
   {
    "id": "agents",
    "title": "Named agents",
-   "where": "agents.py · schedules.py · fanout.py",
+   "where": "a saved way to be · and a way to run unattended",
    "lead": "A saved way to be, and a way to be asked again tomorrow",
    "tone": "teal",
    "kind": "set",
@@ -272,7 +960,8 @@
       "keeps the name, the registry returns nothing, and the model narrates",
       "instead of calling — which reads as a weak model and is not"
      ],
-     "phase": ""
+     "phase": "",
+     "icon": ""
     },
     {
      "id": "narrowing-never-widening",
@@ -284,7 +973,8 @@
       "A profile cannot grant a conversation mode the role lacks",
       "Without this an admin-authored agent in a dropdown would be privilege escalation for whoever picked it"
      ],
-     "phase": ""
+     "phase": "",
+     "icon": ""
     },
     {
      "id": "deterministic-intent",
@@ -297,7 +987,8 @@
       "Missing detail is ASKED for, never invented",
       "No capable local tier → automatic escalation to T5"
      ],
-     "phase": ""
+     "phase": "",
+     "icon": ""
     },
     {
      "id": "scheduled-invocations",
@@ -315,7 +1006,8 @@
       "list. Now: one retry five minutes later, then DISABLED with the reason on the record.",
       "Disabled, not deleted: the owner has to see it and switch it back on. A success clears the streak."
      ],
-     "phase": ""
+     "phase": "",
+     "icon": ""
     },
     {
      "id": "delegation",
@@ -332,7 +1024,8 @@
       "pinned model is never overridden",
       "Depth cap 1: agents may be invoked, may not invoke · unknown name refused, never self-handled"
      ],
-     "phase": ""
+     "phase": "",
+     "icon": ""
     },
     {
      "id": "panel-agents",
@@ -346,7 +1039,8 @@
       "correlate the models, which is the whole point of a panel",
       "Cloud models: this leaves the machine, unlike the single-model path"
      ],
-     "phase": ""
+     "phase": "",
+     "icon": ""
     },
     {
      "id": "ceilings",
@@ -363,7 +1057,8 @@
       "Runs and tokens both counted from the audit trail, not a profile counter that would drift on a failed run",
       "The CLI reported no tokens at all until its usage was booked (cache reads included) — every budget read zero on the path that spends most: \"say only: ready\" costs ~26k input tokens"
      ],
-     "phase": ""
+     "phase": "",
+     "icon": ""
     },
     {
      "id": "fan-out",
@@ -379,7 +1074,8 @@
       "fanout_token_budget is checked BEFORE each specialist starts, against what the turn has already spent — an expensive first answer stops the rest instead of being noticed afterwards",
       "Measured 2026-09-26: with OLLAMA_NUM_PARALLEL=2, one generation 57 tok/s, two at once 88 tok/s aggregate. With one slot they merely queue."
      ],
-     "phase": "13"
+     "phase": "13",
+     "icon": ""
     },
     {
      "id": "assignments",
@@ -391,7 +1087,8 @@
       "ordinary path and the result waits, with a notification if configured",
       "A task lives in SQLite but RUNS in memory, so a stopped process left rows claiming \"running\" with nothing running them — interrupted work is failed at startup instead"
      ],
-     "phase": "13"
+     "phase": "13",
+     "icon": ""
     },
     {
      "id": "why-the-work-exists",
@@ -406,7 +1103,8 @@
       "told that it recurs and how the last attempt went",
       "Background, not instruction — and it says so in itself, because a reply that narrates SUNI's plumbing is a bug this codebase has already shipped once"
      ],
-     "phase": "13"
+     "phase": "13",
+     "icon": ""
     },
     {
      "id": "preview-before-trust",
@@ -418,7 +1116,8 @@
       "governance question, and another task might choose differently",
       "Unlike task mode, the plan is NOT stashed — an executable plan left behind turns a preview into something one word could fire"
      ],
-     "phase": ""
+     "phase": "",
+     "icon": ""
     },
     {
      "id": "traceable-by-agent",
@@ -432,14 +1131,81 @@
       "report(slug, days) reads it back — what it DID vs what it COULD reach,",
       "identical grant states collapsed because only a change is signal"
      ],
-     "phase": ""
+     "phase": "",
+     "icon": ""
     }
-   ]
+   ],
+   "inventory": []
+  },
+  {
+   "id": "deployment",
+   "title": "Deployment & packaging",
+   "where": "runs on Linux, macOS and Windows · nothing Windows-specific left in the boot path",
+   "lead": "Linux, macOS and Windows — nothing here is Windows-only",
+   "tone": "teal",
+   "kind": "set",
+   "items": [
+    {
+     "id": "container",
+     "title": "Container",
+     "where": "Dockerfile · docker-compose.yml",
+     "lead": "docker compose up -d — SUNI + Ollama on a private network",
+     "body": [
+      "Ollama is NOT baked into the image: it needs the GPU and is large",
+      "Runs as uid 10001, never root — run_shell's guard is a heuristic, not a sandbox",
+      "/app/memory and /app/certs are volumes; without them every restart is a fresh install"
+     ],
+     "phase": "",
+     "icon": ""
+    },
+    {
+     "id": "tls-on-first-run",
+     "title": "TLS on First Run",
+     "where": "web.py · gen_cert.py",
+     "lead": "A self-signed certificate is generated before the first request",
+     "body": [
+      "Both quickstarts say to open https://localhost:8765 — nothing used to",
+      "create a certificate, so that URL failed and users fell back to http,",
+      "creating the admin password over cleartext",
+      "SANs are built from the host — hostname, FQDN and every non-loopback address — so SUNI is reachable by LAN IP. Hardcoding localhost/127.0.0.1 made every remote client a name mismatch, which browsers often will not let you past",
+      "SUNI_CERT_HOSTS adds a NAT/VPN address the host cannot see · SUNI_NO_TLS=1 opts out, for a proxy that terminates TLS itself"
+     ],
+     "phase": "",
+     "icon": ""
+    },
+    {
+     "id": "first-run-wizard",
+     "title": "First-Run Wizard",
+     "where": "setup.html · /api/auth/first-run",
+     "lead": "No seeded credentials — the first visitor creates the admin account",
+     "body": [
+      "Config carries setup_completed; a config file lacking the key is treated",
+      "as a pre-existing install, so upgrades are not sent back to the wizard",
+      "No default model is pinned — the admin chooses, else best installed at the core tier"
+     ],
+     "phase": "",
+     "icon": ""
+    },
+    {
+     "id": "install-paths",
+     "title": "Install Paths",
+     "where": "pyproject.toml · deploy/suni.service · start_suni.sh",
+     "lead": "pip wheel · systemd unit · POSIX and Windows launchers",
+     "body": [
+      "Python 3.10+ · optional extras kept out of the base install:",
+      "requirements-embeddings / -imagegen (torch) · -articles (unixODBC)",
+      "pyodbc is imported lazily — an eager import blocked boot on Linux entirely"
+     ],
+     "phase": "",
+     "icon": ""
+    }
+   ],
+   "inventory": []
   },
   {
    "id": "field",
    "title": "The field",
-   "where": "graph.py · netgraph.js",
+   "where": "graph.py · /api/graph · netgraph.js · show_network",
    "lead": "Everything she can reach, as one navigable graph",
    "tone": "cyan",
    "kind": "set",
@@ -458,7 +1224,8 @@
       "Nothing here reads the filesystem: folders come from the document index, so this cannot become a way to enumerate a disk SUNI was never pointed at",
       "Neighbours are the OS's own ARP cache and nothing else — the test for that checks what the code CALLS, after an earlier version passed on the word \"pings\" in a docstring"
      ],
-     "phase": "14"
+     "phase": "",
+     "icon": ""
     },
     {
      "id": "drawn-not-pasted-over",
@@ -473,7 +1240,8 @@
       "Grouping lays the categories out on a disc facing the viewer: a sphere puts half of them edge-on and forces the camera so far back that every node becomes a dot",
       "One icon flickered and no other: its atlas index sat exactly on a row boundary, where floor(4.0/4.0) at mediump returns 0 about half the time. The cell is worked out in the vertex stage now."
      ],
-     "phase": "14"
+     "phase": "",
+     "icon": ""
     },
     {
      "id": "she-can-point-at-it",
@@ -489,7 +1257,8 @@
       "A view change is not consequential: an approval card in front of every \"mostra-me a rede\" is a feature nobody uses twice",
       "With neighbour discovery off it SAYS so and names the setting, rather than showing an empty view to someone with eighteen machines on their LAN"
      ],
-     "phase": "14"
+     "phase": "",
+     "icon": ""
     },
     {
      "id": "opening-a-file-from-a-picture",
@@ -505,7 +1274,8 @@
       "The index is system-wide and single, so being in it is NOT a per-user permission — gating on membership alone hands every scanned file to the most restricted account",
       "Being under an indexed FOLDER is not enough either: that includes everything the scanner deliberately skipped"
      ],
-     "phase": "14"
+     "phase": "",
+     "icon": ""
     },
     {
      "id": "back-is-not-up",
@@ -521,7 +1291,8 @@
       "resolved back to the folder on screen",
       "Clicking the centre sphere goes back. It is drawn from buffer index 0 and is in no node list, so picking could never return it — the most obvious target on screen did nothing at all."
      ],
-     "phase": "14"
+     "phase": "",
+     "icon": ""
     },
     {
      "id": "controls-that-can-be-reached",
@@ -538,12 +1309,38 @@
       "A keyboard shortcut was the wrong shape entirely: the chat box takes focus on load and after every reply, so a bare letter never reaches the handler",
       "The regression guard for it passed while the bug was present. It matched any toggle in the function rather than each element's own — now each of the three bugs, reinstated, fails it."
      ],
-     "phase": "14"
+     "phase": "",
+     "icon": ""
     }
-   ]
+   ],
+   "inventory": []
   }
  ],
  "edges": [
+  {
+   "from": "interfaces",
+   "to": "server",
+   "type": "calls",
+   "note": "every surface talks to the same HTTPS API"
+  },
+  {
+   "from": "channels",
+   "to": "orchestrator",
+   "type": "feeds",
+   "note": "a message from Telegram becomes an ordinary request"
+  },
+  {
+   "from": "server",
+   "to": "auth",
+   "type": "guards",
+   "note": "a route resolves the caller before it does anything"
+  },
+  {
+   "from": "server",
+   "to": "orchestrator",
+   "type": "dispatches",
+   "note": "the request handler hands the turn over"
+  },
   {
    "from": "orchestrator",
    "to": "models",
@@ -552,15 +1349,15 @@
   },
   {
    "from": "orchestrator",
-   "to": "agents",
-   "type": "calls",
-   "note": "a named agent runs the ordinary request path under its profile"
+   "to": "core",
+   "type": "uses",
+   "note": "memory, skills and the tool registry, every turn"
   },
   {
-   "from": "agents",
-   "to": "models",
-   "type": "pins",
-   "note": "a profile's pinned model decides the path, not just the tier"
+   "from": "orchestrator",
+   "to": "agents",
+   "type": "delegates",
+   "note": "a named agent runs the ordinary path under its profile"
   },
   {
    "from": "orchestrator",
@@ -569,10 +1366,74 @@
    "note": "show_network moves the view through the event channel"
   },
   {
-   "from": "field",
+   "from": "agents",
+   "to": "models",
+   "type": "pins",
+   "note": "a profile's pinned model decides the path, not just the tier"
+  },
+  {
+   "from": "auth",
    "to": "agents",
+   "type": "narrows",
+   "note": "grants intersect with the caller's role, never widen it"
+  },
+  {
+   "from": "core",
+   "to": "external",
+   "type": "reaches",
+   "note": "search, mail, calendar and the databases live outside"
+  },
+  {
+   "from": "models",
+   "to": "external",
+   "type": "reaches",
+   "note": "Ollama, the CLIs and the key-based APIs"
+  },
+  {
+   "from": "background",
+   "to": "core",
+   "type": "feeds",
+   "note": "the watcher ingests documents into the index"
+  },
+  {
+   "from": "background",
+   "to": "external",
+   "type": "reaches",
+   "note": "inbox polling and the feeds it monitors"
+  },
+  {
+   "from": "compliance",
+   "to": "core",
+   "type": "erases",
+   "note": "one inventory of every store that holds a person"
+  },
+  {
+   "from": "auth",
+   "to": "compliance",
+   "type": "records",
+   "note": "who did what, kept as an audit trail"
+  },
+  {
+   "from": "field",
+   "to": "core",
    "type": "reads",
-   "note": "the agents level lists the caller's own profiles and schedules"
+   "note": "the index is where its folders and files come from"
+  },
+  {
+   "from": "deployment",
+   "to": "server",
+   "type": "packages",
+   "note": "the same process, on three operating systems"
   }
- ]
+ ],
+ "phases": {
+  "5": "tiers, tests, messaging",
+  "6": "approvals, CRM, projects",
+  "7": "adaptive memory, AI Act Art 50",
+  "10": "channels, providers, panels",
+  "11": "supervision & reachability",
+  "12": "meeting recording",
+  "13": "staffing: ceilings, fan-out, assignments",
+  "14": "the field behind her head"
+ }
 }

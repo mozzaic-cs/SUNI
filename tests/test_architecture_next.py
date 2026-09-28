@@ -99,3 +99,89 @@ def test_a_phase_chip_never_ends_up_inside_a_title():
         for it in g["items"]:
             assert "Phase " not in it["title"], f"{it['title']!r} carries its badge"
             assert not it["title"].endswith("new"), f"{it['title']!r} carries its badge"
+
+
+# ── the whole page came across, not a sample ────────────────────────────────
+def test_every_lane_of_the_flat_page_is_here():
+    """The first pass converted four subsystems by hand-picking them. The flat
+    page has thirteen, and three of its lanes use markup the first converter
+    did not know about — it silently produced zero items for them."""
+    flat = (ROOT / "suni/web/architecture.html").read_text(encoding="utf-8")
+    assert len(DOC["groups"]) == 13, f"{len(DOC['groups'])} subsystems, not 13"
+    items = sum(len(g["items"]) for g in DOC["groups"])
+    # The flat page's own count of component headings.
+    assert items == flat.count("node-title"), (
+        f"{items} components carried across, {flat.count('node-title')} on the page")
+    for g in DOC["groups"]:
+        assert g["items"], f"{g['id']} came across empty"
+        assert g["lead"], f"{g['id']} has no summary line"
+
+
+def test_the_flat_inventories_survived():
+    """Some lanes list bare names — tools, components — and a list of names is
+    a fact about breadth. Thirty more panels would have buried it, and dropping
+    it would have lost it."""
+    named = sum(len(g.get("inventory", [])) for g in DOC["groups"])
+    assert named >= 25, f"only {named} inventory names carried across"
+
+
+@pytest.mark.parametrize("group", DOC["groups"], ids=lambda g: g["id"])
+def test_every_tone_is_one_the_renderer_knows(group):
+    """An unknown tone silently falls back to cyan, so two subsystems quietly
+    become the same colour and the index stops meaning anything."""
+    tones = MOD[MOD.index("const TONE = {"):MOD.index("class ArchGraph")]
+    assert f"{group['tone']}:" in tones, f"{group['tone']!r} is not a defined tone"
+
+
+# ── layout has one hard constraint ──────────────────────────────────────────
+def test_layouts_are_spaced_by_the_real_width_of_a_panel():
+    """A panel is the same width in WORLD units at every distance: it is drawn
+    at 18/d of its CSS size while a world unit spans a height/d of pixels, and
+    the two cancel. So a layout spaced more tightly than a panel overlaps at
+    every zoom, and pulling the camera back never fixes it — which is exactly
+    what the first sequence layout did."""
+    assert "PANEL_W" in MOD, "the constraint is not written down anywhere"
+    lay = MOD[MOD.index("_relayout()"):MOD.index("openGroup(id)")]
+    assert lay.count("PANEL_W") >= 2, "a layout is still spaced by a guessed number"
+
+
+def test_panels_are_projected_into_the_room_the_chrome_leaves():
+    """The index down the left covered three subsystems, which simply never
+    appeared for anyone who did not think to drag."""
+    assert "this.inset" in MOD
+    assert "function applyInset()" in PAGE
+    proj = MOD[MOD.index("project(pos, w, h)"):][:700]
+    assert "this.inset.left" in proj and "this.inset.bottom" in proj
+
+
+# ── finding things ──────────────────────────────────────────────────────────
+def test_you_can_search_every_word_not_only_what_is_on_screen():
+    """"Is it in here at all" is the question people actually have, and it
+    cannot be answered by looking at the panels currently drawn."""
+    assert 'id="q"' in PAGE
+    blk = PAGE[PAGE.index("qEl.addEventListener('input'"):][:900]
+    assert "for (const g of DOC.groups)" in blk, "search only looks at what is drawn"
+    assert "textOf(it)" in blk
+
+
+def test_there_is_a_list_of_everything_as_well_as_a_picture():
+    """A field you have to orbit to discover is a field you can miss things in.
+    The index says what exists without asking anyone to fly around."""
+    assert "function drawIndex()" in PAGE
+    idx = PAGE[PAGE.index("function drawIndex()"):][:700]
+    assert "DOC.groups" in idx and "items || []).length" in idx
+
+
+def test_the_reader_can_be_paged_through():
+    """Reading one component and then hunting for the next one in a 3D field
+    is not reading."""
+    for hook in ("read-prev", "read-next", "function step(d)"):
+        assert hook in PAGE
+    assert "ArrowLeft" in PAGE and "ArrowRight" in PAGE
+
+
+def test_a_first_visit_is_told_how_this_works():
+    """Three depths and a camera is not a convention anyone has seen before."""
+    assert 'id="intro"' in PAGE
+    assert "arch_intro" in PAGE, "the tour has no way to stay dismissed"
+    assert "tour" in PAGE, "no way to skip it when linking somebody in"
