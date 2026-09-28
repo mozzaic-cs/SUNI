@@ -52,11 +52,11 @@ def available() -> bool:
         return False
 
 
-def _load():
+def _load(model: str = ""):
     """Load (and keep) the whisper model. CPU, int8 — the quantisation is what
     makes a CPU pass tolerable rather than an overnight job."""
     global _model, _model_name
-    name = str(_cfg.get("meeting_whisper_model", "base") or "base")
+    name = model or str(_cfg.get("meeting_whisper_model", "base") or "base")
     if _model is not None and _model_name == name:
         return _model
     try:
@@ -82,8 +82,9 @@ def _load():
     return _model
 
 
-def _transcribe_sync(path: str, language: str | None) -> list[dict]:
-    model = _load()
+def _transcribe_sync(path: str, language: str | None,
+                     model_name: str = "") -> list[dict]:
+    model = _load(model_name)
     # vad_filter drops silence, which on a meeting recording is most of it —
     # nobody talks over anybody for the full hour, and skipping the gaps is the
     # single biggest speed win available on CPU.
@@ -99,7 +100,8 @@ def _transcribe_sync(path: str, language: str | None) -> list[dict]:
     ]
 
 
-async def transcribe_file(path: str | Path, language: str = "") -> list[dict]:
+async def transcribe_file(path: str | Path, language: str = "",
+                          model: str = "") -> list[dict]:
     """Transcribe a recording into timestamped segments.
 
     Runs in a worker thread: the model call is long and fully blocking, and the
@@ -110,7 +112,7 @@ async def transcribe_file(path: str | Path, language: str = "") -> list[dict]:
         raise TranscriptionError(f"No such recording: {p}")
     lang = (language or str(_cfg.get("stt_language", "")) or "").split("-")[0]
     try:
-        return await asyncio.to_thread(_transcribe_sync, str(p), lang or None)
+        return await asyncio.to_thread(_transcribe_sync, str(p), lang or None, model)
     except TranscriptionError:
         raise
     except Exception as exc:    # noqa: BLE001

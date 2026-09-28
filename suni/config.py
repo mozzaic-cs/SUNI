@@ -249,6 +249,11 @@ DEFAULTS: dict[str, Any] = {
     "meeting_devices":      [],
     # base = ~150 MB, fast on CPU. small = ~500 MB, better on accented speech.
     "meeting_whisper_model": "base",
+    # Live speech is a few seconds at a time, so accuracy is worth more than
+    # speed: measured on one European Portuguese sentence, "base" heard
+    # "Quer ver os viseiros indexados" and "small" heard it word for word.
+    # Meetings keep "base" above — an hour of audio is the opposite trade.
+    "stt_model_local": "small",
 
     # Exit if the accept loop dies so a supervisor restarts us. A process that
     # is alive but no longer listening looks healthy to every other signal —

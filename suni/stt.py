@@ -159,7 +159,14 @@ async def _transcribe_local(audio: bytes, filename: str,
     try:
         with os.fdopen(fd, "wb") as fh:
             fh.write(audio)
-        segments = await transcription.transcribe_file(path, language=lang)
+        # A BIGGER model than meeting transcription uses. Measured on the
+        # same European Portuguese sentence: "base" heard "Quer ver os
+        # viseiros indexados", "small" heard it exactly. An utterance is a
+        # few seconds, so small costs about five of them and is worth it;
+        # an hour-long meeting is a different trade and keeps its own setting.
+        model = str(_cfg.get("stt_model_local", "small") or "small")
+        segments = await transcription.transcribe_file(
+            path, language=lang, model=model)
     except Exception as exc:      # noqa: BLE001
         raise STTError(f"Transcription failed: {exc}")
     finally:

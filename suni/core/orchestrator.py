@@ -286,7 +286,16 @@ _IMAGE_REFINE_RE = re.compile(
 _NETVIEW_ASK_RE = re.compile(
     r'\b(show|display|list|visuali[sz]e|open|which|what)\b|'
     r'\b(mostra|mostrar|mostre|mostra[- ]me|lista|listar|apresenta|apresentar|'
-    r'visualiza|visualizar|quais|que)\b',
+    r'visualiza|visualizar|quais|que)\b|'
+    # "Quero ver os ficheiros indexados" is the most natural way to ask for
+    # this in Portuguese, and it did not work: bare "ver" was left out to avoid
+    # false positives — "vou ver isso amanhã" is not a request for a picture —
+    # and the PHRASE was never put back. The result was a rule so careful about
+    # what it must not match that it missed what people actually say. A phrase
+    # is specific where the bare verb is not.
+    r'\b(quero|queria|gostava de|gostaria de|posso|podes|deixa[- ]me)\s+'
+    r'(ver|consultar|abrir)\b|'
+    r'\b(i want to|i.d like to|let me|can i)\s+(see|view|open)\b',
     re.IGNORECASE,
 )
 

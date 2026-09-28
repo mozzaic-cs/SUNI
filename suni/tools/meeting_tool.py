@@ -173,7 +173,18 @@ async def transcribe_handler(meeting_id: str = "") -> str:
     if not wav.exists():
         return f"Meeting '{meeting_id}' has no audio file."
     try:
-        segments = await _tx.transcribe_file(wav)
+        # The language of the person whose meeting this is. Without it,
+        # transcribe_file falls back to the INSTANCE default — which on this
+        # machine is en-GB while the speaker is pt-PT, so a Portuguese meeting
+        # came back as confident English nonsense. The same mistake was made on
+        # the live speech path; this is the other place it was waiting.
+        _uid, _ = _who()
+        try:
+            from .. import user_settings as _us
+            _lang = str((_us.get(_uid) or {}).get("stt_language", "") or "")
+        except Exception:      # noqa: BLE001 — a missing preference is not fatal
+            _lang = ""
+        segments = await _tx.transcribe_file(wav, language=_lang)
     except _tx.TranscriptionError as e:
         return str(e)
     if not segments:

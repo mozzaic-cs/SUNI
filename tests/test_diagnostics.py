@@ -268,3 +268,79 @@ def test_a_clean_bill_of_health_is_not_recited():
     fn = fn[:fn.index("async def _maybe_show_network")]
     assert "without reciting" in fn
     assert "do not add causes of your" in fn, "she may invent a cause beside the evidence"
+
+
+# ── per-user settings, read per user ────────────────────────────────────────
+def test_no_user_facing_setting_is_read_from_the_instance_default():
+    """Made this mistake twice in one session, in two files.
+
+    The voice path overrode a chosen female voice with the local male one, and
+    the speech path told whisper that Portuguese was English — both by reading
+    the INSTANCE config where a per-user setting exists. The instance default
+    is en-GB; this user is pt-PT. So the sweep, as a test.
+
+    A global read is legitimate only as a LAST RESORT, after the caller's own
+    value: `language or _cfg.get(...)`. What is not legitimate is reading the
+    global when a user is in scope and never asking them.
+    """
+    import pathlib
+    import re
+
+    root = pathlib.Path(__file__).resolve().parent.parent / "suni"
+    per_user = ["stt_language", "response_language", "tts_voice",
+                "allowed_mcp_servers", "output_dir", "notify_to"]
+    pat = re.compile(r'(?:config|_cfg|suni_config|cfg)\.get\(\s*["\'](' +
+                     "|".join(per_user) + r')["\']')
+    offenders = []
+    for f in root.rglob("*.py"):
+        if f.name == "user_settings.py":
+            continue
+        raw = f.read_text(encoding="utf-8-sig").splitlines()
+        # Join continuation lines before looking. A line-by-line scan reported
+        # `or _cfg.get("stt_language", "en-GB")` as an offender when it is the
+        # SECOND half of `response_language or _cfg.get(...)` — the correct
+        # shape, split across two lines.
+        lines, buf, start, depth = [], "", 1, 0
+        for n, ln in enumerate(raw, 1):
+            st = ln.strip()
+            if not buf:
+                start = n
+            buf = (buf + " " + st).strip() if buf else st
+            # Bracket depth, which is what actually says whether a statement has
+            # finished. Guessing from leading/trailing keywords glued the tail
+            # of one expression onto the head of the next.
+            depth += sum(st.count(c) for c in "([{") - sum(st.count(c) for c in ")]}")
+            if depth > 0 or st.endswith("\\"):
+                continue
+            depth = 0
+            lines.append((start, buf))
+            buf = ""
+        if buf:
+            lines.append((start, buf))
+        for n, line in lines:
+            m = pat.search(line)
+            if not m:
+                continue
+            # A fallback AFTER the caller's own value is the correct shape.
+            if re.search(r'\b(language|response_language|voice)\s+or\s', line):
+                continue
+            # Describing the global config to the admin panel is not resolving
+            # a user's preference.
+            if "has_" in line or 'cfg["' in line:
+                continue
+            offenders.append(f"{f.relative_to(root.parent)}:{n}: {line.strip()[:90]}")
+    assert not offenders, (
+        "a per-user setting is being read from the instance config:\n  "
+        + "\n  ".join(offenders))
+
+
+def test_meeting_transcription_uses_the_speakers_language():
+    """The place the same bug was waiting: transcribe_file(wav) with no
+    language falls through to the instance default, so a Portuguese meeting
+    would have come back as English."""
+    import pathlib
+    src = (pathlib.Path(__file__).resolve().parent.parent
+           / "suni/tools/meeting_tool.py").read_text(encoding="utf-8")
+    assert "_tx.transcribe_file(wav, language=" in src, (
+        "the meeting is transcribed without saying what language it is in")
+    assert "user_settings" in src, "the language does not come from the speaker"
