@@ -46,3 +46,15 @@ Thumbs.db
 # version of it; this is a copy to open side by side while the redesign is
 # being judged, and a 128 KB duplicate is not something to publish.
 suni/web/architecture_v1_*.html
+
+# Screenshots and reference images dropped in the repo root. A bot token
+# arrived here inside a JPEG, one `git add -A` away from a public push — and
+# the release gate could not have seen it, because it scans committed TEXT and
+# a credential in an image is invisible to it. Ignore them by default; an image
+# that genuinely belongs in the repo goes in a subdirectory with a name.
+/*.jpg
+/*.jpeg
+/*.png
+/*.gif
+/*.webp
+/nul

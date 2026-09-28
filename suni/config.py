@@ -266,6 +266,18 @@ DEFAULTS: dict[str, Any] = {
     # Read is generous: generation here legitimately runs into tens of seconds.
     "ollama_timeout_s":          300,   # per-request read timeout
     "ollama_connect_timeout_s":  5,     # a backend that is not listening says so at once
+    # How much of the context window the TOOL DEFINITIONS may occupy. Measured
+    # here: role "standard" is offered 61 tools, ~7,100 tokens against a
+    # num_ctx of 8,192 — 87% of the window before the persona, the memory
+    # injection or the user's message. The prompt overflowed, Ollama truncated
+    # it, and the model generated from the wreckage until it hit the limit.
+    # This is arithmetic about a window, NOT a rule about local models: give a
+    # machine 32k of context and nothing is trimmed at all.
+    "tool_budget_ratio":         0.45,
+    # Kept even when the budget bites, because a conversation without them is
+    # not much of one.
+    "tool_core": ["memory_search", "memory_save",
+                  "search_knowledge_base", "web_search"],
     # ── vLLM backend (dual-mode) ──────────────────────────────────────────
     # Set vllm_base_url (e.g. http://gpu-1:8000/v1) to switch chat/generation to
     # vLLM; empty = Ollama (default, unchanged). Embeddings are NOT affected.

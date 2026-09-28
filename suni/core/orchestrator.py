@@ -1,5 +1,6 @@
 from __future__ import annotations
 import asyncio
+import json
 import re
 import time
 from collections import deque
@@ -311,6 +312,69 @@ _NETVIEW_TARGETS = (
 
 
 # Queries about SUNI's own content — never need a web prefetch
+def _schema_tokens(schema: dict) -> int:
+    """Roughly how much of the window one tool definition costs.
+
+    Four characters to the token is the usual approximation and is close enough
+    for a budget: the decision this feeds is "does the set fit", and being ten
+    per cent out moves the cut by a tool or two, not by a category.
+    """
+    try:
+        return len(json.dumps(schema)) // 4
+    except Exception:      # noqa: BLE001 — an unserialisable schema is not fatal
+        return 200
+
+
+def fit_tools(tools: list, user_input: str, num_ctx: int,
+              budget_ratio: float = 0.45, core: tuple = ()) -> tuple:
+    """Return (tools that fit, how many were dropped).
+
+    Measured on this machine: role "standard" is offered 61 tools, which is
+    ~7,100 tokens against a num_ctx of 8,192 — 87% of the window gone before
+    the persona, the memory injection, the skills catalogue or the user's
+    actual message. The prompt overflowed, Ollama truncated it, and a 7B given
+    a truncated tool schema generated until it hit the context limit. That is
+    what an inbound Telegram message met, every time, for as long as the
+    channel had existed.
+
+    ON A BIGGER BOX THIS DOES NOTHING. The budget is a share of whatever
+    context the model actually has, so a machine with room for all of them
+    sends all of them and never enters the trimming branch. It is not a
+    "local models get fewer tools" rule — it is arithmetic about a window.
+
+    When it does have to cut: the core set stays, and the rest are ranked by
+    how well they match what was actually asked, cheapest-first among equals so
+    more of them fit. A tool nobody could have wanted is the right one to drop.
+    """
+    budget = int(max(256, num_ctx * budget_ratio))
+    sized = [(t, _schema_tokens(t)) for t in tools]
+    total = sum(n for _, n in sized)
+    if total <= budget:
+        return tools, 0
+
+    def name_of(t):
+        return str(((t or {}).get("function") or {}).get("name")
+                   or (t or {}).get("name") or "")
+
+    words = {w for w in re.findall(r"[a-z]{3,}", (user_input or "").lower())}
+
+    def score(t):
+        fn = (t or {}).get("function") or t or {}
+        text = f"{fn.get('name', '')} {fn.get('description', '')}".lower()
+        return sum(1 for w in words if w in text)
+
+    kept, used, dropped = [], 0, 0
+    ordered = sorted(sized, key=lambda p: (name_of(p[0]) not in core,
+                                           -score(p[0]), p[1]))
+    for t, n in ordered:
+        if used + n <= budget or name_of(t) in core:
+            kept.append(t)
+            used += n
+        else:
+            dropped += 1
+    return kept, dropped
+
+
 _SKIP_PREFETCH_RE = re.compile(
     r'\b(article|articles|published|wrote|written|post|posts|'
     r'suniverse|you wrote|you published|your article|your post|'
@@ -1609,6 +1673,20 @@ class Orchestrator:
             allowed_tools=(grants["allowed_tools"] if grants else _rbac.allowed_tools(user_role)),
             blocked_tools=(grants["blocked_tools"] if grants else _rbac.blocked_tools(user_role)),
         )
+        # Offering more tool definitions than the context can hold does not
+        # degrade gracefully: the prompt is truncated and the model answers from
+        # the wreckage. Sized against the window the model actually has, so this
+        # is a no-op wherever there is room.
+        from ..system_profile import effective_num_ctx as _enc
+        _ctx = _enc()
+        tools, _dropped = fit_tools(
+            tools, user_input or "", _ctx,
+            budget_ratio=float(_cfg.get("tool_budget_ratio", 0.45) or 0.45),
+            core=tuple(_cfg.get("tool_core") or ()),
+        )
+        if _dropped:
+            _log.info("[TOOLS]   %d offered, %d dropped to fit num_ctx=%d",
+                      len(tools) + _dropped, _dropped, _ctx)
 
         # Tier setup: pick starting agent, allow escalation up through all local tiers then T5
         current_tier  = starting_tier if starting_tier > 0 else DEFAULT_TIER

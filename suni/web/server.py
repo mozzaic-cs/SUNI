@@ -547,6 +547,22 @@ def create_app() -> FastAPI:
     dc_contexts: dict[str, Context] = {}   # per-Discord-channel contexts
     sk_contexts: dict[str, Context] = {}   # per-Slack-channel contexts
 
+    def _channel_error(e: BaseException) -> str:
+        """What to tell somebody on a channel when their turn failed.
+
+        `f"...: {e}"` looks obviously right and is not: str(httpx.ReadTimeout())
+        is the EMPTY STRING, so a timeout reached the user as "I encountered a
+        difficulty:" — a sentence that admits something went wrong and then
+        refuses to say what. A timeout is also the one failure worth naming in
+        plain words, because the useful advice is simply "try again".
+        """
+        import httpx as _hx
+        if isinstance(e, (_hx.TimeoutException, TimeoutError, asyncio.TimeoutError)):
+            return ("I took too long working on that and stopped waiting. "
+                    "The local model may still be warming up — try again in a moment.")
+        detail = str(e).strip() or e.__class__.__name__
+        return f"I encountered a difficulty: {detail}"
+
     async def _handle_sk(channel_id, text: str, is_dm: bool = False) -> None:
         """Shared inbound handler for Slack messages (Socket Mode).
 
@@ -575,7 +591,7 @@ def create_app() -> FastAPI:
                 user_role="standard", user_id=_uid)
             await sk_send(channel_id, response)
         except Exception as e:
-            await sk_send(channel_id, f"I encountered a difficulty: {e}")
+            await sk_send(channel_id, _channel_error(e))
 
     async def _handle_dc(channel_id, text: str, is_dm: bool = False) -> None:
         """Shared inbound handler for Discord messages (gateway).
@@ -603,7 +619,7 @@ def create_app() -> FastAPI:
                 user_role="standard", user_id=_uid)
             await dc_send(channel_id, response)
         except Exception as e:
-            await dc_send(channel_id, f"I encountered a difficulty: {e}")
+            await dc_send(channel_id, _channel_error(e))
 
     async def _handle_tg(chat_id, text: str) -> None:
         """Shared inbound handler for BOTH the Telegram webhook and long-poll.
@@ -630,7 +646,7 @@ def create_app() -> FastAPI:
                 user_role="standard", user_id=_uid)
             await tg_send(chat_id, response)
         except Exception as e:
-            await tg_send(chat_id, f"I encountered a difficulty: {e}")
+            await tg_send(chat_id, _channel_error(e))
 
     # Collective episodic memory (company-level facts shared across all users)
     from ..memory.store import MemoryStore as _MemStore
@@ -2462,7 +2478,7 @@ def create_app() -> FastAPI:
                     user_role="standard", user_id=_wa_uid)
                 await wa_send(from_, response)
             except Exception as e:
-                await wa_send(from_, f"I appear to have encountered a difficulty: {e}")
+                await wa_send(from_, _channel_error(e))
 
         background_tasks.add_task(_process)
         # Return empty 200 immediately — Twilio requires fast acknowledgement
