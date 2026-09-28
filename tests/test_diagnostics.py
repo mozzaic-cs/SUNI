@@ -198,3 +198,73 @@ def test_the_scrubber_does_not_destroy_ordinary_log_lines(ordinary):
     exactly the lines a diagnosis needs to quote."""
     from suni.log_ship import _safe
     assert _safe(ordinary) == ordinary
+
+
+# ── she has to look before she answers ──────────────────────────────────────
+@pytest.mark.parametrize("text", [
+    "what's wrong with you?",
+    "Está tudo bem contigo?",
+    "estás bem contigo?",
+    "tens algum problema?",
+    "o que se passa contigo?",
+    "are you ok?",
+    "why are you so slow?",
+    "não estás a responder",
+    "estás muito lenta hoje",
+    "is everything working?",
+    "diagnose yourself",
+])
+def test_asking_how_she_is_triggers_a_real_look(text):
+    """diagnose_self was registered and unreachable: an admin turn goes
+    straight to the Claude Code CLI, which brings its own tools and never sees
+    SUNI's registry. Asked "what's wrong with you?" she answered from
+    imagination while three turns hung and a model thrashed. The tool was not
+    declined — it was never offered. So the intent is recognised before
+    routing, which works whichever model ends up answering.
+    """
+    from suni.core.orchestrator import _SELFCHECK_RE
+    assert _SELFCHECK_RE.search(text), f"{text!r} does not ask her to look"
+
+
+@pytest.mark.parametrize("text", [
+    "está tudo bem, obrigado",                      # a statement, not a question
+    "tudo bem com o cliente?",                      # about somebody else
+    "o que se passa com o projeto?",
+    "how are you going to do that?",                # "how are you" but not about her
+    "diagnostica o problema do servidor do cliente",
+    "faz um diagnóstico à rede do cliente",
+    "a impressora está lenta",
+    "bom dia",
+])
+def test_it_does_not_fire_on_other_peoples_problems(text):
+    """"Diagnose" is a word about other people's servers too. Reading the log
+    out because somebody asked after a client's printer would be worse than
+    doing nothing."""
+    from suni.core.orchestrator import _SELFCHECK_RE
+    assert not _SELFCHECK_RE.search(text), f"{text!r} wrongly triggers a self-check"
+
+
+def test_a_channel_user_asking_how_she_is_gets_no_log_report():
+    """The findings quote log lines. An inbound channel runs at "standard"
+    because it is not per-sender authenticated, and a pleasantry from Telegram
+    must not return the contents of the machine's log."""
+    import pathlib
+    src = (pathlib.Path(__file__).resolve().parent.parent
+           / "suni/core/orchestrator.py").read_text(encoding="utf-8")
+    fn = src[src.index("async def _maybe_self_check"):]
+    fn = fn[:fn.index("async def _maybe_show_network")]
+    assert 'user_role not in ("admin", "owner")' in fn, "any role can read the logs"
+    assert fn.index("user_role not in") < fn.index("_diag.run()"), (
+        "the check runs before the role is tested")
+
+
+def test_a_clean_bill_of_health_is_not_recited():
+    """The right answer to "are you all right?" is "yes" — not a log report.
+    She needs the findings to know which, and instructions not to perform them."""
+    import pathlib
+    src = (pathlib.Path(__file__).resolve().parent.parent
+           / "suni/core/orchestrator.py").read_text(encoding="utf-8")
+    fn = src[src.index("async def _maybe_self_check"):]
+    fn = fn[:fn.index("async def _maybe_show_network")]
+    assert "without reciting" in fn
+    assert "do not add causes of your" in fn, "she may invent a cause beside the evidence"

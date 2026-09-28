@@ -311,6 +311,42 @@ _NETVIEW_TARGETS = (
 )
 
 
+# "Is everything all right?" — asked of HER, not of the world.
+#
+# diagnose_self is registered and was still unreachable from the browser: an
+# admin turn goes straight to the Claude Code CLI, which brings its own tools
+# and never sees SUNI's registry. Asked "what's wrong with you?" she answered
+# from imagination with three turns hung and a model thrashing. The tool was
+# not declined, it was never offered.
+#
+# So the intent is recognised before routing, like the network view, and the
+# findings are injected as background. Deliberately including the pleasantry
+# ("está tudo bem contigo?"): the right answer to that is "yes" when it is
+# true and "actually, no" when it is not, and she cannot know which without
+# looking. What she must NOT do is recite a log report at someone being
+# polite — which is the injected instruction's job, not the regex's.
+_SELFCHECK_RE = re.compile(
+    r"(?i)("
+    r"what'?s? (?:is )?wrong (?:with )?(?:you|suni)|anything (?:wrong|broken)|"
+    r"are you (?:ok|okay|alright|all right|well|working|broken|stuck)|"
+    r"is everything (?:ok|okay|alright|working)|how are you (?:doing|feeling)|"
+    # "diagnose" is a word about other people's servers too, so it only counts
+    # when it is pointed at her. "diagnostica o problema do servidor do cliente"
+    # is not a request for introspection.
+    r"self[- ]?diagnos(?:e|tic|is)|diagnose yourself|health check|"
+    r"are you (?:not )?responding|"
+    r"why (?:are|were) you (?:so )?(?:slow|stuck|quiet)|"
+    # pt-PT. "tudo bem" on its own is a greeting to a person; it only asks
+    # about HER when it says so — contigo, com a suni, com o sistema.
+    r"est[áa]s? (?:tudo )?bem(?: contigo| com a suni)|tudo bem contigo|"
+    r"(?:est[áa]s|tens) (?:com )?(?:algum )?problema|algum problema contigo|"
+    r"o que se passa contigo|correu (?:algo )?mal|"
+    r"auto[- ]?diagn[óo]stico|diagn[óo]stico\s+(?:a ti|de ti|interno|teu|ao sistema)|"
+    r"est[áa]s (?:muito )?lenta|n[ãa]o est[áa]s a responder|"
+    r"est[áa] tudo a funcionar"
+    r")")
+
+
 # Queries about SUNI's own content — never need a web prefetch
 def _schema_tokens(schema: dict) -> int:
     """Roughly how much of the window one tool definition costs.
@@ -886,6 +922,11 @@ class Orchestrator:
         ts = time.perf_counter()
         await self._maybe_prefetch(user_input, context)
         _tick("web prefetch", ts, "triggered" if triggered else "skipped")
+
+        # ── is she all right ──────────────────────────────────────────
+        ts = time.perf_counter()
+        _checked = await self._maybe_self_check(user_input, context, user_role)
+        _tick("self check", ts, _checked or "skipped")
 
         # ── show me that ──────────────────────────────────────────────
         ts = time.perf_counter()
@@ -2169,6 +2210,47 @@ class Orchestrator:
             ))
         except Exception as e:
             console.print(f"  [yellow]web prefetch failed: {e}[/yellow]")
+
+    async def _maybe_self_check(self, user_input: str, context: Context,
+                                user_role: str) -> str:
+        """Look at her own state before saying how she is.
+
+        Runs regardless of which model answers, which is the point: the tool
+        exists and the CLI route never sees it.
+
+        Administrators only, and silently so — the findings quote log lines,
+        and an inbound channel runs at "standard" precisely because it is not
+        per-sender authenticated. Someone on Telegram asking how she is gets a
+        pleasantry, not the contents of the machine's log.
+        """
+        if not _SELFCHECK_RE.search(user_input or ""):
+            return ""
+        if user_role not in ("admin", "owner"):
+            return ""
+        try:
+            from .. import diagnostics as _diag
+            result = _diag.run()
+            report = _diag.as_report(result)
+        except Exception as exc:      # noqa: BLE001 — never fail a turn over this
+            console.print(f"  [yellow]self-check failed: {exc}[/yellow]")
+            return ""
+        bad = [f for f in result["findings"] if f.level in ("broken", "slow")]
+        context.add(Message(
+            role=Role.SYSTEM,
+            content=(
+                f"[Your own health, checked just now]{_NL}{report}{_NL}{_NL}"
+                + ("Nothing here is wrong. Answer the way you would answer any "
+                   "pleasantry — briefly, in their language, without reciting "
+                   "this. Do not go looking for something to report."
+                   if not bad else
+                   "Some of this is wrong. Say so in your own words, worst "
+                   "first, in their language, and keep each finding with its "
+                   "evidence. These are measured: do not add causes of your "
+                   "own beside them.")
+            ),
+            agent="orchestrator",
+        ))
+        return f"{len(bad)} issue(s)" if bad else "healthy"
 
     async def _maybe_show_network(self, user_input: str, context: Context) -> str:
         """Move the field behind her head when the user asks to see something.
