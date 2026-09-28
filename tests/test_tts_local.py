@@ -25,6 +25,19 @@ from suni import tts_local as T
 _HAS_VOICE = T.available()
 needs_voice = pytest.mark.skipif(not _HAS_VOICE, reason="no piper voice installed")
 
+def _local_branch() -> str:
+    """The local-voice branch, to where the cloud branch begins.
+
+    Sliced to its real end rather than a fixed character count: a comment added
+    at the top pushed the assertion out of a 1400-character window and failed
+    the test over prose. That is the third time today a slice-sized test has
+    broken on an insertion.
+    """
+    i = SERVER.index("_tts_backend = str(suni_config.get")
+    j = SERVER.index("if _saved_voice in _EDGE_TTS_VOICE_SET:", i)
+    return SERVER[i:j]
+
+
 
 def test_synthesis_never_runs_on_the_event_loop():
     """Piper is CPU-bound ONNX. This codebase has starved its event loop three
@@ -38,8 +51,7 @@ def test_a_missing_or_broken_voice_costs_nobody_their_speech():
     """A voice that will not load on some other machine, an unsupported
     language, a corrupt file: none of those should silence her."""
     assert "return None" in MOD
-    i = SERVER.index("_tts_backend = str(suni_config.get")
-    block = SERVER[i:i + 1400]
+    block = _local_branch()
     # It returns only when there IS audio, and swallows its own failures — so
     # control reaches the cloud path below in every other case.
     assert "if _wav:" in block, "an empty local result is returned as audio"
@@ -126,3 +138,43 @@ def test_the_loop_survives_synthesis():
         return ticks
 
     assert asyncio.run(main()) == 30, "the event loop stalled during synthesis"
+
+
+# ── a voice somebody chose must win ─────────────────────────────────────────
+def test_an_explicitly_chosen_voice_is_not_overridden():
+    """The first version ran the local branch before reading the saved voice,
+    so a female voice somebody had selected silently became the male one that
+    happens to be the only European Portuguese voice piper ships. Their setting
+    reached nothing. Speed is not worth taking a choice away."""
+    block = _local_branch()
+    assert "_chose_edge" in block, "the saved voice is not consulted"
+    assert "_saved_voice in _EDGE_TTS_VOICE_SET" in block
+    assert 'not _chose_edge' in block, "auto still overrides a chosen voice"
+    # And the saved voice has to be read BEFORE the decision, not after.
+    assert SERVER.index("_saved_voice = str(") < SERVER.index(
+        "_tts_backend = str(suni_config.get")
+
+
+def test_the_local_voice_can_be_chosen_on_purpose():
+    """A voice that cannot be selected is not an option, it is an ambush: the
+    only way it could ever play was by overriding something."""
+    i = SERVER.index("async def tts_voices")
+    block = SERVER[i:i + 900]
+    assert '"local:"' in block or "f\"local:{p.stem}\"" in block, (
+        "the picker lists only cloud voices, so local is unchoosable")
+    assert "_chose_local" in _local_branch(), "choosing it has no effect"
+
+
+@pytest.mark.parametrize("saved,backend,expect_local", [
+    ("pt-PT-RaquelNeural", "auto",  False),   # chosen cloud voice — honoured
+    ("",                   "auto",  True),    # nothing chosen — local is the faster default
+    ("local:pt_PT-tugao",  "auto",  True),    # chosen local voice
+    ("pt-PT-RaquelNeural", "piper", True),    # pinned by the operator, deliberately
+])
+def test_the_decision_table_holds(saved, backend, expect_local):
+    edge_voices = {"en-GB-SoniaNeural", "pt-PT-RaquelNeural"}
+    chose_edge = saved in edge_voices
+    chose_local = saved.startswith("local:")
+    use_local = chose_local or backend in ("piper", "local") or (
+        backend == "auto" and not chose_edge)
+    assert use_local is expect_local

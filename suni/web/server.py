@@ -2595,7 +2595,18 @@ def create_app() -> FastAPI:
         # and it is a dependency on Microsoft being reachable, which has
         # returned 503 here merely because the box was busy.
         _tts_backend = str(suni_config.get("tts_backend", "auto") or "auto").lower()
-        if _tts_backend in ("auto", "piper", "local"):
+        # A VOICE THE USER CHOSE WINS. The first version of this ran the local
+        # branch first and silently overrode an explicitly selected voice —
+        # a female one became a male one, and the setting in the admin panel
+        # reached nothing. Speed is not worth taking somebody's choice away.
+        #
+        # "auto" therefore means "local when nothing was chosen"; picking
+        # "local" from the voice list is how you choose it on purpose, and
+        # "piper" in the config pins it regardless.
+        _chose_edge = _saved_voice in _EDGE_TTS_VOICE_SET
+        _chose_local = _saved_voice.startswith("local:")
+        if _chose_local or (_tts_backend in ("piper", "local")) or (
+                _tts_backend == "auto" and not _chose_edge):
             try:
                 from .. import tts_local as _local
                 if _local.available():
@@ -4138,7 +4149,21 @@ def create_app() -> FastAPI:
 
     @app.get("/api/tts/voices", dependencies=[Depends(_check_token)])
     async def tts_voices():
-        return JSONResponse({"voices": list(EDGE_TTS_VOICES)})
+        """Every voice that can actually be picked, cloud and local together.
+
+        Listing only the cloud ones made the local voice unchoosable: it could
+        arrive only by overriding whatever the person had selected, which is
+        how a chosen female voice became a male one without anyone asking.
+        A voice you cannot select is not an option, it is an ambush.
+        """
+        voices = list(EDGE_TTS_VOICES)
+        try:
+            from .. import tts_local as _local
+            for p in sorted(_local.MODEL_DIR.glob("*.onnx")) if _local.MODEL_DIR.exists() else []:
+                voices.append(f"local:{p.stem}")
+        except Exception:      # noqa: BLE001 — a missing local voice is not an error
+            pass
+        return JSONResponse({"voices": voices})
 
     return app
 
