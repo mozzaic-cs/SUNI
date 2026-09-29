@@ -146,7 +146,12 @@
 
       /* The glyph sits on the ball, bright enough to read against it. Below
          about thirteen pixels it would be mush, so it fades in with size. */
-      vec2 uv = (v_cell + clamp(gl_PointCoord * 1.42 - 0.21, 0.0, 1.0)) / u_cols;
+      /* 1.82, not the 1.42 this started with. The sprite is 1.55x the ball, so
+         at 1.42 the glyph spanned 1.09 x the ball DIAMETER — it overflowed the
+         thing it was supposed to be sitting on, which is why the icons read as
+         too big for their orbs. At 1.82 it covers 0.85 of the ball and sits
+         inside it. */
+      vec2 uv = (v_cell + clamp(gl_PointCoord * 1.82 - 0.41, 0.0, 1.0)) / u_cols;
       float room = smoothstep(13.0, 26.0, v_px) * (0.35 + 0.65 * u_focus);
       float glyph = texture2D(u_icons, uv).a * room;
       col = mix(col, mix(vec3(1.0), cat + 0.55, 0.35), glyph * 0.85);
@@ -160,9 +165,15 @@
          the cost of a framebuffer this machine cannot spare. Brighter in
          focus, and stronger for the big nodes, so importance reads as radiance
          instead of only as diameter. */
-      float halo = pow(1.0 - clamp(sr, 0.0, 1.0), 1.7);
+      /* Falls off faster (2.1, was 1.7) and peaks lower (1.30, was 2.10). At
+         the old figures a focused node was carrying 2.65x its own colour in
+         light, which on a big node washed out both the glyph on it and the
+         nodes beside it. The nebula arrived since those numbers were chosen
+         and does the work they were overreaching for: depth now comes from
+         the wash behind a cluster, so each node needs less of its own. */
+      float halo = pow(1.0 - clamp(sr, 0.0, 1.0), 2.1);
       vec3 glow = mix(cat, rimCol, 0.40) * halo
-                * (0.55 + 2.10 * u_focus) * (0.55 + 0.45 * v_shade);
+                * (0.42 + 1.30 * u_focus) * (0.55 + 0.45 * v_shade);
 
       /* TWO PASSES, because light adds and surfaces do not. The ball is
          alpha-blended and writes depth, so it occludes what is behind it; the
