@@ -308,6 +308,35 @@
       gl_FragColor = vec4(sum, 1.0);
     }`;
 
+  /* ── the ring guides ──────────────────────────────────────────────────
+     The rings layout has always put one category on each ring, and never drawn
+     the rings. Without them the arrangement reads as scattered dots that
+     happen to curve; with them it reads as what it is — a category per orbit,
+     ordered from the middle out.
+
+     One unit circle in a buffer, scaled per ring by a uniform, so nine rings
+     are nine small draws over 96 vertices rather than nine buffers. */
+  const RING_SEGMENTS = 96;
+
+  const GVS = `
+    attribute vec2 a_unit;
+    uniform mat4 u_mvp;
+    uniform vec2 u_scale;
+    void main(){
+      gl_Position = u_mvp * vec4(a_unit.x * u_scale.x, a_unit.y * u_scale.y, 0.0, 1.0);
+    }`;
+
+  const GFS = `
+    precision mediump float;
+    uniform vec3  u_col;
+    uniform float u_alpha;
+    void main(){
+      /* Scanlines, like everything else in this field: a guide that is not
+         part of the projection looks stuck on top of it. */
+      float sl = 0.86 + 0.14 * (0.5 + 0.5 * sin(gl_FragCoord.y * 1.5));
+      gl_FragColor = vec4(u_col * sl, u_alpha);
+    }`;
+
   function compile(gl, type, src) {
     const s = gl.createShader(type);
     gl.shaderSource(s, src); gl.compileShader(s);
@@ -691,6 +720,27 @@
         gl.bufferData(gl.ARRAY_BUFFER,
           new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
       }
+      /* Optional in the same way the wash is: no guides is a lesser loss
+         than no field. */
+      this.gprog = program(gl, GVS, GFS);
+      if (this.gprog) {
+        this.ga = { unit: gl.getAttribLocation(this.gprog, 'a_unit') };
+        this.gu = {
+          mvp:   gl.getUniformLocation(this.gprog, 'u_mvp'),
+          scale: gl.getUniformLocation(this.gprog, 'u_scale'),
+          col:   gl.getUniformLocation(this.gprog, 'u_col'),
+          alpha: gl.getUniformLocation(this.gprog, 'u_alpha'),
+        };
+        const unit = new Float32Array(RING_SEGMENTS * 2);
+        for (let i = 0; i < RING_SEGMENTS; i++) {
+          const a = (i / RING_SEGMENTS) * Math.PI * 2;
+          unit[i * 2] = Math.cos(a); unit[i * 2 + 1] = Math.sin(a);
+        }
+        this.bRing = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.bRing);
+        gl.bufferData(gl.ARRAY_BUFFER, unit, gl.STATIC_DRAW);
+      }
+      this.rings = [];        // {kind, rx, ry, col} while the rings layout is on
       this.ok = !!(this.prog && this.lprog);
       if (!this.ok) return;
 
@@ -943,6 +993,10 @@
         case 'areas':  return this._clusterLayout();
         case 'force':  return this._forceLayout();
         default:
+          // Orbit. Cleared HERE rather than in each layout, because this is
+          // the branch a layout is left FOR, and guides left behind draw
+          // circles through an arrangement that has no rings in it.
+          this.rings = [];
           for (const nd of this.nodes) nd.target = nd.radial.slice();
           this._extentX = this._extentY = 0;
           return;
@@ -963,6 +1017,10 @@
       const kinds = [...byKind.keys()].sort((a, b) => rank(a) - rank(b));
       let r = 3.0;
       this._extentX = this._extentY = 0;
+      /* Recorded here rather than recomputed for the drawing: two places
+         deciding where a ring is, is how a guide ends up beside its own
+         nodes instead of through them. */
+      this.rings = [];
       for (const k of kinds) {
         const members = byKind.get(k);
         // The circumference has to hold them side by side, or a ring is a smear.
@@ -978,6 +1036,9 @@
         });
         this._extentX = Math.max(this._extentX, r + NODE_W);
         this._extentY = Math.max(this._extentY, r * 0.62 + NODE_W);
+        this.rings.push({ kind: k, rx: r, ry: r * 0.62,
+                          col: (KIND_STYLE[k] || KIND_STYLE.file).color,
+                          count: members.length });
       }
     }
 
@@ -985,6 +1046,7 @@
        how connected a level is: a dense bundle of chords says it hangs
        together, a sparse one says it does not. */
     _circleLayout() {
+      this.rings = [];   // guides belong to the rings layout alone
       const sorted = this.nodes.slice().sort((a, b) =>
         String(a.kind).localeCompare(String(b.kind))
         || String(a.label).localeCompare(String(b.label)));
@@ -1003,6 +1065,7 @@
        field you cannot read, and one that jiggles for ever spends the frame
        budget on nothing. */
     _forceLayout() {
+      this.rings = [];   // guides belong to the rings layout alone
       const nodes = this.nodes, n = nodes.length;
       const pos = nodes.map(nd => nd.radial.slice());
       const links = (this._links || []).filter(lk => lk[0] !== null && lk[1] !== null);
@@ -1041,6 +1104,7 @@
     }
 
     _clusterLayout() {
+      this.rings = [];   // guides belong to the rings layout alone
       /* Group centres on a DISC facing the viewer, not on a sphere around
          them. A sphere puts half the groups edge-on or behind the middle, and
          at the distance needed to fit it they are small, scattered and
@@ -1262,6 +1326,7 @@
       gl.enable(gl.DEPTH_TEST);
       gl.enable(gl.BLEND);
       this._drawNebula();
+      this._drawRings();
       // Edges stay additive — they are light, and light adds. The nodes below
       // switch to ordinary blending and write depth, because a sphere that
       // accumulates with the one behind it is not a sphere.
@@ -1347,6 +1412,66 @@
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     }
 
+    /* The orbits themselves. Drawn after the wash and before the links, so a
+       guide sits behind the network rather than across it. */
+    _drawRings() {
+      if (!this.gprog || !this.rings.length) return;
+      const gl = this.gl;
+      gl.useProgram(this.gprog);
+      gl.uniformMatrix4fv(this.gu.mvp, false, this._mvp);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.bRing);
+      gl.enableVertexAttribArray(this.ga.unit);
+      gl.vertexAttribPointer(this.ga.unit, 2, gl.FLOAT, false, 0, 0);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+      gl.depthMask(false);
+      for (const ring of this.rings) {
+        gl.uniform2f(this.gu.scale, ring.rx, ring.ry);
+        gl.uniform3f(this.gu.col, ring.col[0], ring.col[1], ring.col[2]);
+        // Barely there in ambient: a guide is for someone who is reading the
+        // field, and behind her head nobody is.
+        gl.uniform1f(this.gu.alpha, 0.05 + 0.20 * this.focus);
+        gl.drawArrays(gl.LINE_LOOP, 0, RING_SEGMENTS);
+      }
+      gl.depthMask(true);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    }
+
+    /* Where to write each ring's name: the highest point of that ring on
+       screen, so the words sit along the top the way the reference does.
+
+       Sampled rather than solved. The ring is an ellipse in the layout plane
+       seen through a camera that turns, so which point is topmost changes as
+       the viewer drags; sixteen samples find it closely enough and cost
+       nothing next to being wrong whenever the field is not square-on. */
+    ringLabels(w, h, opts) {
+      if (!this.rings.length) return [];
+      const o = opts || {};
+      const skips = !o.exclude ? []
+        : (Array.isArray(o.exclude) ? o.exclude : [o.exclude]);
+      const blocked = (x, y) => skips.some(
+        s => x > s.x0 && x < s.x1 && y > s.y0 && y < s.y1);
+      const out = [];
+      for (const ring of this.rings) {
+        let best = null;
+        for (let i = 0; i < 16; i++) {
+          const a = (i / 16) * Math.PI * 2;
+          const p = this.project([Math.cos(a) * ring.rx, Math.sin(a) * ring.ry, 0], w, h);
+          if (!p) continue;
+          if (!best || p.y < best.y) best = p;
+        }
+        if (!best || best.x < 0 || best.x > w || best.y < 0 || best.y > h) continue;
+        if (blocked(best.x, best.y)) continue;
+        out.push({
+          kind: ring.kind,
+          label: (KIND_STYLE[ring.kind] || {}).label || ring.kind,
+          count: ring.count,
+          x: best.x, y: best.y,
+          color: ring.col,
+        });
+      }
+      return out;
+    }
+
     /* Where each category sits on screen, how far it is spread, and how much
        of a claim that is. Computed once a frame and used twice: the wash behind
        a cluster and the hub that names it must agree, or the name floats beside
@@ -1412,6 +1537,10 @@
        everything. */
     hubs(w, h, opts) {
       const o = opts || {};
+      /* Rings already name every category, on the ring that holds it. A
+         cluster marker saying MODEL beside a ring labelled MODEL is the same
+         word twice for the same thing. */
+      if (this.rings.length) return [];
       const min = o.min || 0.34;
       const skips = !o.exclude ? []
         : (Array.isArray(o.exclude) ? o.exclude : [o.exclude]);

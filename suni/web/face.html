@@ -407,6 +407,15 @@ header{
   text-shadow:0 1px 3px rgba(0,0,0,.95),0 0 10px rgba(0,0,0,.8)}
 #net-hubs .nm{display:block;font-size:11px;letter-spacing:.09em;text-transform:uppercase}
 #net-hubs .ct{display:block;font-size:10px;color:rgba(228,236,255,.55)}
+/* A ring's name, written along the top of the ring it belongs to. Letter-spaced
+   and small: it labels a region rather than pointing at a thing. */
+#net-hubs .ring{position:absolute;transform:translate(-50%,-100%);
+  font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.16em;
+  text-transform:uppercase;white-space:nowrap;pointer-events:auto;cursor:pointer;
+  text-shadow:0 1px 3px rgba(0,0,0,.95),0 0 10px rgba(0,0,0,.8);
+  opacity:0;transition:opacity .3s ease}
+#net-hubs .ring.on{opacity:.82}
+#net-hubs .ring:hover{opacity:1}
 /* Leaving the network. Escape did this from the first version, which is no
    use at all to someone who does not already know it is there: the head
    shrinking into a corner with no visible way back is a trap, not a mode. */
@@ -2387,6 +2396,9 @@ const _netLabels = document.getElementById('net-labels');
 const _netLabelPool = [];
 const _netHubs = document.getElementById('net-hubs');
 const _netHubPool = [];
+// Declared up here with the other pools, not beside the function that fills
+// it: `const` is not hoisted, and _netHideLabels touches all three.
+const _netRingPool = [];
 const _netExitBtn = document.getElementById('net-exit');
 const _netMenu = document.getElementById('net-menu');
 let _netPtr = null;         // last pointer position, for the centre's own hint
@@ -2662,6 +2674,7 @@ function _netCopy(text){
 function _netHideLabels(){
   for (const el of _netLabelPool) el.classList.remove('on');
   for (const el of _netHubPool) el.classList.remove('on');
+  for (const el of _netRingPool) el.classList.remove('on');
 }
 
 /* One marker per cluster, at the middle of it: initial, name, count. The
@@ -2712,9 +2725,50 @@ function _netPaintHubs(w, h, keepClear){
   /* The boxes the names must now avoid. Generous to the right, because the
      marker grows that way: the disc is centred on the cluster and the word
      runs off it. */
-  return wanted.map(hub => ({
+  const boxes = wanted.map(hub => ({
     x0: hub.x - 26, x1: hub.x + 34 + hub.label.length * 7.4,
     y0: hub.y - 16, y1: hub.y + 16,
+  }));
+  return boxes.concat(_netPaintRingNames(w, h, keepClear.concat(boxes)));
+}
+
+/* The name of each ring, written along the top of it. The rings layout has
+   always put one category on each orbit; until the guides were drawn it looked
+   like scattered dots that happened to curve, and even with them a ring says
+   nothing about WHICH category it is. */
+function _netPaintRingNames(w, h, keepClear){
+  if (!_netFocus || !_net.ringLabels) {
+    for (const el of _netRingPool) el.classList.remove('on');
+    return [];
+  }
+  const wanted = _net.ringLabels(w, h, { exclude: keepClear });
+  for (let i = 0; i < wanted.length; i++) {
+    let el = _netRingPool[i];
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'ring';
+      // Same gesture as the legend and the cluster markers: a ring is a
+      // category, so clicking it goes to that category.
+      el.addEventListener('click', () => { if (el._kind) _netSpot(el._kind); });
+      _netHubs.appendChild(el);
+      _netRingPool.push(el);
+    }
+    const r = wanted[i];
+    if (el._kind !== r.kind) {
+      el._kind = r.kind;
+      el.textContent = r.label;
+      el.style.color = `rgb(${r.color.map(v => Math.round(v * 255)).join(',')})`;
+    }
+    el.style.left = r.x + 'px';
+    el.style.top = (r.y - 6) + 'px';
+    el.classList.add('on');
+  }
+  for (let i = wanted.length; i < _netRingPool.length; i++) {
+    _netRingPool[i].classList.remove('on');
+  }
+  return wanted.map(r => ({
+    x0: r.x - 6 - r.label.length * 6.4, x1: r.x + 6 + r.label.length * 6.4,
+    y0: r.y - 22, y1: r.y + 6,
   }));
 }
 

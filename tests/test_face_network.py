@@ -699,3 +699,45 @@ def test_every_glyph_has_a_cell_to_live_in():
     # And every kind's icon has to BE in that list, or it wears cell zero.
     for icon in re.findall(r'icon: "(\w+)"', MOD):
         assert icon in glyphs, f'kind icon "{icon}" is not in ICON_ORDER'
+
+
+# ── ring guides ─────────────────────────────────────────────────────────────
+
+
+def test_the_rings_layout_actually_draws_rings():
+    """It put one category on each orbit from the day it was written and never
+    drew the orbits, so it read as scattered dots that happened to curve."""
+    assert "_drawRings()" in MOD, "the guides are never drawn"
+    assert "RING_SEGMENTS" in MOD
+    body = MOD[MOD.index("_ringsLayout() {"):]
+    body = body[:body.index("\n    }\n")]
+    assert "this.rings.push(" in body, (
+        "the layout does not record where its rings are, so the guides would "
+        "have to work it out a second time"
+    )
+
+
+def test_guides_do_not_outlive_their_layout():
+    """Circles drawn through an arrangement that has no rings in it."""
+    for layout in ("_circleLayout", "_forceLayout", "_clusterLayout"):
+        body = MOD[MOD.index(f"{layout}() {{"):][:400]
+        assert "this.rings = []" in body, f"{layout} leaves the guides up"
+    apply = MOD[MOD.index("_applyLayout() {"):]
+    apply = apply[:apply.index("\n    }\n")]
+    assert "this.rings = []" in apply, "leaving for orbit leaves the guides up"
+
+
+def test_a_ring_says_which_category_it_is():
+    assert "ringLabels(w, h, opts)" in MOD, "the rings are anonymous circles"
+    assert "_netPaintRingNames" in FACE, "the page never writes them"
+    assert "_netSpot(el._kind)" in FACE, "a ring's name does not go to its category"
+
+
+def test_a_category_is_not_named_twice():
+    """A cluster marker saying MODEL beside a ring labelled MODEL is the same
+    word twice for the same thing."""
+    body = MOD[MOD.index("hubs(w, h, opts) {"):]
+    body = body[:body.index("\n    }\n")]
+    assert "if (this.rings.length) return []" in body, (
+        "cluster markers and ring names would both label every category"
+    )
