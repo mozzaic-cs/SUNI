@@ -43,8 +43,13 @@
       gl_Position = clip;
       /* Nearer points are larger, as they would be. clip.w is the camera
          distance, so dividing keeps perspective honest for points too. */
-      gl_PointSize = max(2.0, u_scale * a_size / max(clip.w, 0.001));
-      v_px = gl_PointSize;
+      /* HALO_SPRITE wider than the ball needs, so there is room around it
+         for the glow to fall off inside the same point. This is the whole
+         bloom budget: no second pass, no render target, no extra VRAM on a
+         card that is already evicting the language model to make room. */
+      float px = max(2.0, u_scale * a_size / max(clip.w, 0.001));
+      gl_PointSize = px * 1.55;
+      v_px = px;                 /* the BALL's size — what the glyph reads */
       v_shade = a_shade;
       v_color = a_color;
       /* Which atlas cell, worked out HERE rather than in the fragment stage.
@@ -72,6 +77,8 @@
     uniform float     u_alpha;
     uniform sampler2D u_icons;
     uniform float     u_cols;     /* atlas is u_cols x u_cols cells */
+    uniform float     u_time;
+    uniform float     u_pass;     /* 0 = the solid ball, 1 = the light around it */
     varying float v_shade;
     varying float v_depth;
     varying vec3  v_color;
@@ -83,11 +90,15 @@
          hard antialiased edge. Soft additive halos were why the palette looked
          washed out — everything overlapped everything and the colours averaged
          toward white. */
-      vec2 d = gl_PointCoord * 2.0 - 1.0;
-      d.y = -d.y;
+      /* The sprite is 1.55x the ball, so the ball lives in the inner 0.645
+         of it and the rest is glow. Coordinates are rescaled to the ball, so
+         every lighting term below is unchanged by the sprite growing. */
+      vec2 sprite = gl_PointCoord * 2.0 - 1.0;
+      sprite.y = -sprite.y;
+      float sr = length(sprite);
+      vec2 d = sprite / 0.645;
       float r2 = dot(d, d);
-      if (r2 > 1.0) discard;
-      float z = sqrt(max(0.0, 1.0 - r2));
+      float z = sqrt(max(0.0, 1.0 - min(r2, 1.0)));
       vec3 n = vec3(d, z);
       vec3 lightDir = normalize(vec3(-0.38, 0.52, 0.76));
       float lam = clamp(dot(n, lightDir), 0.0, 1.0);
@@ -99,7 +110,38 @@
       float luma = dot(cat, vec3(0.299, 0.587, 0.114));
       cat = clamp(mix(vec3(luma), cat, 1.45), 0.0, 1.0);      /* more saturated */
       vec3 col = cat * (0.34 + 0.86 * lam) * (0.72 + 0.28 * u_focus);
-      col += rim * 0.35 * cat;
+
+      /* ── the same light her head is made of ──────────────────────────────
+         Her hologram is a cool fresnel rim, fine static scanlines and a faint
+         per-frame flicker (see FS2 in face.html). The field borrowed none of
+         it and read as a chart sitting in front of a hologram rather than as
+         part of the same object.
+
+         DELIBERATELY NOT A BLOOM PASS. A framebuffer at this machine's
+         resolution is tens of megabytes of render target on an 8 GB card that
+         is already evicting the language model to make room — measured today.
+         All of this is per-fragment arithmetic and costs no memory at all. */
+
+      /* A rim in her own colour, not the node's, so every node is lit by the
+         same source she is. Chromatic: the channels read the falloff at
+         slightly different radii, which is what makes a rim look projected
+         rather than painted. */
+      vec3 rimCol = mix(vec3(0.50, 0.85, 1.00), u_tint, 0.55);
+      float r0 = pow(1.0 - z, 2.2);
+      float r1 = pow(1.0 - z, 2.5);
+      float r2c = pow(1.0 - z, 2.9);
+      col += rimCol * vec3(r0, r1, r2c) * (0.55 + 0.75 * u_focus);
+      col += rim * 0.22 * cat;
+
+      /* Fine static scanlines — the texture of a projection. Shallow, because
+         the whole point of this field is that the colours stay legible. */
+      float sl = 0.5 + 0.5 * sin(gl_FragCoord.y * 1.5);
+      col *= 0.88 + 0.12 * sl;
+
+      /* Per-frame flicker, quantised so it reads as an unsteady projector
+         rather than as noise. */
+      col *= 0.97 + 0.03 * fract(sin(floor(u_time * 14.0) * 12.9898) * 43758.5453);
+
       col = mix(col * 0.74, col, v_shade);
 
       /* The glyph sits on the ball, bright enough to read against it. Below
@@ -112,7 +154,29 @@
       /* Solid, with the far side of the field receding rather than vanishing. */
       float edge = smoothstep(1.0, 0.88, r2);
       float fade = mix(1.0, 0.55, v_depth);
-      gl_FragColor = vec4(col, edge * u_alpha * fade);
+
+      /* THE GLOW. Outside the ball the same colour falls off as light rather
+         than as surface — which is what a bloom pass would have produced, at
+         the cost of a framebuffer this machine cannot spare. Brighter in
+         focus, and stronger for the big nodes, so importance reads as radiance
+         instead of only as diameter. */
+      float halo = pow(1.0 - clamp(sr, 0.0, 1.0), 1.7);
+      vec3 glow = mix(cat, rimCol, 0.40) * halo
+                * (0.55 + 2.10 * u_focus) * (0.55 + 0.45 * v_shade);
+
+      /* TWO PASSES, because light adds and surfaces do not. The ball is
+         alpha-blended and writes depth, so it occludes what is behind it; the
+         glow is drawn afterwards ADDITIVELY with depth writes off. Done in one
+         pass the halo composited at low alpha against a near-black background
+         and disappeared — and what little showed punched a depth hole around
+         every node. */
+      if (u_pass < 0.5) {
+        if (edge < 0.004) discard;
+        gl_FragColor = vec4(col, edge * u_alpha * fade);
+      } else {
+        if (halo < 0.004) discard;
+        gl_FragColor = vec4(glow * u_alpha * fade, 1.0);
+      }
     }`;
 
   const LVS = `
@@ -155,7 +219,18 @@
       float tail = (1.0 - smoothstep(0.0, 0.42, d)) * 0.35;
       float pulse = clamp(head + tail, 0.0, 1.0);
       float a = v_shade * 0.8 + pulse * u_flow * (0.7 + 0.5 * u_focus);
-      col += pulse * u_flow * 0.9 * mix(vec3(0.85), u_tint + 0.25, u_focus);
+      /* The travelling head splits into its channels, like the sweep on her
+         face does when she materialises — a mis-converged display rather than
+         a clean white dot. */
+      vec3 split = vec3(
+        smoothstep(0.0, 0.05, fract(v_t * 1.5 - u_time * 0.55 + 0.010)),
+        smoothstep(0.0, 0.05, d),
+        smoothstep(0.0, 0.05, fract(v_t * 1.5 - u_time * 0.55 - 0.010)));
+      col += pulse * u_flow * 0.9 * mix(vec3(0.85), u_tint + 0.25, u_focus)
+             * mix(vec3(1.0), split, 0.55 * u_focus);
+      /* Scanlines on the wires too, or the nodes look projected and the links
+         between them do not. */
+      col *= 0.90 + 0.10 * (0.5 + 0.5 * sin(gl_FragCoord.y * 1.5));
       gl_FragColor = vec4(col, a * u_alpha * fade);
     }`;
 
@@ -200,6 +275,14 @@
 
   /* Points spread evenly over a sphere. A random scatter clumps — the eye reads
      clumping as meaning, and there is none here. */
+  /* How wide a NODE is in world units — and it is the same at every distance.
+     A point is drawn at u_scale·size/w pixels while a world unit spans
+     (viewportHeight/2)/(d·tan(fov/2)) pixels; both go as 1/d, so they cancel.
+     A layout spaced more tightly than this overlaps at EVERY zoom, and pulling
+     the camera back never fixes it. Learned on the architecture panels — the
+     same arithmetic governs these. */
+  const NODE_W = 1.35;
+
   function fibSphere(i, n) {
     const off = 2 / n, inc = Math.PI * (3 - Math.sqrt(5));
     const y = i * off - 1 + off / 2;
@@ -440,6 +523,8 @@
         alpha: gl.getUniformLocation(this.prog, 'u_alpha'),
         icons: gl.getUniformLocation(this.prog, 'u_icons'),
         cols: gl.getUniformLocation(this.prog, 'u_cols'),
+        time: gl.getUniformLocation(this.prog, 'u_time'),
+        pass: gl.getUniformLocation(this.prog, 'u_pass'),
       };
       this.tex = this._makeAtlas();
       this.la = {
@@ -463,6 +548,9 @@
       this.focus = 0;         // eased 0..1, ambient → focus
       this.wantFocus = false;
       this.highlight = null;  // node id SUNI or the pointer is pointing at
+      // Which arrangement of the same nodes is on screen, so the page can
+      // offer the others without knowing how any of them works.
+      this.layout = 'orbit';
       // What the camera is looking AT. It used to be the origin and only the
       // origin, which is fine while the centre is the subject and useless the
       // moment a particular group is. Eased, like dist, so travelling to a
@@ -548,7 +636,9 @@
       this.spot = null;
       this.look = [0, 0, 0];
       this.lookWant = [0, 0, 0];
-      if (this.clustered) this._clusterLayout();
+      // A new level has to arrive in whatever arrangement is on screen, or
+      // opening a folder silently throws the chosen layout away.
+      if (this.layout && this.layout !== 'orbit') this._applyLayout();
       // Pull back far enough that the level fits. Six nodes and a hundred and
       // twenty need very different room, and a level whose edges are off-screen
       // reads as broken rather than as big.
@@ -624,6 +714,141 @@
 
        Only the destinations change; update() walks the nodes there, so the
        toggle reads as the field rearranging rather than as a new screen. */
+    /* ── layouts ───────────────────────────────────────────────────────
+       Five ways of arranging the same nodes. Each writes only `target`, and
+       update() walks every node there — so switching is a MOVE, not a new
+       screen. That is the whole reason to have more than one: watching a
+       category gather itself out of the cloud is a different kind of
+       understanding from seeing it already gathered.
+
+       Named in one place so the page can offer them without knowing how any of
+       them works. */
+    setLayout(name) {
+      const known = ['orbit', 'rings', 'circle', 'areas', 'force'];
+      this.layout = known.indexOf(name) >= 0 ? name : 'orbit';
+      this.clustered = (this.layout === 'areas');
+      this._applyLayout();
+      // Stand where the arrangement fits. Without this, rings laid out a wide
+      // outer ring and left the camera where the last layout had put it, so
+      // half the field sat off the edges of the screen.
+      this.distWant = (this.layout === 'orbit') ? this.distWant : this._fitDistance();
+      this.wantFocus = true;
+    }
+
+    static layouts() {
+      return [
+        { id: 'orbit',  label: 'orbit',  hint: 'a slow turn, everything at once' },
+        { id: 'rings',  label: 'rings',  hint: 'concentric by kind, the subject at the middle' },
+        { id: 'circle', label: 'circle', hint: 'one ring, every link across the middle' },
+        { id: 'areas',  label: 'areas',  hint: 'one cluster per category' },
+        { id: 'force',  label: 'force',  hint: 'pulled together by what connects' },
+      ];
+    }
+
+    _applyLayout() {
+      switch (this.layout) {
+        case 'rings':  return this._ringsLayout();
+        case 'circle': return this._circleLayout();
+        case 'areas':  return this._clusterLayout();
+        case 'force':  return this._forceLayout();
+        default:
+          for (const nd of this.nodes) nd.target = nd.radial.slice();
+          this._extentX = this._extentY = 0;
+          return;
+      }
+    }
+
+    /* RINGS — concentric by kind, the subject in the middle. Reads as layers:
+       what she IS nearest, what she has merely indexed furthest out. */
+    _ringsLayout() {
+      const byKind = new Map();
+      for (const nd of this.nodes) {
+        if (!byKind.has(nd.kind)) byKind.set(nd.kind, []);
+        byKind.get(nd.kind).push(nd);
+      }
+      const ORDER = ['machine', 'model', 'agent', 'schedule', 'tool', 'skill',
+                     'channel', 'folder', 'file'];
+      const rank = k => { const i = ORDER.indexOf(k); return i < 0 ? 99 : i; };
+      const kinds = [...byKind.keys()].sort((a, b) => rank(a) - rank(b));
+      let r = 3.0;
+      this._extentX = this._extentY = 0;
+      for (const k of kinds) {
+        const members = byKind.get(k);
+        // The circumference has to hold them side by side, or a ring is a smear.
+        // Rings tighten as they go out: nine kinds at a constant gap pushed
+        // the outermost to a radius the camera could only fit by making every
+        // node a dot. The gap shrinks, the ring still has to hold its members
+        // side by side, and the two together stay compact.
+        const need = (members.length * NODE_W * 1.15) / (2 * Math.PI);
+        r = Math.max(r + NODE_W * (2.0 - 0.9 * Math.min(1, r / 14)), need);
+        members.forEach((nd, i) => {
+          const a = (i / members.length) * Math.PI * 2 + r * 0.11;
+          nd.target = [Math.cos(a) * r, Math.sin(a) * r * 0.62, Math.sin(i * 1.3) * 0.9];
+        });
+        this._extentX = Math.max(this._extentX, r + NODE_W);
+        this._extentY = Math.max(this._extentY, r * 0.62 + NODE_W);
+      }
+    }
+
+    /* CIRCLE — everything on one ring, every link crossing the middle. Shows
+       how connected a level is: a dense bundle of chords says it hangs
+       together, a sparse one says it does not. */
+    _circleLayout() {
+      const sorted = this.nodes.slice().sort((a, b) =>
+        String(a.kind).localeCompare(String(b.kind))
+        || String(a.label).localeCompare(String(b.label)));
+      const n = Math.max(1, sorted.length);
+      const r = Math.max(4.2, (n * NODE_W * 1.2) / (2 * Math.PI));
+      sorted.forEach((nd, i) => {
+        const a = (i / n) * Math.PI * 2;
+        nd.target = [Math.cos(a) * r, Math.sin(a) * r * 0.66, 0];
+      });
+      this._extentX = r + NODE_W;
+      this._extentY = r * 0.66 + NODE_W;
+    }
+
+    /* FORCE — repulsion with link attraction, seeded from the radial spread.
+       A FIXED number of iterations, run once: a field that never settles is a
+       field you cannot read, and one that jiggles for ever spends the frame
+       budget on nothing. */
+    _forceLayout() {
+      const nodes = this.nodes, n = nodes.length;
+      const pos = nodes.map(nd => nd.radial.slice());
+      const links = (this._links || []).filter(lk => lk[0] !== null && lk[1] !== null);
+      const REST = NODE_W * 2.6;
+      for (let iter = 0; iter < 60; iter++) {
+        for (let i = 0; i < n; i++) {
+          for (let j = i + 1; j < n; j++) {
+            let dx = pos[j][0] - pos[i][0], dy = pos[j][1] - pos[i][1],
+                dz = pos[j][2] - pos[i][2];
+            let d2 = dx * dx + dy * dy + dz * dz;
+            if (d2 < 1e-4) { dx = 0.01; d2 = 1e-4; }
+            const d = Math.sqrt(d2);
+            if (d >= REST) continue;
+            const push = (REST - d) / d * 0.22;
+            pos[i][0] -= dx * push; pos[i][1] -= dy * push; pos[i][2] -= dz * push;
+            pos[j][0] += dx * push; pos[j][1] += dy * push; pos[j][2] += dz * push;
+          }
+        }
+        for (const lk of links) {
+          const a = lk[0], b = lk[1];
+          const dx = pos[b][0] - pos[a][0], dy = pos[b][1] - pos[a][1],
+                dz = pos[b][2] - pos[a][2], k = 0.012;
+          pos[a][0] += dx * k; pos[a][1] += dy * k; pos[a][2] += dz * k;
+          pos[b][0] -= dx * k; pos[b][1] -= dy * k; pos[b][2] -= dz * k;
+        }
+        for (let i = 0; i < n; i++) {
+          pos[i][0] *= 0.998; pos[i][1] *= 0.998; pos[i][2] *= 0.998;
+        }
+      }
+      this._extentX = this._extentY = 0;
+      nodes.forEach((nd, i) => {
+        nd.target = pos[i];
+        this._extentX = Math.max(this._extentX, Math.abs(pos[i][0]) + NODE_W);
+        this._extentY = Math.max(this._extentY, Math.abs(pos[i][1]) + NODE_W);
+      });
+    }
+
     _clusterLayout() {
       /* Group centres on a DISC facing the viewer, not on a sphere around
          them. A sphere puts half the groups edge-on or behind the middle, and
@@ -694,7 +919,11 @@
     }
 
     setCluster(on) {
+      // Kept because the page has a button wired to it and "grouped" is the
+      // arrangement people reach for. It is the 'areas' layout by a shorter
+      // name, and it goes through the registry so one thing owns the state.
       this.clustered = !!on;
+      this.layout = this.clustered ? 'areas' : 'orbit';
       if (this.clustered) this._clusterLayout();
       else for (const nd of this.nodes) nd.target = nd.radial.slice();
       this.wantFocus = true;
@@ -704,11 +933,20 @@
          looking for. 0.42 is tan(fov/2) for the 0.80 projection the Face uses;
          the horizontal check assumes the narrowest window worth designing for
          rather than reading the canvas, which this module never sees. */
+      this.distWant = this.clustered ? this._fitDistance()
+                                     : Math.max(9, Math.min(38, this.distWant * 0.62));
+    }
+
+    /* How far back to stand so the arrangement fits, from what it ACTUALLY
+       spans in each axis. One combined "extent" understates the vertical reach
+       of a wide disc, and the group that falls off the bottom edge is the one
+       the viewer was looking for. 0.38/0.52 are the visible half-angles for
+       the 0.80 projection the Face uses, taking the narrowest window worth
+       designing for rather than reading a canvas this module never sees. */
+    _fitDistance() {
       const needY = (this._extentY || 10) / 0.38;
       const needX = (this._extentX || 10) / 0.52;
-      this.distWant = this.clustered
-        ? Math.max(9, Math.min(40, Math.max(needY, needX)))
-        : Math.max(9, Math.min(38, this.distWant * 0.62));
+      return Math.max(9, Math.min(46, Math.max(needY, needX)));
     }
 
     /* Send the camera to one category and dim the rest.
@@ -900,7 +1138,18 @@
       gl.bindTexture(gl.TEXTURE_2D, this.tex);
       gl.uniform1i(this.u.icons, 0);
       gl.uniform1f(this.u.cols, ATLAS_COLS);
+      gl.uniform1f(this.u.time, this._t);
+      gl.uniform1f(this.u.pass, 0.0);          // the solid balls
       gl.drawArrays(gl.POINTS, 0, this.count);
+      /* ...then their light, added over the top. Depth is still TESTED, so a
+         node behind her head stays behind it, but not WRITTEN, so one halo
+         does not carve a hole out of the next. */
+      gl.uniform1f(this.u.pass, 1.0);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+      gl.depthMask(false);
+      gl.drawArrays(gl.POINTS, 0, this.count);
+      gl.depthMask(true);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
       gl.depthMask(true);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);

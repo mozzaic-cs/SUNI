@@ -338,6 +338,20 @@ header{
    and pressing C simply typed a c into the message box. A visible button
    cannot be swallowed by a text field, and it can show whether the mode is on,
    which tells "it did not work" apart from "it never fired". */
+/* The arrangements. Five ways of laying out the same nodes, so the field can
+   answer different questions: rings for what she is made of, circle for how
+   connected a level is, areas for how much of what there is. Switching is a
+   move, not a new screen — the nodes walk to their new places. */
+#net-lay{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;
+  max-width:250px;opacity:0;pointer-events:none;transition:opacity .3s ease}
+#net-lay.on{opacity:1;pointer-events:auto}
+#net-lay button{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.04em;
+  padding:4px 8px;border-radius:999px;cursor:pointer;
+  border:1px solid rgba(120,170,220,.28);background:rgba(8,14,26,.72);
+  color:rgba(215,230,250,.8)}
+#net-lay button:hover{border-color:rgba(0,212,255,.6);color:#fff}
+#net-lay button.on{background:rgba(0,212,255,.18);border-color:rgba(0,212,255,.75);
+  color:#fff}
 #net-group{opacity:0;pointer-events:none;
   transition:opacity .3s ease;display:flex;gap:6px;align-items:center;
   padding:5px 10px 5px 8px;border-radius:999px;cursor:pointer;
@@ -467,6 +481,7 @@ header{
   <div id="net-labels"></div>
   <div id="net-side">
     <div id="net-legend"></div>
+    <div id="net-lay"></div>
     <div id="net-group"><b>&#9707;</b> <span>group by category</span></div>
     <div id="net-exit"><b>&#10005;</b> back to SUNI</div>
   </div>
@@ -2351,7 +2366,39 @@ const _netLabelPool = [];
 const _netExitBtn = document.getElementById('net-exit');
 const _netMenu = document.getElementById('net-menu');
 let _netPtr = null;         // last pointer position, for the centre's own hint
+const _netLay = document.getElementById('net-lay');
 const _netGroupBtn = document.getElementById('net-group');
+
+/* One row of arrangements, built from what the module says it can do — so a
+   layout added there appears here without this page being edited. */
+function _netBuildLayouts(){
+  if (typeof NetGraph === 'undefined' || !NetGraph.layouts) return;
+  _netLay.innerHTML = NetGraph.layouts().map(l =>
+    `<button data-lay="${_esc(l.id)}" title="${_esc(l.hint)}">${_esc(l.label)}</button>`
+  ).join('');
+  _netLay.querySelectorAll('button').forEach(b =>
+    b.addEventListener('click', () => _netSetLayout(b.dataset.lay)));
+  _netMarkLayout();
+}
+
+function _netMarkLayout(){
+  const cur = (_net && _net.layout) || 'orbit';
+  _netLay.querySelectorAll('button').forEach(b =>
+    b.classList.toggle('on', b.dataset.lay === cur));
+}
+
+function _netSetLayout(id){
+  if (!_net || !_net.ok) return;
+  _netSetFocus(true);
+  _net.setLayout(id);
+  console.log('[NET_LAYOUT]', id);
+  _netMarkLayout();
+  // The grouping button and the "areas" arrangement are the same thing; keep
+  // them saying the same thing rather than disagreeing on screen.
+  _netGroupBtn.classList.toggle('active', id === 'areas');
+  _netGroupLbl.textContent = id === 'areas' ? 'grouped — click to merge'
+                                            : 'group by category';
+}
 const _netGroupLbl = _netGroupBtn.querySelector('span');
 
 /* One place that changes the mode, so the button, the key and SUNI herself
@@ -2364,6 +2411,7 @@ function _netCluster(on){
               'groups from', (_netData && (_netData.nodes || []).length) || 0, 'nodes');
   _netGroupBtn.classList.toggle('active', !!on);
   _netGroupLbl.textContent = on ? 'grouped — click to merge' : 'group by category';
+  _netMarkLayout();
 }
 _netGroupBtn.addEventListener('click', () => _netCluster(!(_net && _net.clustered)));
 _netExitBtn.addEventListener('click', _netExit);
@@ -2651,6 +2699,8 @@ function _netSetFocus(on){
   _netTrail.classList.toggle('on', on);
   _netExitBtn.classList.toggle('on', on);
   _netGroupBtn.classList.toggle('on', on);
+  _netLay.classList.toggle('on', on);
+  if (on && !_netLay.childElementCount) _netBuildLayouts();
   if (on && !_netLegend.childElementCount) _netBuildLegend();
   _netLegend.classList.toggle('on', on);
   if (!on) { _netPop.classList.remove('off'); _netPop.classList.remove('on'); _netHover = null; }

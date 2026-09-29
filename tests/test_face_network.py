@@ -248,8 +248,17 @@ def test_the_view_is_framed_from_what_the_layout_actually_spans():
     """A single extent understates the vertical reach of a wide disc, and the
     group that falls off the bottom edge is the one being looked for."""
     assert "_extentY" in MOD and "_extentX" in MOD
-    sc = MOD[MOD.index("setCluster(on) {"):][:1200]
-    assert "needY" in sc and "needX" in sc, "one axis frames both"
+    # The maths lives in _fitDistance() now, because five layouts need it and
+    # only one of them is the clustering that first asked for it.
+    fit = MOD[MOD.index("_fitDistance() {"):][:600]
+    assert "needY" in fit and "needX" in fit, "one axis frames both"
+    # Sliced to the end of each method rather than a fixed count: a comment
+    # inside setCluster pushed the call past a 900-character window and failed
+    # the test over prose. That has happened four times in this suite now.
+    for caller in ("setCluster(on) {", "setLayout(name) {"):
+        i = MOD.index(caller)
+        blk = MOD[i:MOD.index(chr(10) + "    }", i)]
+        assert "_fitDistance()" in blk, f"{caller} does not reframe the view"
 
 
 def test_a_roomier_layout_is_not_a_roomier_picture():
@@ -370,3 +379,73 @@ def test_every_control_that_hides_itself_is_shown_by_the_focus_switch():
             assert "pointer-events:auto" in revealed[el], (
                 f"#{el} becomes visible but stays untouchable: its base rule "
                 f"disables pointer-events and .on never restores them")
+
+
+# ── five ways of looking at the same nodes ──────────────────────────────────
+@pytest.mark.parametrize("layout", ["orbit", "rings", "circle", "areas", "force"])
+def test_every_offered_layout_exists(layout):
+    """The page builds its buttons from NetGraph.layouts(), so a name offered
+    there and not implemented is a button that silently does nothing."""
+    assert f"'{layout}'" in MOD[MOD.index("static layouts()"):][:700], (
+        f"{layout} is not offered")
+    if layout != "orbit":
+        fn = {"areas": "_clusterLayout", "rings": "_ringsLayout",
+              "circle": "_circleLayout", "force": "_forceLayout"}[layout]
+        assert f"{fn}()" in MOD, f"{layout} is offered but {fn} does not exist"
+
+
+def test_switching_layout_is_a_move_not_a_new_screen():
+    """Each layout writes only `target`; update() walks the nodes there. That
+    is the whole reason to have more than one — watching a category gather
+    itself out of the cloud is a different understanding from seeing it already
+    gathered."""
+    for fn in ("_ringsLayout", "_circleLayout", "_forceLayout"):
+        block = MOD[MOD.index(fn + "() {"):][:2600]
+        assert "nd.target" in block or "nd.target =" in block, (
+            f"{fn} does not move nodes, it must be setting positions directly")
+        assert ".pos =" not in block, f"{fn} teleports nodes instead of moving them"
+
+
+def test_a_new_level_arrives_in_the_chosen_layout():
+    """Opening a folder used to throw the arrangement away and drop back to
+    orbit, which reads as the view resetting itself for no reason."""
+    sd = MOD[MOD.index("setData(graph) {"):][:2600]
+    assert "_applyLayout()" in sd, "a new level ignores the chosen layout"
+
+
+def test_the_force_layout_settles():
+    """A fixed number of iterations, run once. A field that never stops moving
+    is a field you cannot read, and one that jiggles for ever spends the frame
+    budget on nothing."""
+    block = MOD[MOD.index("_forceLayout() {"):][:2600]
+    assert "for (let iter = 0; iter <" in block, "the force layout has no bound"
+    assert "requestAnimationFrame" not in block, "it runs every frame"
+
+
+# ── the hologram, and what it must not cost ─────────────────────────────────
+def test_the_glow_is_added_not_blended():
+    """Light adds; surfaces do not. Drawn in one pass the halo composited at
+    low alpha against a near-black background and vanished, and what little
+    showed punched a depth hole around every node."""
+    assert "u_pass" in MOD, "there is no separate pass for the light"
+    d = MOD[MOD.index("gl.uniform1f(this.u.pass, 1.0)"):][:400]
+    assert "gl.blendFunc(gl.SRC_ALPHA, gl.ONE)" in d, "the glow is not additive"
+    assert "gl.depthMask(false)" in d, "each halo carves a hole out of the next"
+    assert "gl.depthMask(true)" in d, "depth writes are left off for the next frame"
+
+
+def test_there_is_no_framebuffer_pass():
+    """A bloom target at this machine's resolution is tens of megabytes on an
+    8 GB card that is ALREADY evicting the language model to make room — that
+    was measured, not assumed. The whole hologram is per-fragment arithmetic."""
+    for forbidden in ("createFramebuffer", "bindFramebuffer", "createRenderbuffer"):
+        assert forbidden not in MOD, f"{forbidden} costs VRAM this box does not have"
+
+
+def test_the_field_borrows_the_heads_own_light():
+    """So the two read as one object rather than as a chart in front of a
+    hologram: the same cool fresnel rim, scanlines and flicker as FS2."""
+    fs = MOD[MOD.index("const FS ="):MOD.index("const LVS =")]
+    assert "rimCol" in fs, "no fresnel rim"
+    assert "gl_FragCoord.y * 1.5" in fs, "no scanlines, and at the head's own pitch"
+    assert "u_time" in fs, "no flicker"
