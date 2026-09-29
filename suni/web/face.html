@@ -2439,6 +2439,30 @@ function _headBox(w, h){
   return { x0: cx - halfW, x1: cx + halfW, y0: cy - halfH, y1: cy + halfH };
 }
 
+/* The chat dock, measured rather than guessed: it grows when the conversation
+   is open and shrinks when it is collapsed, and it carries the AI-disclosure
+   line, which a node name printed straight through on a real screen. Measured
+   from the element so it stays right whatever size the dock happens to be. */
+let _dockBoxCache = null, _dockBoxAt = 0;
+function _dockBox(w, h){
+  /* Measured, but NOT every frame. This runs from the paint loop, which writes
+     the label spans; reading a rect straight after that write forces the
+     browser to flush layout, once per frame, for a box that changes only when
+     the dock opens or the window resizes. A quarter second of staleness costs
+     nothing and the reflow costs every frame. */
+  const now = performance.now();
+  if (_dockBoxCache && now - _dockBoxAt < 250) return _dockBoxCache;
+  const el = document.getElementById('chat-overlay');
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  if (!r.height) return null;
+  _dockBoxAt = now;
+  // Everything from the top of the dock down is the dock's, including the
+  // disclosure line that sits below it.
+  _dockBoxCache = { x0: r.left - 8, x1: r.right + 8, y0: r.top - 6, y1: h };
+  return _dockBoxCache;
+}
+
 function _netPaintLabels(){
   if (!_net || !_net.ok || !_netData) { _netHideLabels(); return; }
   const w = canvas.clientWidth || W, h = canvas.clientHeight || H;
@@ -2446,7 +2470,7 @@ function _netPaintLabels(){
   const wanted = _net.labels(w, h, {
     minPx: _netFocus ? 14 : 26,
     max: _netFocus ? 20 : 6,
-    exclude: _headBox(w, h),
+    exclude: [_headBox(w, h), _dockBox(w, h)].filter(Boolean),
   });
   for (let i = 0; i < wanted.length; i++) {
     let el = _netLabelPool[i];
@@ -2458,7 +2482,8 @@ function _netPaintLabels(){
     const item = wanted[i];
     if (el._id !== item.node.id) { el.textContent = item.node.label || ''; el._id = item.node.id; }
     el.style.left = item.x + 'px';
-    el.style.top = (item.y + item.px * 0.55 + 4) + 'px';
+    // item.ty, not a second copy of the offset: the module tested THAT point.
+    el.style.top = item.ty + 'px';
     el.classList.add('on');
   }
   for (let i = wanted.length; i < _netLabelPool.length; i++) {

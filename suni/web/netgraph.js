@@ -252,6 +252,10 @@
   // field, not quietly lose its wash.
   const NEB_MAX = 16;
 
+  /* How far under its node a name is drawn. One definition, used both to place
+     the span and to test whether that span lands somewhere it must not. */
+  function labelDrop(px) { return px * 0.55 + 4; }
+
   const NVS = `
     attribute vec2 a_xy;
     void main(){ gl_Position = vec4(a_xy, 0.999, 1.0); }`;
@@ -1409,6 +1413,10 @@
        Sorted by size so the important ones win, and anything landing on top of
        an already-placed label is dropped — overlapping names are less readable
        than none, and the one underneath is usually the smaller node anyway. */
+    /* How far under its node a name sits. It lives here, not in the page, so
+       that the exclusion test below and the span the caller positions agree —
+       two copies of this number is how a label ends up somewhere the module
+       believes it cleared. Callers use the `ty` it returns. */
     labels(w, h, opts) {
       const o = opts || {};
       const minPx = o.minPx || 15;
@@ -1418,7 +1426,14 @@
          nobody can read. The caller passes where she currently is — centred, or
          shrunk into the corner — and those candidates are dropped rather than
          nudged: moving a label away from its node makes it point at nothing. */
-      const skip = o.exclude;
+      /* More than one thing on the page has to be kept clear: her head, and
+         the chat dock at the bottom. A node sitting just above the dock put
+         its name straight through the AI-disclosure line — caught on a real
+         screen, not here. */
+      const skips = !o.exclude ? []
+        : (Array.isArray(o.exclude) ? o.exclude : [o.exclude]);
+      const blocked = (x, y) => skips.some(
+        s => x > s.x0 && x < s.x1 && y > s.y0 && y < s.y1);
       const scale = (this._scalePx || (h * 0.013));
       const out = [];
       const cand = [];
@@ -1428,8 +1443,11 @@
         if (p.x < 0 || p.y < 0 || p.x > w || p.y > h) continue;
         const px = scale * nd.size / Math.max(p.w, 0.001);
         if (px < minPx) continue;
-        if (skip && p.x > skip.x0 && p.x < skip.x1 && p.y > skip.y0 && p.y < skip.y1) continue;
-        cand.push({ node: nd, x: p.x, y: p.y, px, w: p.w });
+        /* The name is drawn BELOW its node, so testing the node alone let a
+           label fall into a zone the node itself had cleared. Both points. */
+        const ty = p.y + labelDrop(px);
+        if (blocked(p.x, p.y) || blocked(p.x, ty)) continue;
+        cand.push({ node: nd, x: p.x, y: p.y, ty, px, w: p.w });
       }
       /* The centre is the one node that was never named, which left the thing
          everything on screen hangs off — her, at the top level; whatever you
@@ -1437,12 +1455,15 @@
          turn: it is the subject, so it outranks whatever is merely big. */
       const cp = this.project([0, 0, 0], w, h);
       cand.sort((a, b) => b.px - a.px || a.w - b.w);
-      if (cp && cp.w > 0.05 && cp.x > 0 && cp.y > 0 && cp.x < w && cp.y < h
-          && !(skip && cp.x > skip.x0 && cp.x < skip.x1 && cp.y > skip.y0 && cp.y < skip.y1)) {
-        cand.unshift({
-          node: { id: this.center.id, label: this.center.label, kind: 'root' },
-          x: cp.x, y: cp.y, px: scale * SIZE_BY_KIND.root / Math.max(cp.w, 0.001), w: cp.w,
-        });
+      if (cp && cp.w > 0.05 && cp.x > 0 && cp.y > 0 && cp.x < w && cp.y < h) {
+        const cpx = scale * SIZE_BY_KIND.root / Math.max(cp.w, 0.001);
+        const cty = cp.y + labelDrop(cpx);
+        if (!blocked(cp.x, cp.y) && !blocked(cp.x, cty)) {
+          cand.unshift({
+            node: { id: this.center.id, label: this.center.label, kind: 'root' },
+            x: cp.x, y: cp.y, ty: cty, px: cpx, w: cp.w,
+          });
+        }
       }
       for (const c of cand) {
         if (out.length >= max) break;

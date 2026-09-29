@@ -134,12 +134,31 @@ def test_names_appear_as_nodes_grow_on_screen():
     assert "minPx: _netFocus ? 14 : 26" in FACE, "ambient names as many as focus does"
 
 
-def test_names_never_land_on_her_face():
-    assert "exclude: _headBox(w, h)" in FACE, "nothing tells the labels where she is"
-    assert "function _headBox(" in FACE
+def test_names_never_land_on_her_face_or_in_the_dock():
+    """Two zones, not one. A node just above the dock printed its name straight
+    through the AI-disclosure line — caught on a real screen, not in the
+    harness, because the harness has no dock."""
+    call = re.search(r"exclude: \[([^\]]*)\]", FACE)
+    assert call, "the labels are no longer told what to keep clear"
+    assert "_headBox(w, h)" in call.group(1), "nothing tells the labels where she is"
+    assert "_dockBox(w, h)" in call.group(1), "the dock is not kept clear"
     box = FACE[FACE.index("function _headBox("):][:700]
     assert "_stageT" in box, "the box does not follow her to the corner"
-    assert "o.exclude" in MOD and "skip.x0" in MOD
+    dock = FACE[FACE.index("function _dockBox("):][:700]
+    assert "getBoundingClientRect" in dock, (
+        "the dock box is guessed, so it is wrong the moment the dock resizes"
+    )
+    assert "o.exclude" in MOD and "skips.some" in MOD
+
+
+def test_a_name_is_tested_where_it_is_actually_drawn():
+    """The name sits below its node. Testing only the node let a label fall
+    into a zone the node itself had cleared, and keeping the offset in two
+    places is how they drift apart."""
+    assert "function labelDrop(px)" in MOD, "the offset has no single home"
+    assert MOD.count("px * 0.55 + 4") == 1, "the offset is written down twice"
+    assert "blocked(p.x, ty)" in MOD, "only the node is tested, not the name"
+    assert "item.ty" in FACE, "the page places the span with its own copy of the offset"
 
 
 def test_overlapping_names_are_dropped_not_nudged():
