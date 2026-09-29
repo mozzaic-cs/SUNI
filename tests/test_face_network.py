@@ -20,6 +20,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 FACE = (ROOT / "suni/web/face.html").read_text(encoding="utf-8")
 MOD = (ROOT / "suni/web/netgraph.js").read_text(encoding="utf-8")
 SERVER = (ROOT / "suni/web/server.py").read_text(encoding="utf-8-sig")
+GRAPH = (ROOT / "suni/graph.py").read_text(encoding="utf-8")
 
 
 def test_the_module_is_loaded_and_served():
@@ -83,9 +84,43 @@ def test_escape_leaves_the_network_alone_again():
 
 
 def test_only_openable_things_drill_in():
-    up = FACE[FACE.index("canvas.addEventListener('pointerup'"):][:1200]
-    assert "startsWith('dir:')" in up, "clicking any node would try to open it"
+    up = FACE[FACE.index("canvas.addEventListener('pointerup'"):][:1600]
+    assert "_netOpens(hit.meta)" in up, "clicking any node would try to open it"
     assert "_netLoad(id)" in up
+
+
+def test_what_opens_is_asked_of_the_node_not_a_list_in_the_page():
+    """The page kept its own list of openable ids and the list fell behind the
+    server. "agents" became a level and the list never heard about it, so the
+    one hub with the most inside it said nothing on hover and did nothing on
+    click. The node carries the answer now."""
+    assert "function _netOpens(" in FACE
+    assert "meta.opens" in FACE, "the page ignores what the server said"
+    assert "opens=1" in GRAPH, "the server never says which nodes open"
+    # Every level the server actually serves should be reachable. This is the
+    # check the old hardcoded list could not make.
+    served = set(re.findall(r'focus == "(\w+)"', GRAPH))
+    for level in served - {"root", "overview", "kb"}:
+        assert f'_node("{level}"' in GRAPH, (
+            f'the "{level}" level exists but nothing on the root opens it'
+        )
+
+
+def test_the_remainder_of_a_level_is_worth_clicking():
+    """It used to arrive as kind "folder" with nothing handling the click: it
+    looked like something to open and did nothing when opened, which is worse
+    than not showing it at all."""
+    assert '"more"' in GRAPH, "the remainder still wears another kind's clothes"
+    assert "next=nxt" in GRAPH, "the remainder does not say what to ask for next"
+    up = FACE[FACE.index("canvas.addEventListener('pointerup'"):][:1600]
+    assert "startsWith('more:')" in up, "clicking the remainder does nothing"
+    assert "limit: Number(hit.meta.next)" in up, (
+        "the page invents its own page size instead of using the server's"
+    )
+    assert "back: true" in up, (
+        "asking for more pushes onto the back stack, so Back walks through "
+        "every size the viewer ever asked for"
+    )
 
 
 def test_the_trail_is_clickable_so_a_viewer_can_get_back_out():
@@ -633,3 +668,34 @@ def test_markers_stay_out_of_the_ambient_view():
     body = FACE[start:FACE.index(chr(10) + "}", start)]
     assert "if (!_netFocus)" in body, "the markers show behind her head too"
 
+
+
+def test_the_icon_atlas_is_a_power_of_two():
+    """Not a style rule — a hard WebGL 1 requirement, and it fails LOUDLY in
+    the worst way: the atlas is mipmapped with LINEAR_MIPMAP_LINEAR, and
+    generateMipmap on a non-power-of-two texture leaves it incomplete, so it
+    samples BLACK. Growing the grid from 4x128 to 5x128 made 640, and the
+    result was not three wrong icons — it was every icon on the screen
+    vanishing at once.
+    """
+    cols = int(re.search(r"ATLAS_COLS = (\d+)", MOD).group(1))
+    cell = int(re.search(r"ATLAS_CELL = (\d+)", MOD).group(1))
+    side = cols * cell
+    assert side & (side - 1) == 0, (
+        f"the atlas is {side}px a side, which is not a power of two: "
+        "generateMipmap will fail and every icon will draw black"
+    )
+
+
+def test_every_glyph_has_a_cell_to_live_in():
+    """One past the end does not fail, it WRAPS — a node quietly wears another
+    kind's icon, which is the sort of bug that survives a long time."""
+    order = re.search(r"const ICON_ORDER = \[(.*?)\];", MOD, re.S).group(1)
+    glyphs = re.findall(r'"(\w+)"', order)
+    cols = int(re.search(r"ATLAS_COLS = (\d+)", MOD).group(1))
+    assert len(glyphs) <= cols * cols, (
+        f"{len(glyphs)} glyphs will not fit in {cols}x{cols} cells"
+    )
+    # And every kind's icon has to BE in that list, or it wears cell zero.
+    for icon in re.findall(r'icon: "(\w+)"', MOD):
+        assert icon in glyphs, f'kind icon "{icon}" is not in ICON_ORDER'

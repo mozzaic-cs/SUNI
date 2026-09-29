@@ -3815,7 +3815,8 @@ def create_app() -> FastAPI:
         })
 
     @app.get("/api/graph")
-    async def graph_api(focus: str = "root", user: dict = Depends(get_current_user)):
+    async def graph_api(focus: str = "root", limit: int = 0,
+                        user: dict = Depends(get_current_user)):
         """One level of what SUNI can reach, for the Face to draw behind the head.
 
         Authenticated like everything else: the folder names alone say what this
@@ -3832,6 +3833,10 @@ def create_app() -> FastAPI:
             # theirs, resolved the same way the rest of the app resolves them.
             user_id=user["id"],
             user_role=user.get("role", ""),
+            # How many children to draw. The client raises this by clicking the
+            # remainder; graph.build clamps it, so a hand-made request cannot
+            # ask for the whole index in one picture.
+            limit=limit,
         ))
 
     @app.get("/api/graph/open")

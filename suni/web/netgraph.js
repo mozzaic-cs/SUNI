@@ -380,6 +380,18 @@
     channel: { color: [1.00, 0.54, 0.69], icon: "channel", label: "channel" },
     folder:  { color: [1.00, 0.84, 0.42], icon: "folder",  label: "folder" },
     file:    { color: [0.56, 0.64, 0.72], icon: "file",    label: "file" },
+    /* The business, not just the machine it runs on. Agents already appear as
+       staff; these are the people they work for and the work itself. */
+    /* Periwinkle, not the teal it started as: an agent is already a figure in
+       mint and a person in cyan beside it was two similar glyphs in two
+       similar colours, which is the one pair on this palette a viewer most
+       needs to tell apart. */
+    user:    { color: [0.62, 0.70, 1.00], icon: "user",    label: "person" },
+    project: { color: [1.00, 0.62, 0.48], icon: "project", label: "project" },
+    /* The remainder of a level that was too big to draw. Grey on purpose: it
+       is not a thing in the network, it is the network saying there is more of
+       it. */
+    more:    { color: [0.62, 0.68, 0.80], icon: "more",    label: "more" },
   };
 
   const BRANDS = [
@@ -393,8 +405,20 @@
 
   const ICON_ORDER = ["hub", "chip", "model", "tool", "skill", "channel",
                       "folder", "file", "ollama", "claude", "openai", "spark",
-                      "agent", "clock"];
-  const ATLAS_COLS = 4, ATLAS_CELL = 128;
+                      "agent", "clock", "user", "project", "more"];
+  /* Seventeen glyphs do not fit in a four-by-four grid, and the one past the
+     end does not fail — it WRAPS, and a node quietly wears another kind's
+     icon. So the grid grew.
+
+     It must stay a POWER OF TWO on a side. The atlas is mipmapped with
+     LINEAR_MIPMAP_LINEAR, and in WebGL 1 generateMipmap on a non-power-of-two
+     texture fails: the texture is left incomplete and samples BLACK. Five
+     columns of 128 is 640, which is not one — and the result was not "the
+     three new icons are wrong", it was every icon on the screen disappearing
+     at once. Eight columns of 64 is 512, exactly the size the four-by-four
+     grid was, so this costs no memory and leaves room for forty-seven more
+     glyphs. */
+  const ATLAS_COLS = 8, ATLAS_CELL = 64;
 
   function _drawIcon(ctx, name, s) {
     /* White on transparent; the shader tints it. */
@@ -451,6 +475,32 @@
         ctx.quadraticCurveTo(-R * 0.72, R * 0.1, 0, R * 0.1);
         ctx.quadraticCurveTo(R * 0.72, R * 0.1, R * 0.72, R * 0.95);
         ctx.stroke();
+        break;
+      case "user":
+        // Head and shoulders. The one glyph here that is a person, so it stays
+        // plainly a person rather than anything cleverer.
+        ctx.beginPath(); ctx.arc(0, -R * 0.42, R * 0.38, 0, 6.283); ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(0, R * 0.92, R * 0.72, Math.PI * 1.08, Math.PI * 1.92);
+        ctx.stroke();
+        break;
+      case "project":
+        // A board with a line of work on it.
+        ctx.beginPath();
+        ctx.moveTo(-R * 0.86, -R * 0.7); ctx.lineTo(R * 0.86, -R * 0.7);
+        ctx.lineTo(R * 0.86, R * 0.86); ctx.lineTo(-R * 0.86, R * 0.86);
+        ctx.closePath(); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(-R * 0.48, -R * 0.18); ctx.lineTo(R * 0.48, -R * 0.18);
+        ctx.moveTo(-R * 0.48, R * 0.3); ctx.lineTo(R * 0.12, R * 0.3);
+        ctx.stroke();
+        break;
+      case "more":
+        // An ellipsis in a ring: the universal "there is more of this".
+        ctx.beginPath(); ctx.arc(0, 0, R * 0.94, 0, 6.283); ctx.stroke();
+        for (const dx of [-R * 0.42, 0, R * 0.42]) {
+          ctx.beginPath(); ctx.arc(dx, 0, R * 0.13, 0, 6.283); ctx.fill();
+        }
         break;
       case "clock":
         ctx.beginPath(); ctx.arc(0, 0, R * 0.92, 0, 6.283); ctx.stroke();

@@ -2604,7 +2604,10 @@ function _netActions(node){
     if (m.detail) out.push(['Copy the address', () => _netCopy(String(m.detail))]);
   } else {
     out.push(['Ask SUNI about it', () => _netAsk('Tell me about ' + node.label + '.')]);
-    if (['kb','tools','skills','channels','models','agents','network'].includes(id))
+    if (id.startsWith('more:'))
+      out.unshift([`Show ${Number(m.more || 0).toLocaleString()} more`,
+                   () => _netLoad(_netData.focus, { back: true, limit: Number(m.next) || 0 })]);
+    else if (_netOpens(m))
       out.unshift(['Open it here', () => _netLoad(id)]);
   }
   return out;
@@ -2764,7 +2767,11 @@ async function _netLoad(focus, opts){
   }
   _netBusy = true;
   try {
-    const r = await _apiFetch('/api/graph?focus=' + encodeURIComponent(focus || 'root'));
+    // A bigger page for the same level: asked for by clicking the remainder,
+    // never by arriving somewhere, so opening a folder always starts small.
+    const more = o.limit ? '&limit=' + encodeURIComponent(o.limit) : '';
+    const r = await _apiFetch('/api/graph?focus='
+                              + encodeURIComponent(focus || 'root') + more);
     if (!r.ok) return;
     _netData = await r.json();
     console.log('[NET_BUILD] level', _netData.focus, 'with', (_netData.nodes || []).length, 'nodes');
@@ -2847,11 +2854,24 @@ function _netDescribe(node){
   if (m.ext)    bits.push(`<div class="p">.${_esc(m.ext)}</div>`);
   if (m.live !== undefined) bits.push(`<div class="p">${m.live ? 'configured' : 'not configured'}</div>`);
   const id = String(m.id || '');
-  if (id.startsWith('dir:') || ['kb','tools','skills','channels','models'].includes(id))
+  if (id.startsWith('more:'))
+    bits.push(`<div class="hint">click to show ${Number(m.more || 0).toLocaleString()} more</div>`);
+  else if (_netOpens(m))
     bits.push('<div class="hint">click to open</div>');
   else if (id.startsWith('file:'))
     bits.push('<div class="hint">a file SUNI has indexed</div>');
   _netPop.innerHTML = bits.join('');
+}
+
+/* Does this node lead somewhere? The server says so, per node, because the
+   page used to keep a list of ids and the list fell behind: "agents" became a
+   level and the list never heard about it, so the one hub nobody could open
+   was the one that had most inside it. The remainder node is openable too —
+   that is the whole point of it. */
+function _netOpens(meta){
+  if (!meta) return false;
+  const id = String(meta.id || '');
+  return !!meta.opens || id.startsWith('dir:') || id.startsWith('more:');
 }
 
 /* ── pointer: orbit, hover, drill ──────────────────────────────────── */
@@ -2895,7 +2915,13 @@ canvas.addEventListener('pointerup', e => {
   const id = String((hit.meta && hit.meta.id) || '');
   // Folders and the section hubs open. A file is a leaf: it describes itself
   // and waits — opening one is a separate decision, gated server-side.
-  if (id.startsWith('dir:') || ['kb','tools','skills','channels','models'].includes(id)) {
+  if (id.startsWith('more:')) {
+    /* The same level again, asking for a bigger page. Not a new place, so it
+       does not go on the back stack — otherwise "back" walks through every
+       size the viewer ever asked for before leaving the folder at all. */
+    _netMenuHide();
+    _netLoad(_netData.focus, { back: true, limit: Number(hit.meta.next) || 0 });
+  } else if (_netOpens(hit.meta)) {
     _netMenuHide();
     _netLoad(id);
   } else {

@@ -25,12 +25,18 @@ from __future__ import annotations
 import os
 from typing import Any
 
-MAX_CHILDREN = 120          # per level, before the remainder is summarised
+# How many children a level shows before the rest becomes one node offering to
+# fetch them. Enough that a folder reads as a mass rather than a handful — the
+# density is most of what makes a field like this legible — and few enough that
+# the names stay apart. Clicking the remainder doubles it, so a big folder is
+# two clicks from being entirely on screen rather than a wall on arrival.
+MAX_CHILDREN = 80
+MAX_CHILDREN_HARD = 2000    # a ceiling on what one request may ask for
 _LABEL_MAX = 42
 
 # kind → how the client draws it. Kept here so the palette is one decision.
 KINDS = ("root", "machine", "model", "tool", "skill", "agent", "schedule",
-         "channel", "folder", "file")
+         "channel", "folder", "file", "user", "project", "more")
 
 
 def _label(text: str) -> str:
@@ -275,12 +281,58 @@ def _roots(dirs: dict, files: dict) -> list[str]:
     return sorted(set(out))
 
 
-def _cap(nodes: list[dict], focus: str) -> list[dict]:
-    if len(nodes) <= MAX_CHILDREN:
+# ── the business: who is here and what they are working on ──────────────────
+
+def _people() -> list[dict]:
+    """Everyone with an account. Callers gate this on admin, not this function.
+
+    Deliberately not the whole row: list_users() already omits the password
+    hash, and the graph needs a name, a permission tier and whether the account
+    is live. Nothing else belongs in a picture.
+    """
+    try:
+        from . import auth as _auth
+        return sorted(_auth.list_users(), key=lambda u: (u.get("username") or ""))
+    except Exception:      # noqa: BLE001 — a picture is never worth a failed request
+        return []
+
+
+def _projects_for(user_id: str) -> list[dict]:
+    """Projects this person is a member of.
+
+    FAIL CLOSED on an empty id. list_projects("") drops its WHERE clause and
+    returns every project in the install, so an unauthenticated or
+    tool-initiated call would hand back the lot. No caller, no projects.
+    """
+    uid = (user_id or "").strip()
+    if not uid:
+        return []
+    try:
+        from . import projects as _pr
+        return _pr.list_projects(uid)
+    except Exception:      # noqa: BLE001
+        return []
+
+
+def _cap(nodes: list[dict], focus: str, limit: int = 0) -> list[dict]:
+    """Trim a level to `limit`, and offer the rest rather than dropping it.
+
+    The remainder used to arrive as a node of kind `folder` that nothing
+    handled on click: it looked like something to open and did nothing when
+    opened, which is worse than not showing it. It is now its own kind, and it
+    carries the size to ask for next, so the client has everything it needs to
+    act without inventing a number of its own.
+    """
+    limit = max(1, min(limit or MAX_CHILDREN, MAX_CHILDREN_HARD))
+    if len(nodes) <= limit:
         return nodes
-    rest = len(nodes) - MAX_CHILDREN
-    kept = nodes[:MAX_CHILDREN]
-    kept.append(_node(f"more:{focus}", f"+{rest:,} more", "folder", more=rest))
+    rest = len(nodes) - limit
+    kept = nodes[:limit]
+    # Doubling, not a fixed page: the second click on a folder of seven
+    # thousand should not be the same size as the first.
+    nxt = min(limit * 2, MAX_CHILDREN_HARD)
+    kept.append(_node(f"more:{focus}", f"+{rest:,} more", "more",
+                      more=rest, next=nxt, count=rest))
     return kept
 
 
@@ -365,10 +417,14 @@ def _neighbours() -> list[tuple[str, str]]:
 # ── the graph ────────────────────────────────────────────────────────────────
 
 def build(focus: str = "root", *, doc_store=None, registry=None, skill_store=None,
-          config=None, user_id: str = "", user_role: str = "") -> dict:
+          config=None, user_id: str = "", user_role: str = "", limit: int = 0) -> dict:
     """Nodes and edges for one focus, plus the trail back to the root."""
     focus = (focus or "root").strip() or "root"
     cfg = config or {}
+    # Who is asking. The graph must never be a way round a guard the API
+    # already has: the people level mirrors /api/users, which is admin-only,
+    # and projects are scoped to membership the way list_projects scopes them.
+    is_admin = (user_role or "").strip().lower() == "admin"
     nodes: list[dict] = []
     trail: list[dict] = [{"id": "root", "label": "SUNI"}]
 
@@ -404,6 +460,13 @@ def build(focus: str = "root", *, doc_store=None, registry=None, skill_store=Non
                 nodes.append(_node(f"agent:{a['slug']}", a.get("name") or a["slug"], "agent"))
         except Exception:      # noqa: BLE001
             pass
+        for pr in _projects_for(user_id)[:6]:
+            nodes.append(_node(f"project:{pr['id']}", pr.get("name") or "?", "project",
+                               live=1 if pr.get("status") == "active" else 0))
+        if is_admin:
+            for u in _people()[:8]:
+                nodes.append(_node(f"user:{u['id']}", u.get("username") or "?", "user",
+                                   detail=u.get("role") or ""))
         # ONE node per indexed drive, not the archive scattered across the view.
         # Twenty-eight folders and forty files at this level said nothing that a
         # single "7,637 files over there" does not, and buried the machine, the
@@ -417,29 +480,60 @@ def build(focus: str = "root", *, doc_store=None, registry=None, skill_store=Non
                 nodes.append(_node(f"dir:{root}", root.rstrip(os.sep) or root, "folder",
                                    count=count,
                                    detail=f"{count:,} indexed files" if count else ""))
-        nodes = _cap(nodes, focus)
+        nodes = _cap(nodes, focus, limit)
 
     elif focus == "root":
         from . import system_profile as sp
         nodes = [
             _node("machine", f"{sp.CPU_CORES}-core · {sp.RAM_GB:.0f} GB RAM", "machine",
                   detail=f"{sp.VRAM_MB} MB VRAM"),
-            _node("models", str(cfg.get("model") or "models"), "model"),
-            _node("tools", f"{len(registry.names()) if registry else 0} tools", "tool"),
-            _node("skills", "skills", "skill"),
-            _node("channels", "channels", "channel"),
-            _node("agents", "agents & schedules", "agent"),
-            _node("network", _hostname(), "machine", detail=_lan_ip()),
+            _node("models", str(cfg.get("model") or "models"), "model", opens=1),
+            _node("tools", f"{len(registry.names()) if registry else 0} tools", "tool", opens=1),
+            _node("skills", "skills", "skill", opens=1),
+            _node("channels", "channels", "channel", opens=1),
+            _node("agents", "agents & schedules", "agent", opens=1),
+            _node("network", _hostname(), "machine", detail=_lan_ip(), opens=1),
         ]
+        # The business, not just the machine. Agents already appear as staff;
+        # these are the people they work for and the work itself.
+        projects = _projects_for(user_id)
+        if projects:
+            nodes.append(_node("projects", f"{len(projects)} projects", "project",
+                               count=len(projects), opens=1))
+        if is_admin:
+            people = _people()
+            if people:
+                nodes.append(_node("people", f"{len(people)} people", "user",
+                                   count=len(people), opens=1))
         dirs, files = _tree(doc_store)
         if dirs or files:
             total = sum(len(v) for v in files.values())
-            nodes.append(_node("kb", f"{total:,} indexed files", "folder", count=total))
+            nodes.append(_node("kb", f"{total:,} indexed files", "folder", count=total, opens=1))
+
+    elif focus == "people":
+        # Mirrors /api/users, which is admin-only. A picture of the staff list
+        # is still the staff list, and a view is not a licence to show what the
+        # API behind it would refuse.
+        trail.append({"id": "people", "label": "people"})
+        if is_admin:
+            for u in _people():
+                nodes.append(_node(f"user:{u['id']}", u.get("username") or "?", "user",
+                                   detail=u.get("role") or "",
+                                   live=1 if u.get("active") else 0))
+            nodes = _cap(nodes, focus, limit)
+
+    elif focus == "projects":
+        trail.append({"id": "projects", "label": "projects"})
+        for pr in _projects_for(user_id):
+            nodes.append(_node(f"project:{pr['id']}", pr.get("name") or "?", "project",
+                               detail=pr.get("goal") or pr.get("status") or "",
+                               live=1 if pr.get("status") == "active" else 0))
+        nodes = _cap(nodes, focus, limit)
 
     elif focus == "tools":
         trail.append({"id": "tools", "label": "tools"})
         nodes = _cap([_node(f"tool:{n}", n, "tool")
-                      for n in sorted(registry.names() if registry else [])], focus)
+                      for n in sorted(registry.names() if registry else [])], focus, limit)
 
     elif focus == "skills":
         trail.append({"id": "skills", "label": "skills"})
@@ -449,7 +543,7 @@ def build(focus: str = "root", *, doc_store=None, registry=None, skill_store=Non
                            for s in (skill_store.list() if skill_store else []))
         except Exception:      # noqa: BLE001
             names = []
-        nodes = _cap([_node(f"skill:{n}", n, "skill") for n in names], focus)
+        nodes = _cap([_node(f"skill:{n}", n, "skill") for n in names], focus, limit)
 
     elif focus == "channels":
         trail.append({"id": "channels", "label": "channels"})
@@ -482,7 +576,7 @@ def build(focus: str = "root", *, doc_store=None, registry=None, skill_store=Non
                                    detail=x.get("cadence") or ""))
         except Exception:      # noqa: BLE001
             pass
-        nodes = _cap(nodes, focus)
+        nodes = _cap(nodes, focus, limit)
 
     elif focus == "network":
         trail.append({"id": "network", "label": _hostname()})
@@ -516,7 +610,7 @@ def build(focus: str = "root", *, doc_store=None, registry=None, skill_store=Non
                     continue
                 seen.add(ip)
                 nodes.append(_node(f"host:{ip}", ip, "machine", detail=f"seen on the network · {mac}"))
-        nodes = _cap(nodes, focus)
+        nodes = _cap(nodes, focus, limit)
 
     elif focus == "kb" or focus.startswith("dir:"):
         dirs, files = _tree(doc_store)
@@ -543,12 +637,12 @@ def build(focus: str = "root", *, doc_store=None, registry=None, skill_store=Non
             trail += _live_steps(path, dirs, files)
             children = dirs.get(path, {})
             here_files = sorted(files.get(path, []))
-        nodes = [_node(f"dir:{p}", os.path.basename(p) or p, "folder", count=c)
+        nodes = [_node(f"dir:{p}", os.path.basename(p) or p, "folder", count=c, opens=1)
                  for p, c in sorted(children.items())]
         nodes += [_node(f"file:{p}", os.path.basename(p), "file",
                         ext=os.path.splitext(p)[1].lstrip(".").lower())
                   for p in here_files]
-        nodes = _cap(nodes, focus)
+        nodes = _cap(nodes, focus, limit)
 
     return {
         "focus": focus,
