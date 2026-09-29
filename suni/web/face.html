@@ -345,25 +345,28 @@ header{
 #net-lay{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;
   max-width:250px;opacity:0;pointer-events:none;transition:opacity .3s ease}
 #net-lay.on{opacity:1;pointer-events:auto}
-#net-lay button{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.04em;
-  padding:4px 8px;border-radius:999px;cursor:pointer;
-  border:1px solid rgba(120,170,220,.28);background:rgba(8,14,26,.72);
-  color:rgba(215,230,250,.8)}
-#net-lay button:hover{border-color:rgba(0,212,255,.6);color:#fff}
-#net-lay button.on{background:rgba(0,212,255,.18);border-color:rgba(0,212,255,.75);
-  color:#fff}
-#net-group{opacity:0;pointer-events:none;
-  transition:opacity .3s ease;display:flex;gap:6px;align-items:center;
-  padding:5px 10px 5px 8px;border-radius:999px;cursor:pointer;
-  background:rgba(8,14,26,.72);border:1px solid rgba(120,170,220,.28);
-  backdrop-filter:blur(7px);white-space:nowrap;
-  font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.03em;
-  color:rgba(215,230,250,.86)}
-#net-group.on{opacity:1;pointer-events:auto}
-#net-group:hover{border-color:rgba(0,212,255,.6);color:#fff;background:rgba(12,22,38,.86)}
-#net-group.active{border-color:rgba(0,212,255,.75);color:#fff;
-  background:rgba(0,212,255,.18)}
-#net-group b{font-size:11px;line-height:1;color:rgba(0,212,255,.9)}
+#net-lay button{position:relative;width:30px;height:30px;padding:0;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;border-radius:8px;
+  border:1px solid rgba(120,170,220,.28);background:rgba(8,14,26,.72)}
+#net-lay button img{width:17px;height:17px;opacity:.72;
+  transition:opacity .15s ease,filter .15s ease}
+#net-lay button:hover{border-color:rgba(0,212,255,.6)}
+#net-lay button:hover img{opacity:1;filter:drop-shadow(0 0 4px rgba(0,212,255,.8))}
+#net-lay button.on{background:rgba(0,212,255,.18);border-color:rgba(0,212,255,.75)}
+#net-lay button.on img{opacity:1;filter:drop-shadow(0 0 5px rgba(0,212,255,.95))}
+/* The tooltip. An icon without words is a rebus: the name and the reason both
+   appear, because "rings" alone does not say what rings are FOR. Placed to the
+   LEFT because this column sits against the right edge of the window, where a
+   tooltip growing rightwards would be cut off. */
+#net-lay button::after{content:attr(data-tip);position:absolute;right:calc(100% + 9px);
+  top:50%;transform:translateY(-50%);white-space:nowrap;
+  font-family:'DM Mono',monospace;font-size:10px;line-height:1.5;
+  color:rgba(228,236,255,.92);background:rgba(6,11,22,.96);
+  border:1px solid rgba(120,170,220,.3);border-radius:7px;padding:6px 10px;
+  opacity:0;pointer-events:none;transition:opacity .16s ease;
+  box-shadow:0 6px 18px rgba(0,0,0,.55)}
+#net-lay button:hover::after{opacity:1}
+#net-lay button::after{max-width:none}
 #net-menu{position:absolute;z-index:9;display:none;min-width:186px;
   padding:7px;border-radius:11px;
   background:rgba(8,14,26,.94);border:1px solid rgba(120,170,220,.3);
@@ -482,7 +485,6 @@ header{
   <div id="net-side">
     <div id="net-legend"></div>
     <div id="net-lay"></div>
-    <div id="net-group"><b>&#9707;</b> <span>group by category</span></div>
     <div id="net-exit"><b>&#10005;</b> back to SUNI</div>
   </div>
   <div id="net-menu"></div>
@@ -2367,14 +2369,16 @@ const _netExitBtn = document.getElementById('net-exit');
 const _netMenu = document.getElementById('net-menu');
 let _netPtr = null;         // last pointer position, for the centre's own hint
 const _netLay = document.getElementById('net-lay');
-const _netGroupBtn = document.getElementById('net-group');
 
 /* One row of arrangements, built from what the module says it can do — so a
    layout added there appears here without this page being edited. */
 function _netBuildLayouts(){
   if (typeof NetGraph === 'undefined' || !NetGraph.layouts) return;
   _netLay.innerHTML = NetGraph.layouts().map(l =>
-    `<button data-lay="${_esc(l.id)}" title="${_esc(l.hint)}">${_esc(l.label)}</button>`
+    `<button data-lay="${_esc(l.id)}" aria-label="${_esc(l.label)}: ${_esc(l.hint)}"
+             data-tip="${_esc(l.label)} — ${_esc(l.hint)}">
+       <img src="${NetGraph.iconDataURL(l.icon, 34)}" alt="">
+     </button>`
   ).join('');
   _netLay.querySelectorAll('button').forEach(b =>
     b.addEventListener('click', () => _netSetLayout(b.dataset.lay)));
@@ -2393,13 +2397,7 @@ function _netSetLayout(id){
   _net.setLayout(id);
   console.log('[NET_LAYOUT]', id);
   _netMarkLayout();
-  // The grouping button and the "areas" arrangement are the same thing; keep
-  // them saying the same thing rather than disagreeing on screen.
-  _netGroupBtn.classList.toggle('active', id === 'areas');
-  _netGroupLbl.textContent = id === 'areas' ? 'grouped — click to merge'
-                                            : 'group by category';
 }
-const _netGroupLbl = _netGroupBtn.querySelector('span');
 
 /* One place that changes the mode, so the button, the key and SUNI herself
    cannot disagree about what state it is in. */
@@ -2409,11 +2407,10 @@ function _netCluster(on){
   _net.setCluster(!!on);
   console.log('[NET_CLUSTER]', on ? 'grouped' : 'merged',
               'groups from', (_netData && (_netData.nodes || []).length) || 0, 'nodes');
-  _netGroupBtn.classList.toggle('active', !!on);
-  _netGroupLbl.textContent = on ? 'grouped — click to merge' : 'group by category';
+  // The icon row is the only thing that shows this state now — a second
+  // control saying the same thing is how two controls end up disagreeing.
   _netMarkLayout();
 }
-_netGroupBtn.addEventListener('click', () => _netCluster(!(_net && _net.clustered)));
 _netExitBtn.addEventListener('click', _netExit);
 
 /* A one-line note over the field. Used when an action had nothing to act on —
@@ -2521,8 +2518,6 @@ function _netExit(){
   }
   _netLegend.classList.remove('picked');
   _netLegend.querySelectorAll('.row.on').forEach(r => r.classList.remove('on'));
-  _netGroupBtn.classList.remove('active');
-  _netGroupLbl.textContent = 'group by category';
   _netSetFocus(false);
   _netHist.length = 0;
   _netLoad('overview');
@@ -2698,7 +2693,6 @@ function _netSetFocus(on){
   // changes. Two controls I had described as being on screen were not.
   _netTrail.classList.toggle('on', on);
   _netExitBtn.classList.toggle('on', on);
-  _netGroupBtn.classList.toggle('on', on);
   _netLay.classList.toggle('on', on);
   if (on && !_netLay.childElementCount) _netBuildLayouts();
   if (on && !_netLegend.childElementCount) _netBuildLegend();

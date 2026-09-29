@@ -294,23 +294,42 @@ def test_grouping_has_a_control_the_keyboard_cannot_swallow():
     """It was a keyboard shortcut, which was useless: the chat box takes focus
     on load and again after every reply, so the key handler — which correctly
     ignores keys typed into an input — never saw it. Pressing C typed a c into
-    the message box, and the mode had most likely never once been on."""
-    assert 'id="net-group"' in FACE, "grouping is keyboard-only again"
-    assert "_netGroupBtn.addEventListener('click'" in FACE
-    # One place changes the mode, so the button, the key and SUNI cannot
+    the message box, and the mode had most likely never once been on.
+
+    The text button that replaced it has itself been replaced, by the row of
+    layout icons: "group by category" said exactly what the "areas" icon beside
+    it said, and two controls for one state is how they end up disagreeing. The
+    guarantee is unchanged — a click target a text field cannot swallow, which
+    shows whether the mode is on.
+    """
+    assert 'id="net-lay"' in FACE, "grouping is keyboard-only again"
+    assert "_netLay.querySelectorAll('button').forEach" in FACE, "the icons do nothing"
+    # The page builds its buttons from NetGraph.layouts(), so the arrangement
+    # is named in the MODULE — asserting it against the page looked right and
+    # checked nothing about either.
+    assert "id: 'areas'" in MOD, "the grouping arrangement is not offered"
+    assert "NetGraph.layouts()" in FACE, "the page does not build from the registry"
+    # One place changes the mode, so the icons, the key and SUNI cannot
     # disagree about which state it is in.
     assert "function _netCluster(" in FACE
     for caller in ("_netCluster(!_net.clustered)", "_netCluster(true)"):
         assert caller in FACE, f"{caller} bypasses the single door"
-    # Exactly two direct calls are legitimate: the one inside _netCluster, and
-    # the reset in _netExit (which clears the label itself, and must not turn
-    # focus back on the way _netCluster does). Anything else - notably SUNI
-    # grouping the field herself - leaves the button claiming the opposite of
-    # what is on screen.
     assert FACE.count("_net.setCluster(") == 2, (
-        "a third direct setCluster call: the button can now go stale")
+        "a third direct setCluster call: the controls can now go stale")
     # A visible state is what tells "it did not work" from "it never fired".
-    assert "[NET_CLUSTER]" in FACE and "classList.toggle('active'" in FACE
+    assert "[NET_CLUSTER]" in FACE and "_netMarkLayout()" in FACE
+
+
+def test_an_icon_only_control_still_says_what_it_does():
+    """An icon without words is a rebus. The name AND the reason both appear,
+    because "rings" alone does not say what rings are for — and the tooltip
+    opens to the LEFT, since this column sits against the right edge of the
+    window where one growing rightwards would be cut off."""
+    assert "data-tip=" in FACE, "the icons have no tooltip"
+    assert "aria-label=" in FACE, "the icons are unreadable to a screen reader"
+    css = FACE[FACE.index("#net-lay button::after"):][:400]
+    assert "content:attr(data-tip)" in css
+    assert "right:calc(100% + " in css, "the tooltip opens off the edge of the window"
 
 
 def test_back_remembers_where_you_were_not_where_the_level_sits():

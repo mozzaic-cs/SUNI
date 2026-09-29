@@ -414,6 +414,56 @@
         ctx.beginPath(); ctx.moveTo(R * 0.24, -R); ctx.lineTo(R * 0.24, -R * 0.5);
         ctx.lineTo(R * 0.68, -R * 0.5); ctx.stroke();
         break;
+      /* ── the arrangements ──────────────────────────────────────────────
+         Drawn by the same hand as the node glyphs so the picker belongs to
+         the field rather than sitting beside it. These are never baked into
+         the atlas — ICON_ORDER does not list them — they are only ever asked
+         for one at a time by iconDataURL(). */
+      case "lay-orbit":
+        ctx.save(); ctx.rotate(-0.42);
+        ctx.beginPath(); ctx.ellipse(0, 0, R, R * 0.42, 0, 0, 6.283); ctx.stroke();
+        ctx.restore();
+        ctx.beginPath(); ctx.arc(0, 0, R * 0.28, 0, 6.283); ctx.fill();
+        break;
+      case "lay-rings":
+        for (let i = 3; i >= 1; i--) {
+          ctx.beginPath(); ctx.arc(0, 0, R * (i / 3), 0, 6.283); ctx.stroke();
+        }
+        ctx.beginPath(); ctx.arc(0, 0, R * 0.16, 0, 6.283); ctx.fill();
+        break;
+      case "lay-circle":
+        ctx.beginPath(); ctx.arc(0, 0, R * 0.92, 0, 6.283); ctx.stroke();
+        for (let i = 0; i < 3; i++) {
+          const a1 = i * 2.1, a2 = a1 + 2.6;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(a1) * R * 0.92, Math.sin(a1) * R * 0.92);
+          ctx.lineTo(Math.cos(a2) * R * 0.92, Math.sin(a2) * R * 0.92);
+          ctx.stroke();
+        }
+        break;
+      case "lay-areas":
+        for (const [cx, cy] of [[-0.48, -0.42], [0.5, -0.36], [0.02, 0.52]]) {
+          for (const [dx, dy] of [[0, 0], [0.26, 0.2], [-0.24, 0.22]]) {
+            ctx.beginPath();
+            ctx.arc((cx + dx * 0.9) * R, (cy + dy * 0.9) * R, R * 0.15, 0, 6.283);
+            ctx.fill();
+          }
+        }
+        break;
+      case "lay-force": {
+        const pts = [[0, -0.66], [-0.7, 0.22], [0.7, 0.2], [-0.12, 0.72]];
+        ctx.beginPath();
+        ctx.moveTo(pts[0][0] * R, pts[0][1] * R);
+        ctx.lineTo(pts[1][0] * R, pts[1][1] * R);
+        ctx.lineTo(pts[3][0] * R, pts[3][1] * R);
+        ctx.lineTo(pts[2][0] * R, pts[2][1] * R);
+        ctx.lineTo(pts[0][0] * R, pts[0][1] * R);
+        ctx.stroke();
+        for (const [x, y] of pts) {
+          ctx.beginPath(); ctx.arc(x * R, y * R, R * 0.19, 0, 6.283); ctx.fill();
+        }
+        break;
+      }
       case "ollama":
         ctx.beginPath(); ctx.moveTo(-R * 0.45, -R * 0.3); ctx.lineTo(-R * 0.58, -R);
         ctx.lineTo(-R * 0.18, -R * 0.52); ctx.stroke();
@@ -737,11 +787,11 @@
 
     static layouts() {
       return [
-        { id: 'orbit',  label: 'orbit',  hint: 'a slow turn, everything at once' },
-        { id: 'rings',  label: 'rings',  hint: 'concentric by kind, the subject at the middle' },
-        { id: 'circle', label: 'circle', hint: 'one ring, every link across the middle' },
-        { id: 'areas',  label: 'areas',  hint: 'one cluster per category' },
-        { id: 'force',  label: 'force',  hint: 'pulled together by what connects' },
+        { id: 'orbit',  icon: 'lay-orbit',  label: 'orbit',  hint: 'a slow turn, everything at once' },
+        { id: 'rings',  icon: 'lay-rings',  label: 'rings',  hint: 'concentric by kind, the subject at the middle' },
+        { id: 'circle', icon: 'lay-circle', label: 'circle', hint: 'one ring, every link across the middle' },
+        { id: 'areas',  icon: 'lay-areas',  label: 'areas',  hint: 'one cluster per category' },
+        { id: 'force',  icon: 'lay-force',  label: 'force',  hint: 'pulled together by what connects' },
       ];
     }
 
