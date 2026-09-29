@@ -247,9 +247,25 @@ def test_there_is_a_visible_way_back_to_her():
     assert "_netSetFocus(false)" in exit_fn, "the head never comes back to full size"
     assert "spotlight(null)" in exit_fn, "a category stays singled out after leaving"
     assert "setCluster(false)" in exit_fn, "the groups stay pulled apart after leaving"
-    # Escape and the button are the same door.
-    esc = FACE[FACE.index("e.key === 'Escape'"):][:120]
+    # Escape and the button are the same door. Anchored on the network's OWN
+    # handler, not on the first "Escape" in the file: a second panel added its
+    # own Escape listener higher up and this windowed that one instead.
+    esc = FACE[FACE.index("e.key === 'Escape' && _netFocus"):][:120]
     assert "_netExit()" in esc
+
+
+def test_escape_closes_one_thing_at_a_time():
+    """The mode help and the network both answer Escape. One press should shut
+    the thing in front of you, not that and the thing behind it."""
+    i = FACE.index("e.key === 'Escape' && _netFocus")
+    guard = FACE[max(0, i - 260):i]
+    assert "_modeHelpIsOpen()" in guard or "_suniHelpClosed" in guard, (
+        "leaving the help open also drops out of the network"
+    )
+    # Both orders, because which listener runs first is registration order.
+    assert "e._suniHelpClosed = true" in FACE, (
+        "if the help's listener runs first, the network's still fires"
+    )
 
 
 def test_clicking_a_category_takes_you_to_it():

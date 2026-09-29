@@ -1940,11 +1940,37 @@ def create_app() -> FastAPI:
     async def status():
         stats = memory.stats()
         has_claude_code = _claude_code_present()
+        # What will ACTUALLY answer, which is not the same as what is
+        # configured. SUNI_MODEL is resolved once at import; two settings can
+        # send the turn somewhere else entirely, and while the page printed the
+        # configured name regardless, the honest answer to "which model is
+        # this?" was on screen and wrong.
+        cfg = suni_config.all()
+        configured = SUNI_MODEL or "(none configured)"
+        answering, note, override = configured, "", False
+        if cfg.get("force_claude_code") and has_claude_code:
+            answering = "Claude Code"
+            note = ("Force Claude Code is on, so turns go to the Claude Code CLI "
+                    f"rather than to {configured}.")
+            override = True
+        elif cfg.get("model_chain_routing"):
+            tiers = [str(t.get("model") or t.get("label") or "")
+                     for t in (cfg.get("model_chain") or []) if t.get("enabled")]
+            tiers = [t for t in tiers if t]
+            answering = "auto"
+            note = ("Chain routing is on: each turn is sent to whichever tier suits "
+                    "it. Available: " + (", ".join(tiers) if tiers else configured))
+            override = True
+        else:
+            note = f"Configured model. Turns are answered by {configured}."
         return JSONResponse({
             # "" means nothing is configured and nothing is installed — a
             # real state on a fresh install. Name it rather than rendering an
             # empty field, which looks like a failure to load.
-            "model":      SUNI_MODEL or "(none configured)",
+            "model":      configured,
+            "answering":  answering,
+            "model_note": note,
+            "routing_override": override,
             "tts_voice":  TTS_VOICE,
             "memory":     stats["total"],
             "claude_code": has_claude_code,

@@ -65,9 +65,44 @@ header{
 }
 .h-right{display:flex;align-items:center;gap:9px}
 .mtag{
-  padding:2px 6px;border:1px solid var(--border);border-radius:2px;
-  font-size:8.5px;letter-spacing:.06em;color:var(--dim);font-family:'DM Mono',monospace;
+  /* --dim is 42% alpha, which at 8.5px was a label you had to go looking for.
+     These say which model is answering and how much she remembers; they are
+     worth reading, so they are readable. */
+  padding:2px 7px;border:1px solid rgba(201,162,39,.30);border-radius:2px;
+  font-size:9.5px;letter-spacing:.06em;color:rgba(206,202,232,.80);
+  font-family:'DM Mono',monospace;cursor:help;
 }
+.mtag:hover{color:rgba(228,224,250,.95);border-color:rgba(201,162,39,.5)}
+/* When something is overriding the configured model, the chip says so rather
+   than quietly naming a model that is not the one answering. */
+.mtag.override{color:rgba(0,212,255,.92);border-color:rgba(0,212,255,.42)}
+#mode-help:hover{color:#c9a227;border-color:rgba(201,162,39,.85)}
+#mode-help-panel{
+  position:fixed;top:44px;right:16px;z-index:220;width:min(390px,92vw);
+  background:rgba(8,8,22,.97);border:1px solid rgba(201,162,39,.24);border-radius:4px;
+  padding:16px 18px 14px;font-family:'DM Mono',monospace;
+  box-shadow:0 14px 40px rgba(0,0,0,.6);backdrop-filter:blur(6px);
+}
+#mode-help-panel[hidden]{display:none}
+#mode-help-panel h4{
+  margin:0 0 6px;font-family:'Syne',sans-serif;font-size:12px;font-weight:700;
+  letter-spacing:.1em;text-transform:uppercase;color:#c9a227;
+}
+#mode-help-panel .lede{margin:0 0 12px;font-size:10.5px;line-height:1.5;color:rgba(206,202,232,.72)}
+#mode-help-panel dl{margin:0}
+#mode-help-panel dt{
+  font-size:10.5px;letter-spacing:.08em;color:rgba(0,212,255,.92);margin-top:11px;
+}
+#mode-help-panel dt:first-child{margin-top:0}
+#mode-help-panel dd{margin:3px 0 0;font-size:10.5px;line-height:1.55;color:rgba(218,215,240,.84)}
+#mode-help-panel dd b{color:#fff}
+#mode-help-panel .foot{
+  margin:13px 0 0;padding-top:10px;border-top:1px solid rgba(201,162,39,.14);
+  font-size:9.5px;line-height:1.5;color:rgba(206,202,232,.6);
+}
+/* The mode currently in use, called out in its own help. */
+#mode-help-panel dt.now{color:#c9a227}
+#mode-help-panel dt.now::after{content:' — in use';font-size:9px;opacity:.75}
 .live-dot{
   width:6px;height:6px;border-radius:50%;background:#2ecc71;
   box-shadow:0 0 7px #2ecc71;animation:blink-dot 2.2s ease-in-out infinite;
@@ -511,6 +546,33 @@ header{
   <div id="net-trail"></div>
   <div id="net-labels"></div>
   <div id="net-hubs"></div>
+  <!-- What the four modes are for, and how they differ. Written as what
+       CHANGES when you pick one, not as a definition of the word. -->
+  <div id="mode-help-panel" role="dialog" aria-label="Conversation modes" hidden>
+    <h4>Conversation modes</h4>
+    <p class="lede">How much rope SUNI has on each turn. The setting follows this
+       conversation and can be changed at any time.</p>
+    <dl>
+      <dt data-m="assistant">● assistant</dt>
+      <dd>The normal one. She decides which tools a request needs and runs them,
+          then answers. Use it unless you want one of the others.</dd>
+      <dt data-m="task">◈ task</dt>
+      <dd><b>She stops and asks first.</b> Instead of acting, she writes out the
+          steps she intends to take and waits — reply <b>approve</b> to run them
+          or <b>cancel</b> to drop them. For anything where you want to see the
+          plan before it happens.</dd>
+      <dt data-m="read-only">◌ read-only</dt>
+      <dd>Nothing that writes, sends or changes anything — no files written, no
+          messages sent, and MCP tools switched off entirely. She can still read,
+          search and explain. For letting her loose on something delicate.</dd>
+      <dt data-m="collaborate">✦ collaborate</dt>
+      <dd>Several models answer independently and she synthesises them. Slower and
+          costs more; worth it on judgement calls where one model's blind spot is
+          the thing you are trying to avoid.</dd>
+    </dl>
+    <p class="foot">Your role decides which of these you are offered — the picker
+       only lists the ones you may use.</p>
+  </div>
   <div id="net-side">
     <div id="net-legend"></div>
     <div id="net-lay"></div>
@@ -524,62 +586,72 @@ header{
       <div id="header-meta"></div>
       <select id="mode-select" title="Conversation mode"
         style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
-               color:rgba(255,255,255,.6);font-family:'DM Mono',monospace;font-size:9px;
+               color:rgba(255,255,255,.82);font-family:'DM Mono',monospace;font-size:9.5px;
                letter-spacing:.08em;padding:3px 7px;border-radius:3px;cursor:pointer;
                display:none">
-        <option value="assistant">● assistant</option>
-        <option value="task">◈ task</option>
-        <option value="read-only">◌ read-only</option>
-        <option value="collaborate">✦ collaborate</option>
+        <option value="assistant" title="Normal. SUNI picks her own tools and runs them.">● assistant</option>
+        <option value="task" title="She writes out the steps first and waits — reply 'approve' to run them, 'cancel' to drop them.">◈ task</option>
+        <option value="read-only" title="Nothing that writes, sends or changes anything. MCP tools are switched off entirely.">◌ read-only</option>
+        <option value="collaborate" title="Several models answer, and SUNI synthesises them. Slower, and better on judgement calls.">✦ collaborate</option>
       </select>
+      <!-- Four words with no consequences attached is not a choice anybody can
+           make. One of them changes the contract — task mode stops and waits
+           for you to type "approve" — and discovering that by watching her
+           appear to hang is the wrong way to learn it. -->
+      <button id="mode-help" type="button" aria-label="What do the modes do?"
+              title="What do the modes do?" aria-expanded="false"
+              style="display:none;background:none;border:1px solid rgba(201,162,39,.45);
+                     border-radius:50%;width:17px;height:17px;padding:0;line-height:1;
+                     font-family:'DM Mono',monospace;font-size:10px;
+                     color:rgba(201,162,39,.85);cursor:pointer;transition:all .2s">?</button>
       <!-- Agent picker. Hidden until at least one agent exists, so an install
            with none looks exactly as it did before. -->
       <select id="agent-select" title="Agent"
         style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
-               color:rgba(255,255,255,.6);font-family:'DM Mono',monospace;font-size:9px;
+               color:rgba(255,255,255,.82);font-family:'DM Mono',monospace;font-size:9.5px;
                letter-spacing:.08em;padding:3px 7px;border-radius:3px;cursor:pointer;
                display:none">
         <option value="">◇ SUNI</option>
       </select>
       <a href="/" title="Switch to Orb mode"
-         style="padding:3px 8px;border:1px solid rgba(201,162,39,.28);border-radius:2px;
-                font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.08em;
-                color:rgba(201,162,39,.6);text-decoration:none;transition:all .2s;"
-         onmouseover="this.style.color='#c9a227';this.style.borderColor='rgba(201,162,39,.6)'"
-         onmouseout="this.style.color='rgba(201,162,39,.6)';this.style.borderColor='rgba(201,162,39,.28)'">
+         style="padding:3px 8px;border:1px solid rgba(201,162,39,.45);border-radius:2px;
+                font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.08em;
+                color:rgba(201,162,39,.85);text-decoration:none;transition:all .2s;"
+         onmouseover="this.style.color='#c9a227';this.style.borderColor='rgba(201,162,39,.85)'"
+         onmouseout="this.style.color='rgba(201,162,39,.85)';this.style.borderColor='rgba(201,162,39,.45)'">
         ◎ ORB
       </a>
       <a href="/chat" title="Switch to Chat mode"
-         style="padding:3px 8px;border:1px solid rgba(201,162,39,.28);border-radius:2px;
-                font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.08em;
-                color:rgba(201,162,39,.6);text-decoration:none;transition:all .2s;"
-         onmouseover="this.style.color='#c9a227';this.style.borderColor='rgba(201,162,39,.6)'"
-         onmouseout="this.style.color='rgba(201,162,39,.6)';this.style.borderColor='rgba(201,162,39,.28)'">
+         style="padding:3px 8px;border:1px solid rgba(201,162,39,.45);border-radius:2px;
+                font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.08em;
+                color:rgba(201,162,39,.85);text-decoration:none;transition:all .2s;"
+         onmouseover="this.style.color='#c9a227';this.style.borderColor='rgba(201,162,39,.85)'"
+         onmouseout="this.style.color='rgba(201,162,39,.85)';this.style.borderColor='rgba(201,162,39,.45)'">
         ☰ CHAT
       </a>
       <button id="stage-btn" aria-pressed="false" title="Stage view — shrink the head to the corner and open a content panel"
-         style="background:none;border:1px solid rgba(201,162,39,.28);border-radius:2px;
-                font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.08em;padding:3px 8px;
-                color:rgba(201,162,39,.6);cursor:pointer;transition:all .2s;"
-         onmouseover="if(!this.classList.contains('on')){this.style.color='#c9a227';this.style.borderColor='rgba(201,162,39,.6)'}"
-         onmouseout="if(!this.classList.contains('on')){this.style.color='rgba(201,162,39,.6)';this.style.borderColor='rgba(201,162,39,.28)'}">
+         style="background:none;border:1px solid rgba(201,162,39,.45);border-radius:2px;
+                font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.08em;padding:3px 8px;
+                color:rgba(201,162,39,.85);cursor:pointer;transition:all .2s;"
+         onmouseover="if(!this.classList.contains('on')){this.style.color='#c9a227';this.style.borderColor='rgba(201,162,39,.85)'}"
+         onmouseout="if(!this.classList.contains('on')){this.style.color='rgba(201,162,39,.85)';this.style.borderColor='rgba(201,162,39,.45)'}">
         ▣ STAGE
       </button>
       <button id="cam-btn" aria-pressed="false"
          title="Camera off — click to let SUNI follow your movement (stays on this device)"
-         style="background:none;border:1px solid rgba(201,162,39,.28);border-radius:2px;
-                font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.08em;padding:3px 8px;
-                color:rgba(201,162,39,.6);cursor:pointer;transition:all .2s;"
-         onmouseover="if(!this.classList.contains('on')){this.style.color='#c9a227';this.style.borderColor='rgba(201,162,39,.6)'}"
-         onmouseout="if(!this.classList.contains('on')){this.style.color='rgba(201,162,39,.6)';this.style.borderColor='rgba(201,162,39,.28)'}">
+         style="background:none;border:1px solid rgba(201,162,39,.45);border-radius:2px;
+                font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.08em;padding:3px 8px;
+                color:rgba(201,162,39,.85);cursor:pointer;transition:all .2s;"
+         onmouseover="if(!this.classList.contains('on')){this.style.color='#c9a227';this.style.borderColor='rgba(201,162,39,.85)'}"
+         onmouseout="if(!this.classList.contains('on')){this.style.color='rgba(201,162,39,.85)';this.style.borderColor='rgba(201,162,39,.45)'}">
         ◉ CAM
       </button>
       <button id="orb-settings-btn" title="Language &amp; voice settings"
-         style="background:none;border:1px solid rgba(201,162,39,.28);border-radius:2px;
-                font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.08em;padding:3px 8px;
-                color:rgba(201,162,39,.6);cursor:pointer;transition:all .2s;"
-         onmouseover="this.style.color='#c9a227';this.style.borderColor='rgba(201,162,39,.6)'"
-         onmouseout="this.style.color='rgba(201,162,39,.6)';this.style.borderColor='rgba(201,162,39,.28)'">
+         style="background:none;border:1px solid rgba(201,162,39,.45);border-radius:2px;
+                font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.08em;padding:3px 8px;
+                color:rgba(201,162,39,.85);cursor:pointer;transition:all .2s;"
+         onmouseover="this.style.color='#c9a227';this.style.borderColor='rgba(201,162,39,.85)'"
+         onmouseout="this.style.color='rgba(201,162,39,.85)';this.style.borderColor='rgba(201,162,39,.45)'">
         ⚙
       </button>
       <div class="live-dot" title="Connected"></div>
@@ -1900,8 +1972,25 @@ const _sessionId  = localStorage.getItem('suni_session') || (() => {
         if(!info.allowed_modes.includes(o.value)) o.remove();
       });
       sel.value = _sessionMode;
+      /* What each mode actually does, said out loud. The picker used to offer
+         four words and no consequences — and one of them, task, changes the
+         contract: she stops and waits for you to type "approve", which is not
+         something to discover by having her appear to hang. */
+      const MODE_NOTE = {
+        'assistant':   'Assistant — she picks her own tools and runs them.',
+        'task':        'Task — she writes out the steps first. Reply "approve" to run them.',
+        'read-only':   'Read-only — nothing that writes, sends or changes anything.',
+        'collaborate': 'Collaborate — several models answer and she synthesises them.',
+      };
+      sel.title = MODE_NOTE[_sessionMode] || 'Conversation mode';
+      // The help only appears when the picker does: an install where you have
+      // one mode has nothing to explain.
+      _modeHelpInit();
       sel.addEventListener('change', async () => {
         _sessionMode = sel.value;
+        sel.title = MODE_NOTE[_sessionMode] || 'Conversation mode';
+        _modeHelpMark();
+        _showToast(MODE_NOTE[_sessionMode] || _sessionMode);
         await _apiFetch('/api/session/mode', {
           method:'POST',
           headers:{'Content-Type':'application/json','x-session-id':_sessionId},
@@ -1921,6 +2010,58 @@ const _sessionId  = localStorage.getItem('suni_session') || (() => {
     }
   }
 })();
+
+/* ── help for the modes ──────────────────────────────────────────────
+   Shown next to the picker, because that is where the question occurs to
+   somebody — not buried in a settings screen they would have to know to go
+   looking in. Closes on Escape and on a click anywhere else, like every other
+   transient panel on this page. */
+function _modeHelpMark(){
+  const panel = document.getElementById('mode-help-panel');
+  if (!panel) return;
+  panel.querySelectorAll('dt').forEach(dt => {
+    dt.classList.toggle('now', dt.dataset.m === _sessionMode);
+  });
+}
+
+function _modeHelpIsOpen(){
+  const panel = document.getElementById('mode-help-panel');
+  return !!panel && !panel.hidden;
+}
+
+function _modeHelpOpen(on){
+  const panel = document.getElementById('mode-help-panel');
+  const btn = document.getElementById('mode-help');
+  if (!panel || !btn) return;
+  panel.hidden = !on;
+  btn.setAttribute('aria-expanded', on ? 'true' : 'false');
+  if (on) _modeHelpMark();
+}
+
+function _modeHelpInit(){
+  const btn = document.getElementById('mode-help');
+  if (!btn || btn._wired) return;
+  btn._wired = true;
+  btn.style.display = '';
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    _modeHelpOpen(document.getElementById('mode-help-panel').hidden);
+  });
+  // A click inside the panel is someone reading it, not dismissing it.
+  document.getElementById('mode-help-panel')
+          .addEventListener('click', e => e.stopPropagation());
+  document.addEventListener('click', () => _modeHelpOpen(false));
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape' || !_modeHelpIsOpen()) return;
+    /* Marked on the event, because the network's own Escape handler is a
+       second listener on the same node and which of the two runs first is
+       registration order, not something either can rely on. Whichever runs
+       second sees either the flag or a panel that is already closed. */
+    e._suniHelpClosed = true;
+    _modeHelpOpen(false);
+  });
+  _modeHelpMark();
+}
 
 // ── State machine ────────────────────────────────────────────────────
 let state = 'idle', stateSmooth = 0;
@@ -3004,6 +3145,9 @@ canvas.addEventListener('wheel', e => {
   _net.zoom(e.deltaY);
 }, { passive: false });
 window.addEventListener('keydown', e => {
+  // The help panel takes Escape first when it is open: one press should close
+  // the thing in front of you, not the thing behind it as well.
+  if (e.key === 'Escape' && (e._suniHelpClosed || _modeHelpIsOpen())) return;
   if (e.key === 'Escape' && _netFocus) _netExit();
   // C pulls the field apart into one group per category and back again. Not a
   // different view — the same nodes, walking to different places.
@@ -3858,10 +4002,21 @@ function _showToast(msg) {
 (async () => {
   try {
     const d = await (await _apiFetch('/api/status')).json();
+    /* The model chip used to print the CONFIGURED primary, resolved once at
+       startup. That is not the same as what answers: with force_claude_code on,
+       or the chain routing per request, the reply came from somewhere else
+       entirely while the chip still named the local 7B — which is exactly the
+       confusion that sent us chasing a model that was not being used. The
+       server now works out what will actually answer and says why. */
     document.getElementById('header-meta').innerHTML = [
-      `<span class="mtag">${d.model}</span>`,
-      `<span class="mtag">${d.memory} mem</span>`,
-      d.claude_code ? `<span class="mtag">CC ✓</span>` : '',
+      `<span class="mtag${d.routing_override ? ' override' : ''}"
+             title="${_esc(d.model_note || 'The model that answers your turns.')}"
+       >${_esc(d.answering || d.model)}</span>`,
+      `<span class="mtag" title="Things SUNI has remembered across conversations."
+       >${d.memory} mem</span>`,
+      d.claude_code
+        ? `<span class="mtag" title="The Claude Code CLI is installed, so the top tier is available."
+           >CC ✓</span>` : '',
     ].join('');
   } catch {}
 })();
