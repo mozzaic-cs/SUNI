@@ -521,6 +521,27 @@ def test_a_smeared_category_earns_no_wash():
     )
 
 
+def test_one_node_is_not_a_cluster():
+    """A lone node has a spread of zero, which the concentration measure
+    reads as perfect — a single drive lit up harder than the twenty files
+    inside it."""
+    body = MOD[MOD.index("_drawNebula() {"):]
+    body = body[:body.index(chr(10) + "    }" + chr(10))]
+    assert re.search(r"tight \*=.*\bn\b", body), (
+        "the wash no longer accounts for how many nodes are in the category"
+    )
+
+def test_the_wash_is_quieter_behind_her_head_than_the_nodes():
+    """Ambient is her face's state, not the field's. At 0.16 the wash was the
+    brightest thing on an ambient screen, louder than the nodes it is meant to
+    sit behind."""
+    call = re.search(r"gl\.uniform1f\(this\.nu\.gain, ([\d.]+) \+ ([\d.]+)", MOD)
+    assert call, "the gain is no longer a base plus a focused share"
+    base, lift = float(call.group(1)), float(call.group(2))
+    assert base <= 0.08, f"ambient gain {base} will read over the nodes"
+    assert lift >= 3 * base, "the wash barely changes between the two states"
+
+
 def test_the_wash_cannot_reach_white():
     """Whatever overlaps, the background must stay a background."""
     assert "sum = sum / (1.0 + sum);" in MOD

@@ -1320,7 +1320,13 @@
 
            So weight by how concentrated the kind actually is. Tight patch,
            full wash; smeared round a ring, almost nothing. */
-        const tight = Math.max(0, 1 - spread / (h * 0.30));
+        let tight = Math.max(0, 1 - spread / (h * 0.30));
+        /* A lone node has a spread of zero, which is perfect concentration by
+           that measure and got it the brightest wash on the screen — a single
+           drive lit up harder than the twenty files inside it. One node is not
+           a cluster, so a category has to have some members before its wash
+           carries full weight. */
+        tight *= 0.30 + 0.70 * Math.min(1, n / 5);
         if (tight < 0.02) continue;
         // A tight cluster gets a tight glow; a scattered one a broad haze.
         pos.push(cx, cy, Math.max(h * 0.06, spread * 1.5 + h * 0.03));
@@ -1335,7 +1341,7 @@
       gl.uniform3fv(this.nu.col, new Float32Array(col));
       // Quiet behind her head, present when the field has the floor. A wash
       // that competes with her face is a wash nobody asked for.
-      gl.uniform1f(this.nu.gain, 0.16 + 0.44 * this.focus);
+      gl.uniform1f(this.nu.gain, 0.06 + 0.54 * this.focus);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.bQuad);
       gl.enableVertexAttribArray(this.na.xy);
       gl.vertexAttribPointer(this.na.xy, 2, gl.FLOAT, false, 0, 0);
