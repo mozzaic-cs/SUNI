@@ -2395,11 +2395,21 @@ async function _playUrl(url, text) {
 // ═══════════════════════════════════════════════════════════════════
 const subEl = document.getElementById('subtitle');
 let _capHideT;
+/* True once the stage is showing a finished reply. Cleared when a new turn
+   starts and when the stage closes, so the next answer can stream into it. */
+let _stageFinal = false;
 function showSub(text) {
   clearTimeout(_capHideT);
   // Stage mode: the content panel is the display — render the reply there (rich
   // markdown) and skip the floating caption over the face.
   if (_stageMode && _stageText){
+    /* ...but NOT once the finished reply is already on it. This function is
+       also the per-sentence caption, and in stage mode it REPLACES the panel's
+       contents — so the full answer was painted, then immediately overwritten
+       by its own first sentence, then by the second, and so on. From the other
+       side of the screen that reads as the text flashing up and vanishing.
+       The panel holds the whole reply; the sentences are for the voice. */
+    if (_stageFinal) return;
     if (text && text.trim()){ _stageText.innerHTML = md(text); _stageBody.scrollTop = _stageBody.scrollHeight; }
     return;
   }
@@ -2534,6 +2544,16 @@ function _enqueueSentence(s) {
 // caption (muted). Returns the trailing incomplete remainder. `onEmit` fires
 // once per surfaced sentence (used to mark that the reply reached the face).
 function _emitSentences(buf, onEmit) {
+  /* Directives arrive in the token stream like everything else, and a JSON
+     object is full of full stops: left alone, the sentence splitter would
+     happily hand `{"box": [120, 340,` to the voice. Complete ones are removed;
+     an unfinished one holds back everything from its opening fence until the
+     rest of it arrives. */
+  buf = _parseFocus(buf).clean;
+  let held = '';
+  const open = buf.match(/`{0,4}\s*suni-focus[\s\S]*$/i);
+  if (open) { held = open[0]; buf = buf.slice(0, open.index); }
+
   const re = /[^.!?]*[.!?]+(?:\s+|$)/g;
   let m, last = 0;
   while ((m = re.exec(buf)) !== null) {
@@ -2559,7 +2579,7 @@ function _emitSentences(buf, onEmit) {
     const idx = Math.max(rest.lastIndexOf(', '), rest.lastIndexOf('; '), rest.lastIndexOf(': '));
     if (idx > 20) { _enqueueSentence(rest.slice(0, idx + 1)); if (onEmit) onEmit(); return rest.slice(idx + 2); }
   }
-  return rest; // remainder (incomplete sentence)
+  return rest + held; // remainder (incomplete sentence, plus any held directive)
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -3314,7 +3334,7 @@ function _setStage(on){
   _stageBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
   _stageBtn.style.color       = on ? '#00d4ff' : 'rgba(201,162,39,.6)';
   _stageBtn.style.borderColor = on ? 'rgba(0,212,255,.6)' : 'rgba(201,162,39,.28)';
-  if(!on){ _stageMedia.innerHTML = ''; _stageText.innerHTML = ''; } else { hideSub(); }
+  if(!on){ _stageMedia.innerHTML = ''; _stageText.innerHTML = ''; _stageFinal = false; } else { hideSub(); }
 }
 // Render attached files into the stage by type (Step D). Free-win tier:
 // image · video · audio · PDF (iframe) · text/code/csv (fetched) · else a card.
@@ -3401,6 +3421,9 @@ function _enhanceStage(fullText){
   });
   html = html.replace(/\b(pages?|p\.|páginas?|pág\.)\s*(\d{1,4})\b/gi, (m,_w,n) => `<a class="pg" data-p="${n}">${m}</a>`);
   _stageText.innerHTML = html;
+  // From here to the end of the turn the panel holds the finished reply, and
+  // the per-sentence caption leaves it alone.
+  _stageFinal = true;
   _applyFocus(directives);   // draw region boxes on images (Claude-Code vision, no VLM needed)
   const quotes = [...(clean.match(/["“]([^"”\n]{4,120})["”]/g) || [])].map(q => q.replace(/^["“]|["”]$/g,'').trim());
   if (quotes.length){
@@ -3436,6 +3459,25 @@ function _parseFocus(text){
   });
   return { clean, directives };
 }
+/* What is actually hers to say, and to show.
+
+   A reply can carry two things that are addressed to this PAGE rather than to
+   the person reading it: a `suni-focus` block, which is a JSON box of pixel
+   coordinates for drawing a region on an image, and a file-serve URL. Only
+   _enhanceStage ever stripped the focus block, and only in stage mode — so
+   everywhere else, the caption, the chat and the VOICE, she read out the
+   coordinates. Stripped in one place now, and everything that speaks or
+   displays goes through it. */
+function _speakable(text){
+  return _stripServeUrls(_parseFocus(text || '').clean).trim();
+}
+
+/* For the stage, which needs the directives it is about to draw: the URL goes,
+   the focus block stays for _enhanceStage to parse and then remove itself. */
+function _displayable(text){
+  return _stripServeUrls(text || '');
+}
+
 function _focusImageWrap(target){
   const wraps = [..._stageMedia.querySelectorAll('.stage-img-wrap')];
   if (!wraps.length) return null;
@@ -3737,6 +3779,7 @@ async function send() {
   try { audioEl.pause(); } catch {}
   if (_ttsResolve) { _ttsResolve(); _ttsResolve = null; }  // unblock any parked play so the old drain bails
   clearInterval(_waitDrainTimer);   // stop a previous reply's idle-poll so it can't fire during this one
+  _stageFinal = false;              // a new turn: the stage is free to fill again
 
   try {
     const res = await _apiFetch('/api/chat', {
@@ -3771,13 +3814,17 @@ async function send() {
           // Extract media from the RAW reply (still has the serve URL) for the stage,
           // but display/enhance the CLEANED text (no URL to read aloud).
           const _rm = _replyMediaItems(full);
-          const _cleanFull = _stripServeUrls(full);
+          const _cleanFull = _speakable(full);
           finalMsg(suniWrap, _cleanFull);
           if (_rm.length && !_stageMode){ _setStage(true); _stageShowFiles(_rm); }
-          if (_stageMode) _enhanceStage(_cleanFull);   // boxes/text now; close is armed once she stops speaking
+          // The stage gets the text WITH its directives, because drawing the
+          // boxes is the whole reason they were sent; it strips them itself.
+          if (_stageMode) _enhanceStage(_displayable(full));
           // If nothing streamed (e.g. Claude Code returns the reply whole, not as
           // tokens), surface the full reply now so the face is never left blank.
-          let buf = surfaced ? sentenceBuf : full;
+          // The CLEANED text, not the raw: this is the path that speaks, and it
+          // was handing the voice the raw reply, serve URLs and all.
+          let buf = surfaced ? sentenceBuf : _cleanFull;
           sentenceBuf = '';
           buf = _emitSentences(buf, () => { surfaced = true; });
           const tail = buf.trim();
