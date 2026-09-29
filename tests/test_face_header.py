@@ -110,3 +110,71 @@ def test_the_help_can_be_dismissed():
     assert "e.stopPropagation()" in init, (
         "a click inside the panel would close it, so it cannot be read"
     )
+
+
+# ── the notice ──────────────────────────────────────────────────────────────
+
+def _toast_css() -> str:
+    a = FACE.index("#suni-toast{")
+    return FACE[a:FACE.index("@keyframes toast-in")]
+
+
+def test_the_notice_is_in_the_middle_and_readable():
+    """It was a small bar tucked against the bottom edge at 12px."""
+    css = _toast_css()
+    assert "position:fixed;left:50%;top:42%" in css, "the notice is not centred"
+    size = float(re.search(r"font-size:([\d.]+)px", css).group(1))
+    assert size >= 15, f"{size}px is the size it already was"
+
+
+def test_red_is_a_kind_it_is_asked_for_not_the_only_one_there_is():
+    """The bar was red whatever it carried, so "settings saved" and "mode
+    changed" both read as something having gone wrong."""
+    fn = FACE[FACE.index("function _showToast(msg, kind)"):]
+    fn = fn[:fn.index("\n}")]
+    assert "kind === 'warn'" in fn, "the notice has only one appearance"
+    assert "#suni-toast.warn{" in FACE, "the warning kind has no styling"
+    # And the things that actually failed are the ones asking for it.
+    for failure in ("orb.mic_blocked", "I cannot reach the microphone.",
+                    "I could not transcribe that.", "orb.settings_error"):
+        i = FACE.index(failure)
+        assert "'warn'" in FACE[i:i + 120], f"{failure!r} no longer reads as a failure"
+    # ...and the things that did not, are not. Bounded to that line: a fixed
+    # window ran into the settings_error call on the line below, which asks
+    # for red quite correctly.
+    ok = FACE.index("orb.settings_saved")
+    line = FACE[ok:FACE.index("\n", ok)]
+    assert "'warn'" not in line, "a success still arrives in red"
+
+
+def test_it_arrives_and_leaves_rather_than_appearing_and_vanishing():
+    assert "@keyframes toast-in" in FACE and "@keyframes toast-out" in FACE
+    assert "@keyframes toast-sweep" in FACE, "no materialise sweep"
+    assert "backdrop-filter:blur" in _toast_css(), "it is not translucent"
+    fn = FACE[FACE.index("function _showToast(msg, kind)"):]
+    fn = fn[:fn.index("\n}")]
+    assert "classList.add('out')" in fn, "it vanishes instead of leaving"
+
+
+def test_one_notice_at_a_time():
+    """Two of these overlapping in the middle of the screen is worse than the
+    second one waiting."""
+    fn = FACE[FACE.index("function _showToast(msg, kind)"):]
+    fn = fn[:fn.index("\n}")]
+    assert "if (_toastEl) _toastEl.remove()" in fn
+    assert "clearTimeout(_toastT)" in fn, "a stale timer would remove the new one"
+
+
+def test_a_long_notice_stays_long_enough_to_read():
+    fn = FACE[FACE.index("function _showToast(msg, kind)"):]
+    fn = fn[:fn.index("\n}")]
+    assert "String(msg).length" in fn, (
+        "a sentence about what a mode does gets the same time as 'Saved'"
+    )
+
+
+def test_reduced_motion_still_gets_the_message():
+    assert "prefers-reduced-motion" in _toast_css() or \
+           "prefers-reduced-motion: reduce){\n  #suni-toast" in FACE
+    block = FACE[FACE.index("@media (prefers-reduced-motion: reduce){"):][:400]
+    assert "#suni-toast" in block and "animation:none" in block

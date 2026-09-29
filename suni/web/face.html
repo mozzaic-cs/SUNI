@@ -103,6 +103,74 @@ header{
 /* The mode currently in use, called out in its own help. */
 #mode-help-panel dt.now{color:#c9a227}
 #mode-help-panel dt.now::after{content:' — in use';font-size:9px;opacity:.75}
+
+/* ── the notice ──────────────────────────────────────────────────────────
+   Middle of the screen, in the same light her head is made of: translucent,
+   scanlined, with a rim that reads as projected rather than drawn. It arrives
+   out of focus and settles; it leaves by growing slightly and blurring out,
+   the way the rest of this page treats a hologram. */
+#suni-toast{
+  position:fixed;left:50%;top:42%;transform:translate(-50%,-50%);
+  z-index:240;pointer-events:none;max-width:min(560px,86vw);
+  padding:17px 28px;border-radius:5px;text-align:center;overflow:hidden;
+  font-family:'DM Mono',monospace;font-size:17px;line-height:1.45;
+  letter-spacing:.03em;color:#eaf6ff;
+  background:linear-gradient(180deg,rgba(6,22,36,.60),rgba(4,12,24,.74));
+  border:1px solid rgba(0,212,255,.42);
+  box-shadow:inset 0 0 0 1px rgba(0,212,255,.10),
+             0 12px 48px rgba(0,170,255,.20), 0 0 80px rgba(0,170,255,.10);
+  backdrop-filter:blur(9px) saturate(1.25);
+  text-shadow:0 0 15px rgba(0,212,255,.5);
+  animation:toast-in .42s cubic-bezier(.2,.9,.25,1) both;
+}
+/* The texture of a projection, as on her face and in the field. */
+#suni-toast::before{
+  content:'';position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(to bottom,
+             rgba(0,212,255,.055) 0 1px, transparent 1px 3px);
+}
+/* One bright line down the panel as it arrives — the same materialise sweep
+   her head does, at the size of a sentence. */
+#suni-toast::after{
+  content:'';position:absolute;left:0;right:0;height:2px;top:-2px;
+  background:linear-gradient(90deg,transparent,rgba(130,242,255,.95),transparent);
+  animation:toast-sweep .9s ease-out .06s both;
+}
+#suni-toast.warn{
+  color:#fff2ee;border-color:rgba(255,120,90,.55);
+  background:linear-gradient(180deg,rgba(40,12,10,.62),rgba(22,6,6,.76));
+  box-shadow:inset 0 0 0 1px rgba(255,120,90,.12),
+             0 12px 48px rgba(255,90,60,.22), 0 0 80px rgba(255,90,60,.10);
+  text-shadow:0 0 15px rgba(255,120,90,.5);
+}
+#suni-toast.warn::before{
+  background:repeating-linear-gradient(to bottom,
+             rgba(255,140,110,.06) 0 1px, transparent 1px 3px);
+}
+#suni-toast.warn::after{
+  background:linear-gradient(90deg,transparent,rgba(255,170,140,.95),transparent);
+}
+#suni-toast.out{animation:toast-out .5s ease-in both}
+@keyframes toast-in{
+  0%   {opacity:0;transform:translate(-50%,-50%) scale(.90);filter:blur(7px)}
+  62%  {opacity:1;transform:translate(-50%,-50%) scale(1.014);filter:blur(0)}
+  100% {opacity:1;transform:translate(-50%,-50%) scale(1);filter:blur(0)}
+}
+@keyframes toast-out{
+  0%   {opacity:1;transform:translate(-50%,-50%) scale(1);filter:blur(0)}
+  100% {opacity:0;transform:translate(-50%,-50%) scale(1.05);filter:blur(6px)}
+}
+@keyframes toast-sweep{
+  0%   {top:-2px;opacity:0}
+  12%  {opacity:1}
+  100% {top:100%;opacity:0}
+}
+/* Somebody who has asked for less motion still needs to read the notice. */
+@media (prefers-reduced-motion: reduce){
+  #suni-toast, #suni-toast.out{animation:none}
+  #suni-toast::after{display:none}
+  #suni-toast.out{opacity:0;transition:opacity .3s}
+}
 .live-dot{
   width:6px;height:6px;border-radius:50%;background:#2ecc71;
   box-shadow:0 0 7px #2ecc71;animation:blink-dot 2.2s ease-in-out infinite;
@@ -3803,7 +3871,7 @@ if (SR) {
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
       micBtn.disabled = true;
       micBtn.title = t('orb.mic_blocked');
-      _showToast(t('orb.mic_blocked'));
+      _showToast(t('orb.mic_blocked'), 'warn');
     } else if (e.error !== 'no-speech') {
       console.warn('STT:', e.error);
     }
@@ -3913,7 +3981,7 @@ async function _sttStart() {
     inputEl.placeholder = 'Listening… ' + STT_SERVER_BUILD;
   } catch (err) {
     console.warn('[STT_SERVER] mic:', err);
-    _showToast('I cannot reach the microphone.');
+    _showToast('I cannot reach the microphone.', 'warn');
     _sttRec = null;
   }
 }
@@ -3941,7 +4009,7 @@ async function _sttStop() {
     send();
   } catch (err) {
     console.warn('[STT_SERVER] transcribe:', err);
-    _showToast('I could not transcribe that.');
+    _showToast('I could not transcribe that.', 'warn');
   } finally {
     _sttBusy = false;
     inputEl.placeholder = '';
@@ -3985,15 +4053,36 @@ _apiFetch('/api/config').then(r => r.json()).then(cfg => {
   window.addEventListener('blur', release);
 }).catch(e => console.warn('[STT_SERVER] config:', e));
 
-function _showToast(msg) {
+/* A line of her own light, in the middle of the screen.
+
+   This was a small red bar tucked at the bottom, which said "something has
+   gone wrong" whatever it carried — and most of what it carries has not:
+   settings saved, a mode changed, nothing heard from the microphone. Red is
+   now a KIND you ask for rather than the only thing on offer.
+
+   One element at a time. Replacing it rather than stacking restarts the
+   arrival animation, and two of these overlapping in the middle of the screen
+   is worse than the second one waiting. */
+let _toastEl = null, _toastT = null, _toastT2 = null;
+function _showToast(msg, kind) {
+  clearTimeout(_toastT); clearTimeout(_toastT2);
+  if (_toastEl) _toastEl.remove();
   const t = document.createElement('div');
-  t.style.cssText = 'position:fixed;bottom:100px;left:50%;transform:translateX(-50%);' +
-    'background:rgba(220,60,40,.92);color:#fff;padding:9px 16px;border-radius:4px;' +
-    'font-family:DM Mono,monospace;font-size:12px;z-index:200;white-space:nowrap;' +
-    'pointer-events:none;transition:opacity .4s';
+  t.id = 'suni-toast';
+  if (kind === 'warn') t.classList.add('warn');
   t.textContent = msg;
   document.body.appendChild(t);
-  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 500); }, 3500);
+  _toastEl = t;
+  // Long enough to read what it says: a sentence about what a mode does needs
+  // more than the two and a half seconds a three-word confirmation did.
+  const ms = Math.min(8000, 2400 + String(msg).length * 46);
+  _toastT = setTimeout(() => {
+    t.classList.add('out');
+    _toastT2 = setTimeout(() => {
+      t.remove();
+      if (_toastEl === t) _toastEl = null;
+    }, 520);
+  }, ms);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -4090,7 +4179,7 @@ document.getElementById('orb-modal-save').addEventListener('click', async () => 
     _closeOrbModal();
     _showToast(t('orb.settings_saved'));
   } else {
-    _showToast(t('orb.settings_error'));
+    _showToast(t('orb.settings_error'), 'warn');
   }
 });
 </script>
