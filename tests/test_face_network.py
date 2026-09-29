@@ -135,21 +135,21 @@ def test_names_appear_as_nodes_grow_on_screen():
 
 
 def test_names_never_land_on_her_face_or_in_the_dock():
-    """Two zones, not one. A node just above the dock printed its name straight
-    through the AI-disclosure line — caught on a real screen, not in the
-    harness, because the harness has no dock."""
-    call = re.search(r"exclude: \[([^\]]*)\]", FACE)
-    assert call, "the labels are no longer told what to keep clear"
-    assert "_headBox(w, h)" in call.group(1), "nothing tells the labels where she is"
-    assert "_dockBox(w, h)" in call.group(1), "the dock is not kept clear"
+    """Two zones, not one. A node just above the dock printed its name
+    straight through the AI-disclosure line — caught on a real screen, not
+    in the harness, because the harness has no dock."""
+    made = re.search(r"const keepClear = \[([^\]]*)\]", FACE)
+    assert made, "the labels are no longer told what to keep clear"
+    assert "_headBox(w, h)" in made.group(1), "nothing tells the labels where she is"
+    assert "_dockBox(w, h)" in made.group(1), "the dock is not kept clear"
+    assert "exclude: keepClear" in FACE, "the list is built and then not used"
     box = FACE[FACE.index("function _headBox("):][:700]
     assert "_stageT" in box, "the box does not follow her to the corner"
-    dock = FACE[FACE.index("function _dockBox("):][:700]
+    dock = FACE[FACE.index("function _dockBox("):][:900]
     assert "getBoundingClientRect" in dock, (
         "the dock box is guessed, so it is wrong the moment the dock resizes"
     )
     assert "o.exclude" in MOD and "skips.some" in MOD
-
 
 def test_a_name_is_tested_where_it_is_actually_drawn():
     """The name sits below its node. Testing only the node let a label fall
@@ -532,10 +532,11 @@ def test_a_smeared_category_earns_no_wash():
     the middle of the screen, and ten washes stacked on one point saturate.
     The wash has to be weighted by how concentrated the kind really is.
     """
-    body = MOD[MOD.index("_drawNebula() {"):]
+    body = MOD[MOD.index("_clusters(w, h) {"):]
     body = body[:body.index("\n    }\n")]
     assert "spread / (h *" in body, "the wash no longer measures concentration"
-    assert re.search(r"col\.push\(g\.col\[0\] \* \w+", body), (
+    wash = MOD[MOD.index("_drawNebula() {"):]
+    assert re.search(r"col\.push\(c\.col\[0\] \* c\.tight", wash), (
         "the concentration weight is computed but never reaches the colour"
     )
 
@@ -544,7 +545,7 @@ def test_one_node_is_not_a_cluster():
     """A lone node has a spread of zero, which the concentration measure
     reads as perfect — a single drive lit up harder than the twenty files
     inside it."""
-    body = MOD[MOD.index("_drawNebula() {"):]
+    body = MOD[MOD.index("_clusters(w, h) {"):]
     body = body[:body.index(chr(10) + "    }" + chr(10))]
     assert re.search(r"tight \*=.*\bn\b", body), (
         "the wash no longer accounts for how many nodes are in the category"
@@ -564,3 +565,71 @@ def test_the_wash_is_quieter_behind_her_head_than_the_nodes():
 def test_the_wash_cannot_reach_white():
     """Whatever overlaps, the background must stay a background."""
     assert "sum = sum / (1.0 + sum);" in MOD
+
+
+# ── hubs: what a whole cluster IS ───────────────────────────────────────────
+
+
+def test_a_cluster_says_what_it_is():
+    """A field of coloured dots says how much of each thing there is. Only
+    the marker says WHAT they are, which is the question a viewer has
+    first — and it is the one thing the reference renders had that ours
+    did not."""
+    assert "hubs(w, h, opts)" in MOD, "the module offers no cluster markers"
+    assert "_netPaintHubs" in FACE, "the page never draws them"
+    assert 'id="net-hubs"' in FACE, "there is no layer to draw them into"
+
+
+def test_a_marker_is_a_louder_claim_than_a_wash():
+    """A smear that earns a faint haze earns no name: in an arrangement
+    where the kinds are interleaved there is no "here" to point at, and
+    saying nothing is more honest than a word in the middle of
+    everything."""
+    body = MOD[MOD.index("hubs(w, h, opts) {"):]
+    body = body[:body.index(chr(10) + "    }" + chr(10))]
+    bar = re.search(r"o\.min \|\| ([\d.]+)", body)
+    assert bar, "the marker has no concentration bar at all"
+    assert float(bar.group(1)) > 0.02, (
+        "the bar is no higher than the wash, so every smear gets a name"
+    )
+    assert "c.n >= 2" in body, "a single node would be labelled as a cluster"
+
+
+def test_a_marker_sits_beside_its_cluster_not_on_it():
+    """Placed at the centroid it lands on the very nodes it describes. The
+    reference puts each one at the outer edge, which is what makes a screen
+    of six hundred dots readable."""
+    body = MOD[MOD.index("hubs(w, h, opts) {"):]
+    body = body[:body.index(chr(10) + "    }" + chr(10))]
+    assert "c.spread" in body, "the offset ignores how big the cluster is"
+    assert "x: c.x + ux * off" in body, "the marker is still at the centroid"
+
+
+def test_markers_are_placed_before_names_so_names_give_way():
+    """A cluster's name outranks any one node's. Painted the other way,
+    a marker arrives on top of a label already placed there."""
+    start = FACE.index("function _netPaintLabels(){")
+    paint = FACE[start:FACE.index(chr(10) + "}", start)]
+    assert paint.index("_netPaintHubs(") < paint.index("_net.labels("), (
+        "names are placed before the markers they are supposed to dodge"
+    )
+    assert "keepClear.concat(hubs)" in paint, "the names never hear about the markers"
+
+
+def test_a_long_name_is_tested_at_both_ends():
+    """The span is centred on its node, so a long name reaches well either
+    side of the point being tested. "stable-diffusion" ran into a marker
+    whose box its own centre had cleared comfortably."""
+    assert "function textHalfWidth(" in MOD, "nothing measures the text"
+    assert "blocked(p.x - half, ty)" in MOD and "blocked(p.x + half, ty)" in MOD, (
+        "only the middle of the name is tested"
+    )
+
+
+def test_markers_stay_out_of_the_ambient_view():
+    """Ambient is her face's state. A row of captions across it is exactly
+    the clutter the ambient view exists to avoid."""
+    start = FACE.index("function _netPaintHubs(")
+    body = FACE[start:FACE.index(chr(10) + "}", start)]
+    assert "if (!_netFocus)" in body, "the markers show behind her head too"
+

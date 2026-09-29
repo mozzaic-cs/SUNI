@@ -256,6 +256,14 @@
      the span and to test whether that span lands somewhere it must not. */
   function labelDrop(px) { return px * 0.55 + 4; }
 
+  /* How far a name reaches either side of its node. The span is centred on the
+     point, so the text is the thing that collides, not the point. Monospace at
+     a known size, so counting characters is exact enough and costs nothing —
+     measuring text properly means a canvas context and a layout flush. */
+  function textHalfWidth(label, charW) {
+    return ((label || '').length * (charW || 6)) / 2;
+  }
+
   const NVS = `
     attribute vec2 a_xy;
     void main(){ gl_Position = vec4(a_xy, 0.999, 1.0); }`;
@@ -1278,33 +1286,28 @@
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     }
 
-    /* One wash per category, centred on where that category actually IS.
-       Recomputed every frame from the node positions, which is what makes it
-       follow a layout change instead of being painted once and left behind.
-       A dozen categories over a few hundred nodes is a rounding error next to
-       the draw itself. */
-    _drawNebula() {
-      if (!this.nprog || !this.nodes.length) return;
-      const gl = this.gl;
-      const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
+    /* Where each category sits on screen, how far it is spread, and how much
+       of a claim that is. Computed once a frame and used twice: the wash behind
+       a cluster and the hub that names it must agree, or the name floats beside
+       its own glow.
 
-      /* Project every node once and keep it by category. Doing it twice, once
-         for the centre and again for the spread, costs the projection twice
-         for no reason. */
+       In the caller's coordinates, y downward, so it matches project(); the
+       nebula flips y itself because GL counts from the bottom. */
+    _clusters(w, h) {
       const groups = new Map();
       for (const nd of this.nodes) {
         if (this.spot && nd.kind !== this.spot) continue;   // singled out: one wash
         const p = this.project(nd.pos, w, h);
         if (!p) continue;
         let g = groups.get(nd.kind);
-        if (!g) { g = { pts: [], col: nd.color }; groups.set(nd.kind, g); }
-        g.pts.push(p.x, h - p.y);         // GL counts y from the bottom
+        if (!g) { g = { kind: nd.kind, pts: [], col: nd.color }; groups.set(nd.kind, g); }
+        g.pts.push(p.x, p.y);
       }
 
-      const pos = [], col = [];
+      const out = [];
       for (const g of groups.values()) {
         const n = g.pts.length / 2;
-        if (!n || pos.length / 3 >= NEB_MAX) continue;
+        if (!n) continue;
         let cx = 0, cy = 0;
         for (let i = 0; i < n; i++) { cx += g.pts[i * 2]; cy += g.pts[i * 2 + 1]; }
         cx /= n; cy /= n;
@@ -1331,10 +1334,75 @@
            a cluster, so a category has to have some members before its wash
            carries full weight. */
         tight *= 0.30 + 0.70 * Math.min(1, n / 5);
-        if (tight < 0.02) continue;
+        out.push({ kind: g.kind, col: g.col, n, x: cx, y: cy, spread, tight });
+      }
+      return out;
+    }
+
+    /* The reference names its clusters — a letter, a word, a count — and that
+       one thing is why a screen of six hundred dots is readable at a glance
+       while ours needed every node labelled to say anything at all. A hub says
+       what a whole mass IS, which is the question a viewer has first.
+
+       A hub is a louder claim than a wash, so the bar is higher: a smear that
+       earns a faint haze earns no name. That is the point — in an arrangement
+       where the categories are interleaved, there is no "here" to name, and
+       saying so by staying silent is more honest than a label in the middle of
+       everything. */
+    hubs(w, h, opts) {
+      const o = opts || {};
+      const min = o.min || 0.34;
+      const skips = !o.exclude ? []
+        : (Array.isArray(o.exclude) ? o.exclude : [o.exclude]);
+      const blocked = (x, y) => skips.some(
+        s => x > s.x0 && x < s.x1 && y > s.y0 && y < s.y1);
+      return this._clusters(w, h)
+        .filter(c => c.tight >= min && c.n >= 2)
+        .map(c => {
+          /* Not at the centroid: that is the middle of the mass, so the marker
+             lands on the very nodes it is describing. The reference puts each
+             one at the OUTER edge of its cluster, and that is what makes a
+             screen of six hundred dots readable — the name is beside the thing
+             rather than on top of it.
+
+             Outward means away from the middle of the screen, which is where
+             everything else is. A cluster sitting on the centre has no outward,
+             so it goes up. */
+          const dx = c.x - w / 2, dy = c.y - h / 2;
+          const len = Math.hypot(dx, dy);
+          const off = Math.min(c.spread * 0.95 + 16, h * 0.14);
+          const ux = len > 1 ? dx / len : 0, uy = len > 1 ? dy / len : -1;
+          return {
+            kind: c.kind,
+            label: (KIND_STYLE[c.kind] || {}).label || c.kind,
+            count: c.n,
+            x: c.x + ux * off,
+            y: c.y + uy * off,
+            color: c.col,
+          };
+        })
+        .filter(hb => hb.x > 0 && hb.y > 0 && hb.x < w && hb.y < h)
+        .filter(hb => !blocked(hb.x, hb.y))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, o.max || 8);
+    }
+
+    /* One wash per category, centred on where that category actually IS.
+       Recomputed every frame from the node positions, which is what makes it
+       follow a layout change instead of being painted once and left behind.
+       A dozen categories over a few hundred nodes is a rounding error next to
+       the draw itself. */
+    _drawNebula() {
+      if (!this.nprog || !this.nodes.length) return;
+      const gl = this.gl;
+      const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
+
+      const pos = [], col = [];
+      for (const c of this._clusters(w, h)) {
+        if (c.tight < 0.02 || pos.length / 3 >= NEB_MAX) continue;
         // A tight cluster gets a tight glow; a scattered one a broad haze.
-        pos.push(cx, cy, Math.max(h * 0.06, spread * 1.5 + h * 0.03));
-        col.push(g.col[0] * tight, g.col[1] * tight, g.col[2] * tight);
+        pos.push(c.x, h - c.y, Math.max(h * 0.06, c.spread * 1.5 + h * 0.03));
+        col.push(c.col[0] * c.tight, c.col[1] * c.tight, c.col[2] * c.tight);
       }
       if (!pos.length) return;
 
@@ -1444,9 +1512,15 @@
         const px = scale * nd.size / Math.max(p.w, 0.001);
         if (px < minPx) continue;
         /* The name is drawn BELOW its node, so testing the node alone let a
-           label fall into a zone the node itself had cleared. Both points. */
+           label fall into a zone the node itself had cleared. Both points —
+           and both ENDS of the text, because the span is centred on its node
+           and a long name reaches a good way either side of the point being
+           tested. "stable-diffusion" ran straight into a cluster marker whose
+           box its centre had cleared by a comfortable margin. */
         const ty = p.y + labelDrop(px);
-        if (blocked(p.x, p.y) || blocked(p.x, ty)) continue;
+        const half = textHalfWidth(nd.label, o.charW);
+        if (blocked(p.x, p.y) || blocked(p.x, ty)
+            || blocked(p.x - half, ty) || blocked(p.x + half, ty)) continue;
         cand.push({ node: nd, x: p.x, y: p.y, ty, px, w: p.w });
       }
       /* The centre is the one node that was never named, which left the thing
@@ -1458,7 +1532,9 @@
       if (cp && cp.w > 0.05 && cp.x > 0 && cp.y > 0 && cp.x < w && cp.y < h) {
         const cpx = scale * SIZE_BY_KIND.root / Math.max(cp.w, 0.001);
         const cty = cp.y + labelDrop(cpx);
-        if (!blocked(cp.x, cp.y) && !blocked(cp.x, cty)) {
+        const chalf = textHalfWidth(this.center.label, o.charW);
+        if (!blocked(cp.x, cp.y) && !blocked(cp.x, cty)
+            && !blocked(cp.x - chalf, cty) && !blocked(cp.x + chalf, cty)) {
           cand.unshift({
             node: { id: this.center.id, label: this.center.label, kind: 'root' },
             x: cp.x, y: cp.y, ty: cty, px: cpx, w: cp.w,

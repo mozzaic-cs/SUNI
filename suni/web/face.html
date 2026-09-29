@@ -388,6 +388,25 @@ header{
   color:rgba(228,236,255,.82);text-shadow:0 1px 3px rgba(0,0,0,.9),0 0 8px rgba(0,0,0,.7);
   white-space:nowrap;opacity:0;transition:opacity .25s ease}
 #net-labels span.on{opacity:1}
+/* A cluster's name, at the middle of the cluster. A field of coloured dots
+   says how much of each thing there is; only this says WHAT they are, which is
+   the question a viewer has first. Reads as a marker rather than a caption:
+   the initial in a filled disc in the category's own colour, the name beside
+   it, the count under that. */
+#net-hubs{position:absolute;inset:0;z-index:7;pointer-events:none;overflow:hidden}
+#net-hubs .hub{position:absolute;transform:translate(-50%,-50%);
+  display:flex;align-items:center;gap:7px;cursor:pointer;pointer-events:auto;
+  opacity:0;transition:opacity .3s ease}
+#net-hubs .hub.on{opacity:1}
+#net-hubs .hub:hover .dot{transform:scale(1.14)}
+#net-hubs .dot{width:20px;height:20px;border-radius:50%;flex:none;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Syne',sans-serif;font-weight:700;font-size:11px;color:#06080f;
+  transition:transform .18s ease}
+#net-hubs .txt{font-family:'DM Mono',monospace;line-height:1.15;
+  text-shadow:0 1px 3px rgba(0,0,0,.95),0 0 10px rgba(0,0,0,.8)}
+#net-hubs .nm{display:block;font-size:11px;letter-spacing:.09em;text-transform:uppercase}
+#net-hubs .ct{display:block;font-size:10px;color:rgba(228,236,255,.55)}
 /* Leaving the network. Escape did this from the first version, which is no
    use at all to someone who does not already know it is there: the head
    shrinking into a corner with no visible way back is a trap, not a mode. */
@@ -482,6 +501,7 @@ header{
   <div id="net-pop"></div>
   <div id="net-trail"></div>
   <div id="net-labels"></div>
+  <div id="net-hubs"></div>
   <div id="net-side">
     <div id="net-legend"></div>
     <div id="net-lay"></div>
@@ -2365,6 +2385,8 @@ const _netTrail = document.getElementById('net-trail');
 const _netLegend = document.getElementById('net-legend');
 const _netLabels = document.getElementById('net-labels');
 const _netLabelPool = [];
+const _netHubs = document.getElementById('net-hubs');
+const _netHubPool = [];
 const _netExitBtn = document.getElementById('net-exit');
 const _netMenu = document.getElementById('net-menu');
 let _netPtr = null;         // last pointer position, for the centre's own hint
@@ -2466,11 +2488,18 @@ function _dockBox(w, h){
 function _netPaintLabels(){
   if (!_net || !_net.ok || !_netData) { _netHideLabels(); return; }
   const w = canvas.clientWidth || W, h = canvas.clientHeight || H;
+  const keepClear = [_headBox(w, h), _dockBox(w, h)].filter(Boolean);
+  /* Hubs first, and the names dodge THEM: a cluster's name outranks any one
+     node's, so when the two want the same pixels it is the node that gives
+     way. Painting them in the other order means a hub arrives on top of a
+     label already placed there, which is how you get a word printed over a
+     word. */
+  const hubs = _netPaintHubs(w, h, keepClear);
   // Ambient names only the few biggest things; focus names as many as fit.
   const wanted = _net.labels(w, h, {
     minPx: _netFocus ? 14 : 26,
     max: _netFocus ? 20 : 6,
-    exclude: [_headBox(w, h), _dockBox(w, h)].filter(Boolean),
+    exclude: keepClear.concat(hubs),
   });
   for (let i = 0; i < wanted.length; i++) {
     let el = _netLabelPool[i];
@@ -2629,6 +2658,61 @@ function _netCopy(text){
 
 function _netHideLabels(){
   for (const el of _netLabelPool) el.classList.remove('on');
+  for (const el of _netHubPool) el.classList.remove('on');
+}
+
+/* One marker per cluster, at the middle of it: initial, name, count. The
+   module decides which categories have earned one — in an arrangement where
+   the kinds are interleaved there is no "here" to name, and it says so by
+   naming nothing rather than dropping a word in the middle of everything.
+
+   Only while the field has the floor. Ambient is her face's state, and a row
+   of captions across it is exactly the clutter the ambient view exists to
+   avoid. */
+function _netPaintHubs(w, h, keepClear){
+  if (!_netFocus) { for (const el of _netHubPool) el.classList.remove('on'); return []; }
+  const wanted = _net.hubs(w, h, { exclude: keepClear });
+  for (let i = 0; i < wanted.length; i++) {
+    let el = _netHubPool[i];
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'hub';
+      el.innerHTML = '<span class="dot"></span>'
+                   + '<span class="txt"><b class="nm"></b><i class="ct"></i></span>';
+      // Same gesture as the legend: a colour is a place, and clicking it goes
+      // there. The marker IS the colour, so it had better behave like one.
+      el.addEventListener('click', () => { if (el._kind) _netSpot(el._kind); });
+      _netHubs.appendChild(el);
+      _netHubPool.push(el);
+    }
+    const hub = wanted[i];
+    if (el._kind !== hub.kind) {
+      el._kind = hub.kind;
+      const rgb = hub.color.map(v => Math.round(v * 255)).join(',');
+      el.querySelector('.dot').style.background = `rgb(${rgb})`;
+      el.querySelector('.dot').style.boxShadow = `0 0 14px rgba(${rgb},.55)`;
+      el.querySelector('.dot').textContent = (hub.label[0] || '?').toUpperCase();
+      el.querySelector('.nm').textContent = hub.label;
+      el.querySelector('.nm').style.color = `rgb(${rgb})`;
+      el.title = `${hub.label} — ${hub.count}`;
+    }
+    // The count changes as the viewer drills in even when the kind has not.
+    const ct = el.querySelector('.ct');
+    if (ct.textContent !== String(hub.count)) ct.textContent = hub.count;
+    el.style.left = hub.x + 'px';
+    el.style.top = hub.y + 'px';
+    el.classList.add('on');
+  }
+  for (let i = wanted.length; i < _netHubPool.length; i++) {
+    _netHubPool[i].classList.remove('on');
+  }
+  /* The boxes the names must now avoid. Generous to the right, because the
+     marker grows that way: the disc is centred on the cluster and the word
+     runs off it. */
+  return wanted.map(hub => ({
+    x0: hub.x - 26, x1: hub.x + 34 + hub.label.length * 7.4,
+    y0: hub.y - 16, y1: hub.y + 16,
+  }));
 }
 
 /* Built from the module's own palette, never from a copy of it: a legend that
