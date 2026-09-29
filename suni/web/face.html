@@ -104,6 +104,65 @@ header{
 #mode-help-panel dt.now{color:#c9a227}
 #mode-help-panel dt.now::after{content:' — in use';font-size:9px;opacity:.75}
 
+/* ── the camera ─────────────────────────────────────────────────────────
+   Same materials as the notice and the field: translucent, scanlined, a rim
+   that reads as projected. The picture itself is left alone — a viewfinder
+   that tints what it is showing you is lying about the lighting, which is one
+   of the two things this exists to show. */
+#snap-panel{
+  position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);
+  z-index:250;width:min(560px,92vw);padding:14px 14px 12px;border-radius:6px;
+  background:linear-gradient(180deg,rgba(6,22,36,.86),rgba(4,12,24,.92));
+  border:1px solid rgba(0,212,255,.40);
+  box-shadow:inset 0 0 0 1px rgba(0,212,255,.10),
+             0 18px 60px rgba(0,0,0,.65), 0 0 90px rgba(0,170,255,.12);
+  backdrop-filter:blur(10px) saturate(1.2);
+  font-family:'DM Mono',monospace;
+  animation:toast-in .34s cubic-bezier(.2,.9,.25,1) both;
+}
+#snap-panel[hidden]{display:none}
+#snap-panel .frame{
+  position:relative;border-radius:4px;overflow:hidden;background:#04060d;
+  border:1px solid rgba(0,212,255,.22);aspect-ratio:4/3;
+}
+#snap-panel video{
+  width:100%;height:100%;object-fit:cover;display:block;
+  /* Mirrored, because a viewfinder of your own face that moves the wrong way
+     is unusable. The CAPTURE is NOT mirrored — flipping the saved frame would
+     reverse any writing held up to the lens. */
+  transform:scaleX(-1);
+}
+/* Thirds, faintly, for framing. */
+#snap-panel .grid{
+  position:absolute;inset:0;pointer-events:none;
+  background:
+    linear-gradient(to right,transparent 33.2%,rgba(0,212,255,.16) 33.2% 33.5%,
+      transparent 33.5% 66.4%,rgba(0,212,255,.16) 66.4% 66.7%,transparent 66.7%),
+    linear-gradient(to bottom,transparent 33.2%,rgba(0,212,255,.16) 33.2% 33.5%,
+      transparent 33.5% 66.4%,rgba(0,212,255,.16) 66.4% 66.7%,transparent 66.7%);
+}
+#snap-panel .scan{
+  position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(to bottom,
+             rgba(0,212,255,.05) 0 1px, transparent 1px 3px);
+}
+#snap-panel .note{
+  margin:9px 2px 10px;font-size:10.5px;letter-spacing:.03em;
+  color:rgba(206,202,232,.72);text-align:center;
+}
+#snap-panel .note.warn{color:rgba(255,170,140,.92)}
+#snap-panel .row{display:flex;gap:9px;justify-content:center}
+#snap-panel button{
+  font-family:'DM Mono',monospace;font-size:11.5px;letter-spacing:.07em;
+  padding:8px 20px;border-radius:3px;cursor:pointer;transition:all .18s;
+  background:none;border:1px solid rgba(0,212,255,.38);color:rgba(190,235,255,.92);
+}
+#snap-panel button:hover{border-color:rgba(0,212,255,.9);color:#fff;
+  box-shadow:0 0 18px rgba(0,180,255,.28)}
+#snap-panel #snap-cancel{border-color:rgba(255,255,255,.18);color:rgba(218,215,240,.7)}
+#snap-panel #snap-cancel:hover{border-color:rgba(255,255,255,.4);color:#fff;box-shadow:none}
+#snap-panel.busy{pointer-events:none;opacity:.7}
+
 /* ── the notice ──────────────────────────────────────────────────────────
    Middle of the screen, in the same light her head is made of: translucent,
    scanlined, with a rim that reads as projected rather than drawn. It arrives
@@ -752,6 +811,23 @@ header{
     <!-- EU AI Act Art. 50(1): persistent AI-interaction disclosure -->
     <div class="ai-disclosure" data-i18n="common.ai_disclosure"
          style="text-align:center;font-size:11px;color:var(--text);opacity:.72;margin-top:8px">SUNI is an AI assistant — responses are AI-generated and may be inaccurate.</div>
+  </div>
+</div>
+<!-- The camera, before it takes anything. Framing a shot blind and finding
+     out afterwards that half your head is missing or the room was too dark is
+     no way to use this; and since nothing leaves the browser until the shutter
+     is pressed, the preview is also the only moment you can see what you are
+     about to send. -->
+<div id="snap-panel" role="dialog" aria-modal="true" aria-label="Camera" hidden>
+  <div class="frame">
+    <video id="snap-video" playsinline muted autoplay></video>
+    <div class="grid" aria-hidden="true"></div>
+    <div class="scan" aria-hidden="true"></div>
+  </div>
+  <p class="note" id="snap-note">Nothing is sent until you take the shot.</p>
+  <div class="row">
+    <button id="snap-take" type="button">◉ Take it</button>
+    <button id="snap-cancel" type="button">Cancel</button>
   </div>
 </div>
 <!-- drag-drop overlay (full viewport) -->
@@ -3411,34 +3487,105 @@ window.addEventListener('beforeunload', () => { if(_camStream) _camStop(); });
 // which can read the saved image file — to actually interpret it. If tracking
 // isn't already running, the camera is acquired just for the shot and released.
 const _snapBtn = document.getElementById('snap-btn');
-async function _snapshot(){
-  if(_snapBtn.classList.contains('busy')) return;
-  _snapBtn.classList.add('busy');
-  let temp = null;
+const _snapPanel = document.getElementById('snap-panel');
+const _snapVideo = document.getElementById('snap-video');
+const _snapNote = document.getElementById('snap-note');
+let _snapStream = null;          // opened for the preview, ours to stop
+
+function _snapSay(msg, warn){
+  if (!_snapNote) return;
+  _snapNote.textContent = msg;
+  _snapNote.classList.toggle('warn', !!warn);
+}
+
+/* Open the viewfinder. The shot used to be taken the instant the button was
+   pressed, 350ms after the camera woke — long enough for the sensor to settle
+   and nowhere near long enough for a person to frame anything. */
+async function _snapOpen(){
+  if (!_snapPanel || !_snapPanel.hidden) return;
+  if (!navigator.mediaDevices?.getUserMedia){ showSub('CAMERA UNSUPPORTED'); return; }
+  _snapPanel.hidden = false;
+  _snapSay('Waking the camera…');
   try {
-    if(!_camVideo.videoWidth){
-      if(!navigator.mediaDevices?.getUserMedia){ showSub('CAMERA UNSUPPORTED'); return; }
-      try { temp = await navigator.mediaDevices.getUserMedia({ video:{ width:{ideal:1280}, height:{ideal:720} }, audio:false }); }
-      catch(e){ console.warn('camera:', e); showSub('CAMERA UNAVAILABLE'); return; }
-      _camVideo.srcObject = temp; try { await _camVideo.play(); } catch {}
-      await new Promise(r => setTimeout(r, 350));   // let exposure settle
+    /* Its own stream at a sensible size. Reusing the motion tracker's would
+       mean snapshots at the 320x240 it runs at, which is what happened
+       whenever CAM was already on. */
+    _snapStream = await navigator.mediaDevices.getUserMedia({
+      video: { width:{ideal:1280}, height:{ideal:720} }, audio:false });
+  } catch(e){
+    console.warn('camera:', e);
+    /* Some devices will not hand out a second stream while the tracker holds
+       one. A lower-resolution preview beats no camera. */
+    if (_camStream) {
+      _snapStream = null;
+      _snapVideo.srcObject = _camStream;
+      try { await _snapVideo.play(); } catch {}
+      _snapSay('Nothing is sent until you take the shot.');
+      return;
     }
-    const w = _camVideo.videoWidth||640, h = _camVideo.videoHeight||480;
+    _snapClose();
+    showSub('CAMERA UNAVAILABLE');
+    return;
+  }
+  _snapVideo.srcObject = _snapStream;
+  try { await _snapVideo.play(); } catch {}
+  _snapSay('Nothing is sent until you take the shot.');
+}
+
+function _snapClose(){
+  if (!_snapPanel) return;
+  _snapPanel.hidden = true;
+  _snapPanel.classList.remove('busy');
+  _snapVideo.srcObject = null;
+  // Only ever stop the stream this panel opened. The motion tracker's is the
+  // CAM button's to own, and stopping it here would switch off a thing the
+  // viewer turned on somewhere else.
+  if (_snapStream){ _snapStream.getTracks().forEach(t => t.stop()); _snapStream = null; }
+}
+
+async function _snapTake(){
+  if (!_snapVideo.videoWidth){ _snapSay('No picture yet — give it a moment.', true); return; }
+  _snapPanel.classList.add('busy');
+  _snapSay('Sending…');
+  try {
+    const w = _snapVideo.videoWidth, h = _snapVideo.videoHeight;
     const cnv = document.createElement('canvas'); cnv.width = w; cnv.height = h;
-    cnv.getContext('2d').drawImage(_camVideo, 0, 0, w, h);
-    const blob = await new Promise(res => cnv.toBlob(res, 'image/jpeg', 0.85));
-    if(!blob){ showSub('SNAPSHOT FAILED'); return; }
+    // Drawn straight, not mirrored: the preview is flipped so it behaves like
+    // a mirror, but a saved frame that is flipped has any writing in it
+    // backwards.
+    cnv.getContext('2d').drawImage(_snapVideo, 0, 0, w, h);
+    const blob = await new Promise(res => cnv.toBlob(res, 'image/jpeg', 0.88));
+    if (!blob){ _snapSay('That did not come out. Try again.', true);
+                _snapPanel.classList.remove('busy'); return; }
     const file = new File([blob], `snapshot-${Date.now()}.jpg`, { type:'image/jpeg' });
+    _snapClose();
     expandDock();
     await _uploadFile(file);
     showSub('Snapshot attached — ask me about it.');
     inputEl.focus();
-  } finally {
-    if(temp){ temp.getTracks().forEach(t=>t.stop()); _camVideo.srcObject = _camStream || null; }
-    _snapBtn.classList.remove('busy');
+  } catch(e){
+    console.warn('snapshot:', e);
+    _snapSay('That did not come out. Try again.', true);
+    _snapPanel.classList.remove('busy');
   }
 }
-_snapBtn?.addEventListener('click', _snapshot);
+
+_snapBtn?.addEventListener('click', _snapOpen);
+document.getElementById('snap-take')?.addEventListener('click', _snapTake);
+document.getElementById('snap-cancel')?.addEventListener('click', _snapClose);
+document.addEventListener('keydown', e => {
+  if (_snapPanel && !_snapPanel.hidden && e.key === 'Escape'){
+    // Marked for the same reason the help panel marks it: the network has its
+    // own Escape listener and neither can rely on running first.
+    e._suniHelpClosed = true;
+    _snapClose();
+  }
+});
+// A camera left running because the tab went away is a camera nobody knows is
+// on. The tracker already does this for itself; the viewfinder needs it too.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && _snapPanel && !_snapPanel.hidden) _snapClose();
+});
 
 // ═══════════════════════════════════════════════════════════════════
 //  FILE UPLOAD  (attach button + drag-and-drop)
