@@ -234,6 +234,57 @@
       gl_FragColor = vec4(col, a * u_alpha * fade);
     }`;
 
+  /* ── the nebula ───────────────────────────────────────────────────────
+     A soft wash of each category's colour behind its own cluster. In the
+     reference this is what carries the depth: without it a field of coloured
+     dots on black reads as a chart, and with it the dots sit INSIDE something.
+
+     ONE fullscreen triangle summing a handful of gaussians, rather than a blur
+     of the scene. A real blur needs a framebuffer, and a render target at this
+     machine's resolution is tens of megabytes on a card that is already
+     evicting the language model to make room — measured, in Ollama's own log.
+     This costs one draw call and no memory.
+
+     Screen-space on purpose: the centres are projected on the CPU, so a
+     cluster's glow follows it through every camera move and layout change
+     without the shader knowing anything about the scene. */
+  // Headroom over the ten categories that exist: an eleventh should join the
+  // field, not quietly lose its wash.
+  const NEB_MAX = 16;
+
+  const NVS = `
+    attribute vec2 a_xy;
+    void main(){ gl_Position = vec4(a_xy, 0.999, 1.0); }`;
+
+  const NFS = `
+    precision mediump float;
+    uniform vec2  u_res;
+    uniform int   u_count;
+    uniform vec3  u_pos[${NEB_MAX}];    /* x, y in pixels; z = radius */
+    uniform vec3  u_col[${NEB_MAX}];
+    uniform float u_gain;
+    void main(){
+      vec2 p = gl_FragCoord.xy;
+      vec3 sum = vec3(0.0);
+      for (int i = 0; i < ${NEB_MAX}; i++) {
+        if (i >= u_count) break;
+        vec3 c = u_pos[i];
+        float d = length(p - c.xy) / max(c.z, 1.0);
+        /* Gaussian rather than a hard falloff: the edge of a wash should not
+           be findable, or it reads as a circle drawn behind the nodes. */
+        sum += u_col[i] * exp(-d * d * 2.3);
+      }
+      sum *= u_gain;
+      /* Belt as well as braces: however many washes happen to overlap, this
+         cannot reach white. Without it the whole field goes flat the moment
+         two clusters sit on top of each other. */
+      sum = sum / (1.0 + sum);
+      /* Scanlines here too, or the background is the one surface in the scene
+         that is not part of the projection. */
+      sum *= 0.90 + 0.10 * (0.5 + 0.5 * sin(gl_FragCoord.y * 1.5));
+      gl_FragColor = vec4(sum, 1.0);
+    }`;
+
   function compile(gl, type, src) {
     const s = gl.createShader(type);
     gl.shaderSource(s, src); gl.compileShader(s);
@@ -550,6 +601,23 @@
       this.gl = gl;
       this.prog = program(gl, VS, FS);
       this.lprog = program(gl, LVS, LFS);
+      /* Optional: if this one fails to compile the field simply has no wash
+         behind it, which is a lesser thing than no field at all. */
+      this.nprog = program(gl, NVS, NFS);
+      if (this.nprog) {
+        this.na = { xy: gl.getAttribLocation(this.nprog, 'a_xy') };
+        this.nu = {
+          res:   gl.getUniformLocation(this.nprog, 'u_res'),
+          count: gl.getUniformLocation(this.nprog, 'u_count'),
+          pos:   gl.getUniformLocation(this.nprog, 'u_pos'),
+          col:   gl.getUniformLocation(this.nprog, 'u_col'),
+          gain:  gl.getUniformLocation(this.nprog, 'u_gain'),
+        };
+        this.bQuad = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.bQuad);
+        gl.bufferData(gl.ARRAY_BUFFER,
+          new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+      }
       this.ok = !!(this.prog && this.lprog);
       if (!this.ok) return;
 
@@ -1120,6 +1188,7 @@
 
       gl.enable(gl.DEPTH_TEST);
       gl.enable(gl.BLEND);
+      this._drawNebula();
       // Edges stay additive — they are light, and light adds. The nodes below
       // switch to ordinary blending and write depth, because a sphere that
       // accumulates with the one behind it is not a sphere.
@@ -1201,6 +1270,80 @@
       gl.depthMask(true);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
+      gl.depthMask(true);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    }
+
+    /* One wash per category, centred on where that category actually IS.
+       Recomputed every frame from the node positions, which is what makes it
+       follow a layout change instead of being painted once and left behind.
+       A dozen categories over a few hundred nodes is a rounding error next to
+       the draw itself. */
+    _drawNebula() {
+      if (!this.nprog || !this.nodes.length) return;
+      const gl = this.gl;
+      const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
+
+      /* Project every node once and keep it by category. Doing it twice, once
+         for the centre and again for the spread, costs the projection twice
+         for no reason. */
+      const groups = new Map();
+      for (const nd of this.nodes) {
+        if (this.spot && nd.kind !== this.spot) continue;   // singled out: one wash
+        const p = this.project(nd.pos, w, h);
+        if (!p) continue;
+        let g = groups.get(nd.kind);
+        if (!g) { g = { pts: [], col: nd.color }; groups.set(nd.kind, g); }
+        g.pts.push(p.x, h - p.y);         // GL counts y from the bottom
+      }
+
+      const pos = [], col = [];
+      for (const g of groups.values()) {
+        const n = g.pts.length / 2;
+        if (!n || pos.length / 3 >= NEB_MAX) continue;
+        let cx = 0, cy = 0;
+        for (let i = 0; i < n; i++) { cx += g.pts[i * 2]; cy += g.pts[i * 2 + 1]; }
+        cx /= n; cy /= n;
+        let spread = 0;
+        for (let i = 0; i < n; i++) {
+          spread += Math.hypot(g.pts[i * 2] - cx, g.pts[i * 2 + 1] - cy);
+        }
+        spread /= n;
+
+        /* A wash says "this category lives HERE", so it has to earn the right
+           to say it. In the areas layout each kind occupies its own patch and
+           the claim is true. In rings a kind is smeared all the way round the
+           circle: its centroid is the middle of the screen, which is where
+           every OTHER kind's centroid is too, and ten washes stacked on one
+           point turn the field white — which is exactly what happened the
+           first time this was drawn.
+
+           So weight by how concentrated the kind actually is. Tight patch,
+           full wash; smeared round a ring, almost nothing. */
+        const tight = Math.max(0, 1 - spread / (h * 0.30));
+        if (tight < 0.02) continue;
+        // A tight cluster gets a tight glow; a scattered one a broad haze.
+        pos.push(cx, cy, Math.max(h * 0.06, spread * 1.5 + h * 0.03));
+        col.push(g.col[0] * tight, g.col[1] * tight, g.col[2] * tight);
+      }
+      if (!pos.length) return;
+
+      gl.useProgram(this.nprog);
+      gl.uniform2f(this.nu.res, w, h);
+      gl.uniform1i(this.nu.count, pos.length / 3);
+      gl.uniform3fv(this.nu.pos, new Float32Array(pos));
+      gl.uniform3fv(this.nu.col, new Float32Array(col));
+      // Quiet behind her head, present when the field has the floor. A wash
+      // that competes with her face is a wash nobody asked for.
+      gl.uniform1f(this.nu.gain, 0.16 + 0.44 * this.focus);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.bQuad);
+      gl.enableVertexAttribArray(this.na.xy);
+      gl.vertexAttribPointer(this.na.xy, 2, gl.FLOAT, false, 0, 0);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+      gl.depthMask(false);
+      gl.disable(gl.DEPTH_TEST);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.enable(gl.DEPTH_TEST);
       gl.depthMask(true);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     }

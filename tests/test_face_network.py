@@ -468,3 +468,59 @@ def test_the_field_borrows_the_heads_own_light():
     assert "rimCol" in fs, "no fresnel rim"
     assert "gl_FragCoord.y * 1.5" in fs, "no scanlines, and at the head's own pitch"
     assert "u_time" in fs, "no flicker"
+
+
+# ── the nebula: colour behind the clusters ──────────────────────────────────
+
+
+def test_the_nebula_is_drawn_first_of_all():
+    """A wash painted after the nodes is a wash painted over them."""
+    body = MOD[MOD.index("    draw(proj, tint, canvasH) {"):]
+    body = body[:body.index("\n    }\n")]
+    assert "this._drawNebula()" in body, "the wash is never drawn"
+    assert body.index("this._drawNebula()") < body.index("gl.useProgram(this.lprog)"), (
+        "the wash is painted after the links, so it covers them"
+    )
+
+
+def test_the_wash_fades_with_the_field():
+    """Behind her head it must be a hint; with the floor to itself, a presence.
+
+    A constant gain was the first thing tried and it fought her face.
+    """
+    call = re.search(r"gl\.uniform1f\(this\.nu\.gain,([^)]*)\)", MOD)
+    assert call, "the gain is no longer set"
+    assert "this.focus" in call.group(1), "the wash no longer follows the focus"
+
+
+def test_the_wash_is_not_a_framebuffer():
+    """An 8 GB card that is already evicting the model cannot spare a render
+    target. If this ever grows one, it is a deliberate decision, not a drift."""
+    assert "createFramebuffer" not in MOD
+
+
+def test_every_category_fits_in_the_uniform_array():
+    """More categories than slots and the last ones silently lose their wash."""
+    cap = int(re.search(r"const NEB_MAX = (\d+)", MOD).group(1))
+    kinds = len(re.findall(r"^\s{4}(\w+):\s*\{ color:", MOD, re.M))
+    assert kinds <= cap, f"{kinds} categories will not fit in {cap} slots"
+
+
+def test_a_smeared_category_earns_no_wash():
+    """The first render of the rings layout went white.
+
+    Every kind is spread evenly round the circle there, so every centroid is
+    the middle of the screen, and ten washes stacked on one point saturate.
+    The wash has to be weighted by how concentrated the kind really is.
+    """
+    body = MOD[MOD.index("_drawNebula() {"):]
+    body = body[:body.index("\n    }\n")]
+    assert "spread / (h *" in body, "the wash no longer measures concentration"
+    assert re.search(r"col\.push\(g\.col\[0\] \* \w+", body), (
+        "the concentration weight is computed but never reaches the colour"
+    )
+
+
+def test_the_wash_cannot_reach_white():
+    """Whatever overlaps, the background must stay a background."""
+    assert "sum = sum / (1.0 + sum);" in MOD
