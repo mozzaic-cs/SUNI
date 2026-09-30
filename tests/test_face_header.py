@@ -29,7 +29,7 @@ def test_the_chip_reports_what_answers_not_what_is_configured():
     body = body[:body.index("@app.get", 40)]
     assert "force_claude_code" in body, "the chip cannot see the override"
     assert "model_chain_routing" in body, "the chip cannot see chain routing"
-    assert '"answering"' in body and '"model_note"' in body
+    assert '"answering"' in body and '"model_note_code"' in body
     assert "suni_config.all()" in body, (
         "the status is read from a startup constant, so a live config change "
         "would not reach it"
@@ -178,3 +178,62 @@ def test_reduced_motion_still_gets_the_message():
            "prefers-reduced-motion: reduce){\n  #suni-toast" in FACE
     block = FACE[FACE.index("@media (prefers-reduced-motion: reduce){"):][:400]
     assert "#suni-toast" in block and "animation:none" in block
+
+
+# ── language ────────────────────────────────────────────────────────────────
+
+I18N = (ROOT / "suni/web/i18n.js").read_text(encoding="utf-8")
+
+
+def _header() -> str:
+    return FACE[FACE.index("<header>"):FACE.index("</header>") + 9]
+
+
+def test_nothing_visible_in_the_header_is_left_in_english():
+    """The header was written before the i18n sweep and the sweep never came
+    back for it, so a Portuguese session read English buttons. This is the
+    check that notices the next one somebody adds.
+    """
+    hdr = _header()
+    # Every title= that a person can read has to carry a key.
+    for m in re.finditer(r'<(a|button|select|div|option)\b[^>]*>', hdr):
+        tag = m.group(0)
+        if 'title="' not in tag:
+            continue
+        assert "data-i18n-title=" in tag, (
+            f"a visible tooltip with no translation key:\n  {tag[:120]}"
+        )
+
+
+def test_every_key_the_header_asks_for_exists_in_both_languages():
+    """A key with no Portuguese falls back to English silently, which looks
+    exactly like the bug this is meant to prevent."""
+    hdr = _header() + FACE[FACE.index('id="mode-help-panel"'):][:3000]
+    keys = set(re.findall(r'data-i18n(?:-title|-html)?="([\w.]+)"', hdr))
+    assert keys, "the header carries no keys at all"
+    en = I18N[I18N.index("    en: {"):I18N.index("    pt: {")]
+    pt = I18N[I18N.index("    pt: {"):]
+    for k in sorted(keys):
+        assert f'"{k}"' in en or f"'{k}'" in en, f"{k} has no English"
+        assert f'"{k}"' in pt or f"'{k}'" in pt, f"{k} has no Portuguese"
+
+
+def test_strings_written_by_script_ask_for_their_own_translation():
+    """The DOM sweep only reaches elements that exist with the attribute on
+    them; anything a script writes has to call t() itself."""
+    assert "_modeNote(_sessionMode)" in FACE, "the mode notice is a bare literal"
+    assert "t('face.snap_waking')" in FACE, "the camera talks English regardless"
+    assert "t('face.mode_inuse')" in FACE, (
+        "the in-use marker is CSS content, which no sweep can translate"
+    )
+
+
+def test_the_server_sends_a_reason_code_not_a_sentence():
+    """Prose composed on the server arrives in the server's language and the
+    page cannot translate it — which is how this interface ended up English in
+    a Portuguese session in the first place."""
+    body = SERVER[SERVER.index('@app.get("/api/status"'):]
+    body = body[:body.index("@app.get", 40)]
+    assert '"model_note_code"' in body and '"model_note_args"' in body
+    assert '"model_note":' not in body, "the server still composes the sentence"
+    assert "face.model_forced_cc" in I18N, "the code has no wording to resolve to"

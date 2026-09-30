@@ -102,7 +102,7 @@ header{
 }
 /* The mode currently in use, called out in its own help. */
 #mode-help-panel dt.now{color:#c9a227}
-#mode-help-panel dt.now::after{content:' — in use';font-size:9px;opacity:.75}
+#mode-help-panel dt.now::after{content:attr(data-inuse);font-size:9px;opacity:.75}
 
 /* ── the camera ─────────────────────────────────────────────────────────
    Same materials as the notice and the field: translucent, scanlined, a rim
@@ -676,28 +676,28 @@ header{
   <!-- What the four modes are for, and how they differ. Written as what
        CHANGES when you pick one, not as a definition of the word. -->
   <div id="mode-help-panel" role="dialog" aria-label="Conversation modes" hidden>
-    <h4>Conversation modes</h4>
-    <p class="lede">How much rope SUNI has on each turn. The setting follows this
-       conversation and can be changed at any time.</p>
+    <h4 data-i18n="face.modehelp_title">Conversation modes</h4>
+    <p class="lede" data-i18n="face.modehelp_lede">How much rope SUNI has on each turn.
+       The setting follows this conversation and can be changed at any time.</p>
     <dl>
-      <dt data-m="assistant">● assistant</dt>
-      <dd>The normal one. She decides which tools a request needs and runs them,
+      <dt data-m="assistant" data-i18n="face.mode_assistant">● assistant</dt>
+      <dd data-i18n-html="face.modehelp_assistant">The normal one. She decides which tools a request needs and runs them,
           then answers. Use it unless you want one of the others.</dd>
-      <dt data-m="task">◈ task</dt>
-      <dd><b>She stops and asks first.</b> Instead of acting, she writes out the
+      <dt data-m="task" data-i18n="face.mode_task">◈ task</dt>
+      <dd data-i18n-html="face.modehelp_task"><b>She stops and asks first.</b> Instead of acting, she writes out the
           steps she intends to take and waits — reply <b>approve</b> to run them
           or <b>cancel</b> to drop them. For anything where you want to see the
           plan before it happens.</dd>
-      <dt data-m="read-only">◌ read-only</dt>
-      <dd>Nothing that writes, sends or changes anything — no files written, no
+      <dt data-m="read-only" data-i18n="face.mode_readonly">◌ read-only</dt>
+      <dd data-i18n-html="face.modehelp_readonly">Nothing that writes, sends or changes anything — no files written, no
           messages sent, and MCP tools switched off entirely. She can still read,
           search and explain. For letting her loose on something delicate.</dd>
-      <dt data-m="collaborate">✦ collaborate</dt>
-      <dd>Several models answer independently and she synthesises them. Slower and
+      <dt data-m="collaborate" data-i18n="face.mode_collaborate">✦ collaborate</dt>
+      <dd data-i18n-html="face.modehelp_collaborate">Several models answer independently and she synthesises them. Slower and
           costs more; worth it on judgement calls where one model's blind spot is
           the thing you are trying to avoid.</dd>
     </dl>
-    <p class="foot">Your role decides which of these you are offered — the picker
+    <p class="foot" data-i18n="face.modehelp_foot">Your role decides which of these you are offered — the picker
        only lists the ones you may use.</p>
   </div>
   <div id="net-side">
@@ -711,69 +711,70 @@ header{
     <div class="wordmark"><span id="brand-name">SUNI</span><sub id="brand-tagline"></sub></div>
     <div class="h-right">
       <div id="header-meta"></div>
-      <select id="mode-select" title="Conversation mode"
+      <select id="mode-select" data-i18n-title="face.mode_t" title="Conversation mode"
         style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
                color:rgba(255,255,255,.82);font-family:'DM Mono',monospace;font-size:9.5px;
                letter-spacing:.08em;padding:3px 7px;border-radius:3px;cursor:pointer;
                display:none">
-        <option value="assistant" title="Normal. SUNI picks her own tools and runs them.">● assistant</option>
-        <option value="task" title="She writes out the steps first and waits — reply 'approve' to run them, 'cancel' to drop them.">◈ task</option>
-        <option value="read-only" title="Nothing that writes, sends or changes anything. MCP tools are switched off entirely.">◌ read-only</option>
-        <option value="collaborate" title="Several models answer, and SUNI synthesises them. Slower, and better on judgement calls.">✦ collaborate</option>
+        <option value="assistant" data-i18n="face.mode_assistant" data-i18n-title="face.mode_assistant_t" title="Normal. SUNI picks her own tools and runs them.">● assistant</option>
+        <option value="task" data-i18n="face.mode_task" data-i18n-title="face.mode_task_t" title="She writes out the steps first and waits — reply 'approve' to run them, 'cancel' to drop them.">◈ task</option>
+        <option value="read-only" data-i18n="face.mode_readonly" data-i18n-title="face.mode_readonly_t" title="Nothing that writes, sends or changes anything. MCP tools are switched off entirely.">◌ read-only</option>
+        <option value="collaborate" data-i18n="face.mode_collaborate" data-i18n-title="face.mode_collaborate_t" title="Several models answer, and SUNI synthesises them. Slower, and better on judgement calls.">✦ collaborate</option>
       </select>
       <!-- Four words with no consequences attached is not a choice anybody can
            make. One of them changes the contract — task mode stops and waits
            for you to type "approve" — and discovering that by watching her
            appear to hang is the wrong way to learn it. -->
       <button id="mode-help" type="button" aria-label="What do the modes do?"
-              title="What do the modes do?" aria-expanded="false"
+              data-i18n-title="face.modehelp_t" title="What do the modes do?"
+              aria-expanded="false"
               style="display:none;background:none;border:1px solid rgba(201,162,39,.45);
                      border-radius:50%;width:17px;height:17px;padding:0;line-height:1;
                      font-family:'DM Mono',monospace;font-size:10px;
                      color:rgba(201,162,39,.85);cursor:pointer;transition:all .2s">?</button>
       <!-- Agent picker. Hidden until at least one agent exists, so an install
            with none looks exactly as it did before. -->
-      <select id="agent-select" title="Agent"
+      <select id="agent-select" data-i18n-title="face.agent_t" title="Agent"
         style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
                color:rgba(255,255,255,.82);font-family:'DM Mono',monospace;font-size:9.5px;
                letter-spacing:.08em;padding:3px 7px;border-radius:3px;cursor:pointer;
                display:none">
-        <option value="">◇ SUNI</option>
+        <option value="" data-i18n="face.agent_none">◇ SUNI</option>
       </select>
-      <a href="/" title="Switch to Orb mode"
+      <a href="/" data-i18n-title="face.nav_orb_t" title="Switch to Orb mode"
          style="padding:3px 8px;border:1px solid rgba(201,162,39,.45);border-radius:2px;
                 font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.08em;
                 color:rgba(201,162,39,.85);text-decoration:none;transition:all .2s;"
          onmouseover="this.style.color='#c9a227';this.style.borderColor='rgba(201,162,39,.85)'"
          onmouseout="this.style.color='rgba(201,162,39,.85)';this.style.borderColor='rgba(201,162,39,.45)'">
-        ◎ ORB
+        <span data-i18n="face.nav_orb">◎ ORB</span>
       </a>
-      <a href="/chat" title="Switch to Chat mode"
+      <a href="/chat" data-i18n-title="face.nav_chat_t" title="Switch to Chat mode"
          style="padding:3px 8px;border:1px solid rgba(201,162,39,.45);border-radius:2px;
                 font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.08em;
                 color:rgba(201,162,39,.85);text-decoration:none;transition:all .2s;"
          onmouseover="this.style.color='#c9a227';this.style.borderColor='rgba(201,162,39,.85)'"
          onmouseout="this.style.color='rgba(201,162,39,.85)';this.style.borderColor='rgba(201,162,39,.45)'">
-        ☰ CHAT
+        <span data-i18n="face.nav_chat">☰ CHAT</span>
       </a>
-      <button id="stage-btn" aria-pressed="false" title="Stage view — shrink the head to the corner and open a content panel"
+      <button id="stage-btn" aria-pressed="false" data-i18n-title="face.nav_stage_t" title="Stage view — shrink the head to the corner and open a content panel"
          style="background:none;border:1px solid rgba(201,162,39,.45);border-radius:2px;
                 font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.08em;padding:3px 8px;
                 color:rgba(201,162,39,.85);cursor:pointer;transition:all .2s;"
          onmouseover="if(!this.classList.contains('on')){this.style.color='#c9a227';this.style.borderColor='rgba(201,162,39,.85)'}"
          onmouseout="if(!this.classList.contains('on')){this.style.color='rgba(201,162,39,.85)';this.style.borderColor='rgba(201,162,39,.45)'}">
-        ▣ STAGE
+        <span data-i18n="face.nav_stage">▣ STAGE</span>
       </button>
-      <button id="cam-btn" aria-pressed="false"
+      <button id="cam-btn" aria-pressed="false" data-i18n-title="face.nav_cam_t"
          title="Camera off — click to let SUNI follow your movement (stays on this device)"
          style="background:none;border:1px solid rgba(201,162,39,.45);border-radius:2px;
                 font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.08em;padding:3px 8px;
                 color:rgba(201,162,39,.85);cursor:pointer;transition:all .2s;"
          onmouseover="if(!this.classList.contains('on')){this.style.color='#c9a227';this.style.borderColor='rgba(201,162,39,.85)'}"
          onmouseout="if(!this.classList.contains('on')){this.style.color='rgba(201,162,39,.85)';this.style.borderColor='rgba(201,162,39,.45)'}">
-        ◉ CAM
+        <span data-i18n="face.nav_cam">◉ CAM</span>
       </button>
-      <button id="orb-settings-btn" title="Language &amp; voice settings"
+      <button id="orb-settings-btn" data-i18n-title="face.nav_settings_t" title="Language &amp; voice settings"
          style="background:none;border:1px solid rgba(201,162,39,.45);border-radius:2px;
                 font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.08em;padding:3px 8px;
                 color:rgba(201,162,39,.85);cursor:pointer;transition:all .2s;"
@@ -781,7 +782,7 @@ header{
          onmouseout="this.style.color='rgba(201,162,39,.85)';this.style.borderColor='rgba(201,162,39,.45)'">
         ⚙
       </button>
-      <div class="live-dot" title="Connected"></div>
+      <div class="live-dot" data-i18n-title="face.connected" title="Connected"></div>
     </div>
   </header>
   <div id="state-label" data-i18n="orb.idle">IDLE</div>
@@ -798,7 +799,7 @@ header{
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
         <input type="file" id="file-input" style="display:none" multiple>
       </label>
-      <button id="snap-btn" type="button" title="Snapshot — capture what the camera sees, then ask about it">📷</button>
+      <button id="snap-btn" type="button" data-i18n-title="face.snap_t" title="Snapshot — capture what the camera sees, then ask about it">📷</button>
       <input id="user-input" type="text"
              data-i18n-placeholder="orb.placeholder"
              placeholder="Speak your mind. I shall observe."
@@ -824,10 +825,10 @@ header{
     <div class="grid" aria-hidden="true"></div>
     <div class="scan" aria-hidden="true"></div>
   </div>
-  <p class="note" id="snap-note">Nothing is sent until you take the shot.</p>
+  <p class="note" id="snap-note" data-i18n="face.snap_private">Nothing is sent until you take the shot.</p>
   <div class="row">
-    <button id="snap-take" type="button">◉ Take it</button>
-    <button id="snap-cancel" type="button">Cancel</button>
+    <button id="snap-take" type="button" data-i18n="face.snap_take">◉ Take it</button>
+    <button id="snap-cancel" type="button" data-i18n="face.snap_cancel">Cancel</button>
   </div>
 </div>
 <!-- drag-drop overlay (full viewport) -->
@@ -2125,21 +2126,24 @@ const _sessionId  = localStorage.getItem('suni_session') || (() => {
          four words and no consequences — and one of them, task, changes the
          contract: she stops and waits for you to type "approve", which is not
          something to discover by having her appear to hang. */
-      const MODE_NOTE = {
-        'assistant':   'Assistant — she picks her own tools and runs them.',
-        'task':        'Task — she writes out the steps first. Reply "approve" to run them.',
-        'read-only':   'Read-only — nothing that writes, sends or changes anything.',
-        'collaborate': 'Collaborate — several models answer and she synthesises them.',
-      };
-      sel.title = MODE_NOTE[_sessionMode] || 'Conversation mode';
+      // Written by script, so the DOM sweep never sees them: these have to
+      // ask for their translation at the moment they are used, and again
+      // whenever the language changes.
+      const _modeNote = m => t({
+        'assistant':   'face.mode_note_assistant',
+        'task':        'face.mode_note_task',
+        'read-only':   'face.mode_note_readonly',
+        'collaborate': 'face.mode_note_collaborate',
+      }[m] || 'face.mode_t');
+      sel.title = _modeNote(_sessionMode);
       // The help only appears when the picker does: an install where you have
       // one mode has nothing to explain.
       _modeHelpInit();
       sel.addEventListener('change', async () => {
         _sessionMode = sel.value;
-        sel.title = MODE_NOTE[_sessionMode] || 'Conversation mode';
+        sel.title = _modeNote(_sessionMode);
         _modeHelpMark();
-        _showToast(MODE_NOTE[_sessionMode] || _sessionMode);
+        _showToast(_modeNote(_sessionMode));
         await _apiFetch('/api/session/mode', {
           method:'POST',
           headers:{'Content-Type':'application/json','x-session-id':_sessionId},
@@ -2169,7 +2173,10 @@ function _modeHelpMark(){
   const panel = document.getElementById('mode-help-panel');
   if (!panel) return;
   panel.querySelectorAll('dt').forEach(dt => {
-    dt.classList.toggle('now', dt.dataset.m === _sessionMode);
+    const on = dt.dataset.m === _sessionMode;
+    dt.classList.toggle('now', on);
+    // CSS content: cannot be reached by the sweep, so the word arrives here.
+    if (on) dt.dataset.inuse = t('face.mode_inuse'); else delete dt.dataset.inuse;
   });
 }
 
@@ -3552,7 +3559,7 @@ async function _snapOpen(){
   if (!_snapPanel || !_snapPanel.hidden) return;
   if (!navigator.mediaDevices?.getUserMedia){ showSub('CAMERA UNSUPPORTED'); return; }
   _snapPanel.hidden = false;
-  _snapSay('Waking the camera…');
+  _snapSay(t('face.snap_waking'));
   try {
     /* Its own stream at a sensible size. Reusing the motion tracker's would
        mean snapshots at the 320x240 it runs at, which is what happened
@@ -3567,7 +3574,7 @@ async function _snapOpen(){
       _snapStream = null;
       _snapVideo.srcObject = _camStream;
       try { await _snapVideo.play(); } catch {}
-      _snapSay('Nothing is sent until you take the shot.');
+      _snapSay(t('face.snap_private'));
       return;
     }
     _snapClose();
@@ -3576,7 +3583,7 @@ async function _snapOpen(){
   }
   _snapVideo.srcObject = _snapStream;
   try { await _snapVideo.play(); } catch {}
-  _snapSay('Nothing is sent until you take the shot.');
+  _snapSay(t('face.snap_private'));
 }
 
 function _snapClose(){
@@ -3591,9 +3598,9 @@ function _snapClose(){
 }
 
 async function _snapTake(){
-  if (!_snapVideo.videoWidth){ _snapSay('No picture yet — give it a moment.', true); return; }
+  if (!_snapVideo.videoWidth){ _snapSay(t('face.snap_nopic'), true); return; }
   _snapPanel.classList.add('busy');
-  _snapSay('Sending…');
+  _snapSay(t('face.snap_sending'));
   try {
     const w = _snapVideo.videoWidth, h = _snapVideo.videoHeight;
     const cnv = document.createElement('canvas'); cnv.width = w; cnv.height = h;
@@ -3602,7 +3609,7 @@ async function _snapTake(){
     // backwards.
     cnv.getContext('2d').drawImage(_snapVideo, 0, 0, w, h);
     const blob = await new Promise(res => cnv.toBlob(res, 'image/jpeg', 0.88));
-    if (!blob){ _snapSay('That did not come out. Try again.', true);
+    if (!blob){ _snapSay(t('face.snap_failed'), true);
                 _snapPanel.classList.remove('busy'); return; }
     const file = new File([blob], `snapshot-${Date.now()}.jpg`, { type:'image/jpeg' });
     _snapClose();
@@ -3612,7 +3619,7 @@ async function _snapTake(){
     inputEl.focus();
   } catch(e){
     console.warn('snapshot:', e);
-    _snapSay('That did not come out. Try again.', true);
+    _snapSay(t('face.snap_failed'), true);
     _snapPanel.classList.remove('busy');
   }
 }
@@ -4297,13 +4304,16 @@ function _showToast(msg, kind) {
        confusion that sent us chasing a model that was not being used. The
        server now works out what will actually answer and says why. */
     document.getElementById('header-meta').innerHTML = [
+      // The server sends a reason code and its values; the wording lives here,
+      // where it can be in the reader's language.
       `<span class="mtag${d.routing_override ? ' override' : ''}"
-             title="${_esc(d.model_note || 'The model that answers your turns.')}"
+             title="${_esc(t(d.model_note_code || 'face.model_configured',
+                             d.model_note_args || {model: d.model}))}"
        >${_esc(d.answering || d.model)}</span>`,
-      `<span class="mtag" title="Things SUNI has remembered across conversations."
+      `<span class="mtag" title="${_esc(t('face.chip_memory_t'))}"
        >${d.memory} mem</span>`,
       d.claude_code
-        ? `<span class="mtag" title="The Claude Code CLI is installed, so the top tier is available."
+        ? `<span class="mtag" title="${_esc(t('face.chip_cc_t'))}"
            >CC ✓</span>` : '',
     ].join('');
   } catch {}

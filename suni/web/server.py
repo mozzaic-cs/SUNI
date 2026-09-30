@@ -1947,29 +1947,32 @@ def create_app() -> FastAPI:
         # this?" was on screen and wrong.
         cfg = suni_config.all()
         configured = SUNI_MODEL or "(none configured)"
-        answering, note, override = configured, "", False
+        # A REASON CODE, not a sentence. Prose composed here arrives in the
+        # server's language and the page cannot translate it, which is how the
+        # rest of this interface ended up English in a Portuguese session. The
+        # page holds the wording; this says which wording and with what.
+        answering, override = configured, False
+        note_code, note_args = "face.model_configured", {"model": configured}
         if cfg.get("force_claude_code") and has_claude_code:
             answering = "Claude Code"
-            note = ("Force Claude Code is on, so turns go to the Claude Code CLI "
-                    f"rather than to {configured}.")
+            note_code = "face.model_forced_cc"
             override = True
         elif cfg.get("model_chain_routing"):
             tiers = [str(t.get("model") or t.get("label") or "")
                      for t in (cfg.get("model_chain") or []) if t.get("enabled")]
             tiers = [t for t in tiers if t]
             answering = "auto"
-            note = ("Chain routing is on: each turn is sent to whichever tier suits "
-                    "it. Available: " + (", ".join(tiers) if tiers else configured))
+            note_code = "face.model_routing"
+            note_args = {"tiers": ", ".join(tiers) if tiers else configured}
             override = True
-        else:
-            note = f"Configured model. Turns are answered by {configured}."
         return JSONResponse({
             # "" means nothing is configured and nothing is installed — a
             # real state on a fresh install. Name it rather than rendering an
             # empty field, which looks like a failure to load.
             "model":      configured,
             "answering":  answering,
-            "model_note": note,
+            "model_note_code": note_code,
+            "model_note_args": note_args,
             "routing_override": override,
             "tts_voice":  TTS_VOICE,
             "memory":     stats["total"],
