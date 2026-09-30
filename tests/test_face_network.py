@@ -944,3 +944,27 @@ def test_the_fields_labels_do_not_come_along_when_the_page_is_copied():
     trail = FACE[FACE.index("#net-trail{"):]
     trail = trail[:trail.index("}")]
     assert "user-select:none" not in trail, "the breadcrumb is real text"
+
+
+def test_the_way_out_is_not_on_screen_before_it_is_built():
+    """It joins the arrangements row the first time the field is opened, and
+    until then it sits in the column outside it. When its old opacity rule was
+    removed on joining the row, it appeared on load as one empty button in the
+    bottom-right corner with no icon in it."""
+    # The standalone rule, not the shared one: "#net-exit{" is also a substring
+    # of "#net-lay button, #net-exit{", which is where it gets display:flex.
+    own = FACE.index("#net-exit{margin-right")
+    css = FACE[own:FACE.index("}", own) + 1]
+    assert "display:none" in css, "it is on screen before it has been built"
+    # And it has to come AFTER the shared rule, or display:flex wins on equal
+    # specificity and it is visible anyway.
+    assert own > FACE.index("#net-lay button, #net-exit{"), (
+        "the hiding rule is overridden by the shared one below it"
+    )
+    build = FACE[FACE.index("function _netBuildExit(){"):]
+    build = build[:build.index("\n}")]
+    assert "style.display = ''" in build, "built, and then never shown"
+    # Shown only after it has something in it.
+    assert build.index("innerHTML") < build.index("style.display = ''"), (
+        "revealed before the icon is in it, which is the empty button again"
+    )

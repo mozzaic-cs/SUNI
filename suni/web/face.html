@@ -621,9 +621,15 @@ header{
    translated because it was three words baked into the markup. It is now an
    icon like its neighbours, and it wears her face: the column is arrangements
    and this is the way back to HER. */
-/* Inside the arrangements row now, so it needs no placement of its own — it
-   shows and hides with the row it belongs to. */
-#net-exit{margin-right:3px}
+/* Inside the arrangements row, so it needs no placement of its own — it shows
+   and hides with the row it belongs to.
+
+   Hidden until it is BUILT, though, which is not the same moment. The move
+   into that row happens the first time the field is opened, and until then
+   this sits in the column outside it. Taking away its old opacity rule when it
+   joined the row left it on screen from the moment the page loaded: one empty
+   button, bottom right, with no icon in it yet. */
+#net-exit{margin-right:3px;display:none}
 /* The field's own controls, in one column on the right: the legend, then the
    things you can do to it. They were pinned to the top-left, where they sat on
    top of her name in the header — and being separately positioned meant every
@@ -2842,6 +2848,8 @@ function _netBuildExit(){
   _netExitBtn.dataset.tip = label;
   _netExitBtn.innerHTML =
     `<img src="${NetGraph.iconDataURL('face', 34)}" alt="">`;
+  // It has a face in it now, and is about to be put in the row: it may show.
+  _netExitBtn.style.display = '';
 }
 
 /* Names, for as many nodes as currently have room for one. The module decides
