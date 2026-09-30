@@ -145,13 +145,20 @@ async def _stream_run(args: list[str], event_cb, timeout: int,
                 if not text:
                     return
                 if stop == "end_turn":
+                    # Kept as well as sent. A run that is stopped or times out
+                    # never emits a result event, and without this the only
+                    # copy of what she actually said is gone by then.
+                    state["said"] = ((state.get("said", "") + chr(10) + text).strip()
+                                     if state.get("said") else text)
                     _flush_tokens(text)
                 else:
                     event_cb({"type": "cc_note", "text": text})
 
     rc, stdout, stderr = await _run_claude_stream(
         args, _on_line, timeout=timeout, cwd=_CC_HOME, stdin_data=task)
-    return rc, stdout, stderr, (state if state.get("result") else {})
+    # Anything we understood, not only a completed run: "said" survives a
+    # stop, and an empty dict here is what sent the raw stream to the screen.
+    return rc, stdout, stderr, (state if (state.get("result") or state.get("said")) else {})
 
 
 class ClaudeCodeAgent(BaseAgent):
@@ -278,7 +285,21 @@ class ClaudeCodeAgent(BaseAgent):
         else:
             parsed = _streamed or _parse_json_output(stdout)
             _record_cc_usage(parsed)
-            content = parsed.get("result", parsed.get("content", stdout.strip()))
+            # NEVER stdout. In --stream-json mode stdout is the protocol, not
+            # the answer: one line per event, carrying the session id, the full
+            # tool and plugin inventory, file paths and the run's cost. When a
+            # run was stopped before it finished there was no result to find,
+            # and this printed the whole transcript of the machinery into the
+            # conversation as if SUNI had said it.
+            content = (parsed.get("result")
+                       or parsed.get("content")
+                       or parsed.get("said")
+                       or "")
+            if not str(content).strip():
+                content = (
+                    f"Claude Code stopped before it finished (exit {rc})"
+                    + (f": {stderr.strip()[:300]}" if stderr.strip() else ".")
+                )
             new_sid = parsed.get("session_id", "")
             if new_sid:
                 context.set("cc_session_id", new_sid)
