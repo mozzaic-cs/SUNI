@@ -138,3 +138,33 @@ def test_a_card_that_will_not_load_falls_back_rather_than_failing():
     body = open(src, encoding="utf-8").read()
     plan = body[body.index("plan = [(device, index, compute)]"):][:400]
     assert 'plan.append(("cpu", 0, "int8"))' in plan
+
+
+@pytest.mark.parametrize("free_mb,expect", [(7000, "cuda"), (216, "cpu")])
+def test_the_fastest_measured_card_must_also_have_room_right_now(monkeypatch, cards, free_mb, expect):
+    """Fastest and available are different questions, and only one of them is
+    remembered. The same RTX 4000 measured 2.6x the CPU with nothing else on
+    it and 0.7x while the language model was resident — so a measurement
+    saying "this card is quickest" is not a reason to queue behind a model
+    that is currently using it."""
+    from suni import hardware as hw
+    monkeypatch.setattr(hw, "fastest", lambda kind: {
+        "device": "cuda:0", "detail": "Quadro RTX 4000 float16", "seconds": 0.7})
+    monkeypatch.setattr(tr._cfg, "get", lambda k, d=None: {
+        "meeting_whisper_device": "auto",
+        "meeting_whisper_device_index": -1}.get(k, d))
+    cards([{"index": 0, "name": "Quadro RTX 4000", "cap": 7.5, "free_mb": free_mb}])
+    assert tr._pick_device("base")[0] == expect
+
+
+def test_a_measured_card_that_has_vanished_does_not_crash_the_picker(monkeypatch, cards):
+    """Someone can pull a card out between the measurement and the next
+    meeting."""
+    from suni import hardware as hw
+    monkeypatch.setattr(hw, "fastest", lambda kind: {
+        "device": "cuda:3", "detail": "Something float16", "seconds": 0.7})
+    monkeypatch.setattr(tr._cfg, "get", lambda k, d=None: {
+        "meeting_whisper_device": "auto",
+        "meeting_whisper_device_index": -1}.get(k, d))
+    cards([])
+    assert tr._pick_device("base") == ("cpu", 0, "int8")

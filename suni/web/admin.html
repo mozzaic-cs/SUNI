@@ -676,6 +676,17 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
           <div class="field-hint" data-i18n="admin.cfg_num_ctx_hint">Higher = more context, more VRAM. 8192 is safe for 8 GB VRAM.</div>
         </div>
 
+        <div data-cfg-group="models" class="section-head" style="margin-top:8px" data-i18n="admin.cfg_hw">This machine</div>
+        <div class="field">
+          <div id="hw-rows" style="font-size:11px;color:var(--muted)" data-i18n="common.loading">Loading…</div>
+          <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+            <button type="button" class="tbl-btn" onclick="measureHardware(this)"
+                    data-i18n="admin.hw_measure">Measure this machine</button>
+            <span id="hw-measure-note" style="font-size:10px;color:var(--muted)"></span>
+          </div>
+          <div class="field-hint" data-i18n="admin.hw_hint">Measuring times the CPU and every graphics card on the same sample, and takes a minute or two. It is never run on its own — SUNI has twice chosen hardware that a specification said was faster and a stopwatch said was slower.</div>
+        </div>
+
         <div data-cfg-group="models" class="section-head" style="margin-top:8px" data-i18n="admin.cfg_tiers">Model Tiers</div>
         <div class="field">
           <div id="tier-inventory-wrap" style="font-size:11px;color:var(--muted)">
@@ -2255,6 +2266,7 @@ async function loadConfig() {
 
   // Load model inventory (non-blocking)
   loadInventory(false);
+  loadHardware();
 }
 
 function applyConfigToForm(cfg) {
@@ -2692,6 +2704,55 @@ async function loadInventory(refresh) {
     }).join('');
   } catch(e) {
     if (el('tier-inventory-rows')) el('tier-inventory-rows').textContent = t('admin.cfg_inv_failed');
+  }
+}
+
+async function loadHardware() {
+  const box = el('hw-rows');
+  if (!box) return;
+  const d = await apiFetch('/api/hardware').then(r => r.json()).catch(() => null);
+  if (!d) { box.textContent = t('admin.hw_unavailable'); return; }
+  const s = d.static || {};
+  const rows = [];
+  const avx = s.avx2 === true ? 'AVX2' : s.avx2 === false ? t('admin.hw_no_avx2') : 'AVX2 ?';
+  rows.push(`<div><b>${esc(s.cpu || '?')}</b> — ${s.cores || '?'} ${t('admin.hw_cores')}, ${s.ram_gb || '?'} GB RAM · ${avx}</div>`);
+  for (const g of (s.gpus || [])) {
+    const now = (d.cards_now || []).find(c => c.index === g.index);
+    const free = now ? ` · ${now.free_mb} MiB ${t('admin.hw_free_now')}` : '';
+    rows.push(`<div>${esc(g.name)} — ${g.vram_mb} MiB, ${t('admin.hw_compute')} ${g.cap}${free}</div>`);
+  }
+  if (!(s.gpus || []).length) rows.push(`<div>${t('admin.hw_no_gpu')}</div>`);
+
+  const w = (d.measured || {}).whisper;
+  if (w && (w.results || []).length) {
+    const when = new Date((w.at || 0) * 1000).toLocaleDateString();
+    rows.push(`<div style="margin-top:6px"><b>${t('admin.hw_measured')}</b> (${when}):</div>`);
+    for (const r of w.results) {
+      rows.push(`<div style="padding-left:10px">${esc(r.detail || r.device)} — ${r.seconds}s (${r.realtime_x}x)</div>`);
+    }
+  } else {
+    rows.push(`<div style="margin-top:6px">${t('admin.hw_unmeasured')}</div>`);
+  }
+  if (d.stale_reason) rows.push(`<div style="color:var(--gold)">${esc(d.stale_reason)}</div>`);
+  box.innerHTML = rows.join('');
+}
+
+async function measureHardware(btn) {
+  const note = el('hw-measure-note');
+  btn.disabled = true;
+  note.textContent = t('admin.hw_running');
+  try {
+    const r = await apiFetch('/api/hardware/measure', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({kind: 'whisper'}),
+    });
+    const d = await r.json();
+    note.textContent = d.ok ? t('admin.hw_done') : (d.error || t('admin.hw_failed'));
+    await loadHardware();
+  } catch (e) {
+    note.textContent = t('admin.hw_failed');
+  } finally {
+    btn.disabled = false;
   }
 }
 

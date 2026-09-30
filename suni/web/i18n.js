@@ -12,6 +12,20 @@
 
   var _T = {
     en: {
+    "admin.cfg_hw": "This machine",
+    "admin.hw_measure": "Measure this machine",
+    "admin.hw_hint": "Measuring times the CPU and every graphics card on the same sample, and takes a minute or two. It is never run on its own — SUNI has twice chosen hardware that a specification said was faster and a stopwatch said was slower.",
+    "admin.hw_cores": "cores",
+    "admin.hw_compute": "compute",
+    "admin.hw_free_now": "free now",
+    "admin.hw_no_gpu": "No graphics card detected — everything runs on the CPU.",
+    "admin.hw_no_avx2": "no AVX2",
+    "admin.hw_measured": "Measured here",
+    "admin.hw_unmeasured": "Nothing measured yet — SUNI takes the safe option until something is.",
+    "admin.hw_running": "Measuring… this takes a minute or two.",
+    "admin.hw_done": "Done.",
+    "admin.hw_failed": "The measurement did not finish.",
+    "admin.hw_unavailable": "Could not read this machine's details.",
     "face.net_exit": "Back to SUNI",
     // --- the strip along the top of the Face ---
     // Never translated: the header was written before the i18n sweep and the
@@ -730,6 +744,20 @@
     },
 
     pt: {
+    "admin.cfg_hw": "Esta máquina",
+    "admin.hw_measure": "Medir esta máquina",
+    "admin.hw_hint": "A medição cronometra o CPU e cada placa gráfica sobre a mesma amostra, e demora um minuto ou dois. Nunca corre sozinha — por duas vezes a SUNI escolheu hardware que a ficha técnica dizia ser mais rápido e o cronómetro disse ser mais lento.",
+    "admin.hw_cores": "núcleos",
+    "admin.hw_compute": "capacidade",
+    "admin.hw_free_now": "livres agora",
+    "admin.hw_no_gpu": "Nenhuma placa gráfica detectada — tudo corre no CPU.",
+    "admin.hw_no_avx2": "sem AVX2",
+    "admin.hw_measured": "Medido aqui",
+    "admin.hw_unmeasured": "Ainda nada medido — a SUNI fica pela opção segura até que haja.",
+    "admin.hw_running": "A medir… demora um minuto ou dois.",
+    "admin.hw_done": "Concluído.",
+    "admin.hw_failed": "A medição não terminou.",
+    "admin.hw_unavailable": "Não foi possível ler os detalhes desta máquina.",
     "face.net_exit": "Voltar à SUNI",
     // --- the strip along the top of the Face ---
     "face.nav_orb": "◎ ORBE",

@@ -142,7 +142,19 @@ def _pick_device(name: str) -> tuple[str, int, str]:
                 except ValueError:
                     idx = 0
                 compute = "float16" if "float16" in str(best.get("detail", "")) else "int8_float32"
-                log.info("[TRANSCRIBE] measured here: %s is fastest for whisper (%.0fs)",
+                # The measurement says this card is fastest. Whether it has ROOM
+                # is a different question and a volatile one: the same card
+                # measured 2.6x the CPU with nothing else on it, and 0.7x while
+                # the language model was resident. Being fastest when free is
+                # not a reason to queue behind a model that is using it.
+                need = _VRAM_NEEDED_MB.get(name, 1400)
+                here = next((c for c in _cuda_cards() if c["index"] == idx), None)
+                if here is None or here["free_mb"] < need:
+                    log.info("[TRANSCRIBE] %s is the fastest measured, but has %s MiB "
+                             "free and needs %d; using the CPU for this one",
+                             dev, here["free_mb"] if here else "no", need)
+                    return "cpu", 0, "int8"
+                log.info("[TRANSCRIBE] measured here: %s is fastest for whisper (%.1fs)",
                          dev, best.get("seconds", 0))
                 return "cuda", idx, compute
 

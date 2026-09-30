@@ -249,3 +249,108 @@ def measured(kind: str) -> dict | None:
     if not m or m.get("version") != MEASURE_VERSION:
         return None
     return m
+
+
+# ── the benchmark ────────────────────────────────────────────────────────────
+
+_running = False
+
+
+def _sample_wav(path: str, seconds: int = 30, rate: int = 16000) -> None:
+    """A signal to transcribe. Content does not matter and must not.
+
+    Every device is timed on the SAME input, so this is a comparison between
+    devices rather than a claim about accuracy. Noise shaped into syllable-like
+    bursts keeps the encoder doing real work; VAD is switched off at the call
+    site so none of it is skipped, or a device could "win" by doing less.
+    """
+    import array
+    import math
+    import random
+    import wave
+
+    random.seed(7)                       # same waveform every run, on every machine
+    n = seconds * rate
+    buf = array.array("h", bytes(2 * n))
+    for i in range(n):
+        env = 0.5 + 0.5 * math.sin(2 * math.pi * i / (rate * 0.35))   # ~3 per second
+        buf[i] = int(max(-32000, min(32000, random.gauss(0, 6000) * env)))
+    with wave.open(path, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(buf.tobytes())
+
+
+def measure_whisper(model: str = "base", seconds: int = 30) -> dict:
+    """Time whisper on the CPU and on every card, and remember the answer.
+
+    Explicit only. It holds a card and pegs the cores for a minute or two, so
+    it refuses while a meeting is being recorded rather than degrading the
+    transcription it is meant to speed up.
+    """
+    global _running
+    if _running:
+        return {"ok": False, "error": "a measurement is already running"}
+    busy = busy_reason()
+    if busy:
+        return {"ok": False, "error": f"not now — {busy}"}
+
+    import os
+    import tempfile
+    import time as _time
+
+    _running = True
+    tmp = os.path.join(tempfile.gettempdir(), "suni_hw_sample.wav")
+    try:
+        from faster_whisper import WhisperModel
+    except Exception as exc:      # noqa: BLE001
+        _running = False
+        return {"ok": False, "error": f"faster-whisper is not installed ({exc})"}
+
+    try:
+        _sample_wav(tmp, seconds=seconds)
+        plans = [("cpu", 0, "int8")]
+        for c in cards():
+            plans.append(("cuda", c["index"],
+                          "float16" if c["cap"] >= 7.0 else "int8_float32"))
+
+        results, errors = [], []
+        for dev, idx, comp in plans:
+            label = dev if dev == "cpu" else f"cuda:{idx}"
+            try:
+                kw = {"device": dev, "compute_type": comp, "local_files_only": True}
+                if dev == "cuda":
+                    kw["device_index"] = idx
+                m = WhisperModel(model, **kw)
+                t = _time.time()
+                segs, _info = m.transcribe(tmp, language="en", vad_filter=False,
+                                           beam_size=1)
+                for _ in segs:            # a generator: force the work
+                    pass
+                el = _time.time() - t
+                name = ("CPU" if dev == "cpu"
+                        else next((c["name"] for c in cards() if c["index"] == idx), label))
+                results.append({"device": label, "detail": f"{name} {comp}",
+                                "seconds": round(el, 1),
+                                "realtime_x": round(seconds / el, 2) if el else 0})
+                del m
+            except Exception as exc:      # noqa: BLE001
+                errors.append(f"{label}: {str(exc)[:120]}")
+
+        if not results:
+            return {"ok": False, "error": "; ".join(errors) or "nothing could be measured"}
+
+        record_measurement("whisper", results, {
+            "model": model, "audio_seconds": seconds,
+            "source": "generated sample, identical on every device",
+            "vad_filter": False, "beam_size": 1,
+        })
+        return {"ok": True, "results": sorted(results, key=lambda r: r["seconds"]),
+                "errors": errors}
+    finally:
+        _running = False
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass

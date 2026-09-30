@@ -1981,6 +1981,47 @@ def create_app() -> FastAPI:
             "tiers":      {str(t): m.name for t, m in _tier_map.items()},
         })
 
+    @app.get("/api/hardware")
+    async def hardware_profile(admin: dict = Depends(require_admin)):
+        """What this machine is, and anything that has been measured on it.
+
+        Admin only: it names the CPU, the cards and the amount of memory, which
+        is a fingerprint of the box and nobody else's business.
+        """
+        from .. import hardware as _hwmod
+        prof = _hwmod.ensure_scanned()
+        return JSONResponse({
+            "static": prof.get("static", {}),
+            "measured": prof.get("measured", {}),
+            "stale_reason": prof.get("stale_reason", ""),
+            # Volatile, so it is answered live and never read from the file.
+            "cards_now": _hwmod.cards(),
+            "busy": _hwmod.busy_reason(),
+        })
+
+    @app.post("/api/hardware/measure")
+    async def hardware_measure(request: Request, admin: dict = Depends(require_admin)):
+        """Time the devices on this machine. Explicit, never automatic.
+
+        Runs in a worker thread: it takes a minute or two and would otherwise
+        hold the event loop, which is the failure this codebase has had three
+        times in other places.
+        """
+        from .. import hardware as _hwmod
+        body = {}
+        try:
+            body = await request.json()
+        except Exception:      # noqa: BLE001
+            pass
+        kind = str(body.get("kind") or "whisper")
+        if kind != "whisper":
+            return JSONResponse({"ok": False, "error": f"nothing measures {kind!r} yet"},
+                                status_code=400)
+        _log.info("[HARDWARE] measurement started by %s", admin["username"])
+        out = await asyncio.to_thread(_hwmod.measure_whisper)
+        _log.info("[HARDWARE] measurement finished: %s", out.get("error") or "ok")
+        return JSONResponse(out, status_code=200 if out.get("ok") else 409)
+
     @app.get("/api/models/inventory")
     async def models_inventory(request: Request, refresh: int = 0,
                                admin: dict = Depends(require_admin)):
