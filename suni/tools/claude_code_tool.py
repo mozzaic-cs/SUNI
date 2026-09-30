@@ -10,6 +10,7 @@ import asyncio
 import os
 import shutil
 import tempfile
+from .. import proc as _proc
 
 SCHEMA = {
     "name": "claude_code",
@@ -77,7 +78,7 @@ async def handler(
         _f.write(task)
     _stdin = open(_tmp_path, "rb")
     try:
-        proc = await asyncio.create_subprocess_exec(
+        proc = await _proc.exec_(
             *cmd,
             stdin=_stdin,
             stdout=asyncio.subprocess.PIPE,

@@ -15,6 +15,7 @@ import shutil
 import tempfile
 from contextvars import ContextVar
 from typing import Any
+from .. import proc as _proc
 
 # ContextVar: set by orchestrator to the resolved per-user API key (or '' for global)
 CLAUDE_API_KEY_CTX: ContextVar[str] = ContextVar("claude_api_key", default="")
@@ -65,7 +66,7 @@ async def _run_claude(args: list[str], timeout: int = 300, cwd: str | None = Non
             _f.write(stdin_data)
         _stdin = open(_tmp_path, "rb")
     try:
-        proc = await asyncio.create_subprocess_exec(
+        proc = await _proc.exec_(
             cmd, *args,
             stdin=_stdin,
             stdout=asyncio.subprocess.PIPE,
@@ -124,7 +125,7 @@ async def _run_claude_stream(args: list[str], on_line, timeout: int = 300,
 
     out_parts: list[str] = []
     try:
-        proc = await asyncio.create_subprocess_exec(
+        proc = await _proc.exec_(
             cmd, *args,
             stdin=_stdin,
             stdout=asyncio.subprocess.PIPE,

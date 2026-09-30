@@ -6,6 +6,7 @@ import sys
 import tempfile
 import os
 from . import SuiteResult, register
+from ... import proc as _proc
 
 # Indicative bundled subset (not the official 974-problem set).
 # Each: (prompt, list-of-assert-tests). Tests reference the required function name.
@@ -59,7 +60,7 @@ async def _run_candidate(code: str, tests: list[str]) -> bool:
         with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8") as f:
             f.write(script)
             path = f.name
-        proc = await asyncio.create_subprocess_exec(
+        proc = await _proc.exec_(
             sys.executable, path,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
         )

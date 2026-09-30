@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import os
 from typing import Any
+from . import proc as _proc
 
 # How many children a level shows before the rest becomes one node offering to
 # fetch them. Enough that a folder reads as a mass rather than a handful — the
@@ -399,7 +400,7 @@ def _neighbours() -> list[tuple[str, str]]:
     import subprocess
     out = []
     try:
-        raw = subprocess.run(["arp", "-a"], capture_output=True, text=True,
+        raw = _proc.run(["arp", "-a"], capture_output=True, text=True,
                              timeout=6).stdout
     except Exception:      # noqa: BLE001 — no arp, no neighbours, no error
         return out

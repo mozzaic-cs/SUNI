@@ -69,6 +69,7 @@ from .. import backup as _backup
 from .. import conversations as _conversations
 from .. import user_settings as _user_settings
 from ..logger import get_logger
+from .. import proc as _proc
 
 _log = get_logger(__name__)
 
@@ -3745,7 +3746,7 @@ def create_app() -> FastAPI:
         try:
             loop = asyncio.get_event_loop()
             def _run():
-                r = subprocess.run(
+                r = _proc.run(
                     ["nvidia-smi",
                      "--query-gpu=name,memory.used,memory.total,utilization.gpu,temperature.gpu",
                      "--format=csv,noheader,nounits"],

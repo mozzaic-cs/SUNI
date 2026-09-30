@@ -5,6 +5,7 @@ No Claude Code or elevation required; runs in the current user context.
 from __future__ import annotations
 import subprocess
 import re
+from .. import proc as _proc
 
 SCHEMA = {
     "name": "create_scheduled_task",
@@ -93,7 +94,7 @@ async def handler(
         args += ["/d", days]
 
     try:
-        result = subprocess.run(
+        result = _proc.run(
             args,
             capture_output=True,
             text=True,

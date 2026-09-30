@@ -2,6 +2,7 @@ from __future__ import annotations
 import asyncio
 import re
 import shlex
+from .. import proc as _proc
 
 SCHEMA = {
     "name": "run_shell",
@@ -90,7 +91,7 @@ async def handler(command: str, timeout: int = 30) -> str:
     try:
         # Use create_subprocess_shell so PowerShell pipelines and builtins still work,
         # but cap output and enforce timeout to prevent resource exhaustion.
-        proc = await asyncio.create_subprocess_shell(
+        proc = await _proc.shell(
             command,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,

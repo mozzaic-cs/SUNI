@@ -20,6 +20,7 @@ import logging
 from ..core.base_agent import BaseAgent
 from ..core.message import Message, Role
 from ..core.context import Context
+from .. import proc as _proc
 
 log = logging.getLogger("suni.codex")
 
@@ -94,7 +95,7 @@ async def _run_codex(prompt: str, timeout: int = 300, cwd: str | None = None,
 
     _stdin = open(_in_path, "rb")
     try:
-        proc = await asyncio.create_subprocess_exec(
+        proc = await _proc.exec_(
             cmd, *args,
             stdin=_stdin,
             stdout=asyncio.subprocess.PIPE,

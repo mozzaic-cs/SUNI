@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import re
 import subprocess
+from .. import proc as _proc
 
 # Default electricity price (EUR/kWh). Override via suni_config key "kwh_price".
 _DEFAULT_KWH = 0.22
@@ -36,7 +37,7 @@ async def _param_size(model: str, host: str) -> str | None:
 
 def _gpu_power_watts() -> float | None:
     try:
-        r = subprocess.run(
+        r = _proc.run(
             ["nvidia-smi", "--query-gpu=power.draw", "--format=csv,noheader,nounits"],
             capture_output=True, text=True, timeout=3,
         )

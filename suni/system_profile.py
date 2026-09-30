@@ -8,6 +8,7 @@ All derived limits are logged at startup so they appear in the daily log.
 from __future__ import annotations
 import logging
 import os
+from . import proc as _proc
 
 _log = logging.getLogger("suni.system_profile")
 
@@ -33,7 +34,7 @@ def _vram_mb() -> int:
         pass
     try:
         import subprocess
-        r = subprocess.run(
+        r = _proc.run(
             ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
             capture_output=True, text=True, timeout=3,
         )

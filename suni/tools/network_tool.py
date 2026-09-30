@@ -4,6 +4,7 @@ import asyncio
 import platform
 import re
 import socket
+from .. import proc as _proc
 
 SCHEMA = {
     "name": "ping_host",
@@ -60,7 +61,7 @@ async def handler(host: str, count: int = 4) -> str:
         cmd = ["ping", "-c", str(count), "-W", "2", host]
 
     try:
-        proc = await asyncio.create_subprocess_exec(
+        proc = await _proc.exec_(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,

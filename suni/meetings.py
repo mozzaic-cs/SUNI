@@ -55,6 +55,7 @@ from . import audit as _audit
 from . import config as _cfg
 from .logger import get_logger
 from .user_settings import resolve_output_dir
+from . import proc as _proc
 
 log = get_logger("suni.meetings")
 
@@ -105,7 +106,7 @@ def list_audio_devices() -> list[str]:
     finds that out at start; this is for showing the operator their options.
     """
     try:
-        r = subprocess.run(
+        r = _proc.run(
             ["ffmpeg", "-hide_banner", "-list_devices", "true", "-f", "dshow", "-i", "dummy"],
             capture_output=True, text=True, timeout=30,
         )
@@ -224,7 +225,7 @@ async def start_recording(
     args = capture_args(devs, wav)
 
     try:
-        proc = await asyncio.create_subprocess_exec(
+        proc = await _proc.exec_(
             *args,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.DEVNULL,

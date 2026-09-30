@@ -20,6 +20,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 from typing import Any
+from . import proc as _proc
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -149,7 +150,7 @@ def version(root: Path | None = None) -> dict[str, str]:
 
 def _git(*args: str, cwd: Path | None = None) -> tuple[int, str]:
     try:
-        p = subprocess.run(["git", *args], cwd=str(cwd or ROOT),
+        p = _proc.run(["git", *args], cwd=str(cwd or ROOT),
                            capture_output=True, text=True, timeout=180)
         return p.returncode, (p.stdout + p.stderr).strip()
     except FileNotFoundError:
