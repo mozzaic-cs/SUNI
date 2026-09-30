@@ -2504,6 +2504,29 @@ def create_app() -> FastAPI:
         if not body or not from_:
             return Response(status_code=204)
 
+        # SECURITY GATE (fail closed). The Twilio signature above proves the
+        # REQUEST came from Twilio; it says nothing about WHO sent the message.
+        # Without this, anyone who knows the number reached a full assistant at
+        # role "standard" — which reads files, searches the knowledge base and
+        # lists email. Telegram, Discord and Slack each gate the sender and
+        # this did not.
+        #
+        # Compared on digits alone, so "+351912345678", "351912345678" and
+        # "whatsapp:+351 912 345 678" are the same person: a list that only
+        # matches one spelling of a phone number is a list that quietly fails.
+        _wa_digits = lambda v: re.sub(r"\D+", "", str(v or ""))
+        _allowed_wa = {_wa_digits(n) for n in (suni_config.get("whatsapp_allowed_numbers") or [])}
+        _allowed_wa.discard("")
+        if _wa_digits(from_) not in _allowed_wa:
+            _log.warning("[WHATSAPP] message from non-allow-listed number %s — refused",
+                         from_)
+            _shown = from_.split(":", 1)[-1] or from_
+            background_tasks.add_task(
+                wa_send, from_,
+                f"This SUNI is private. Your number is {_shown} — ask the owner to "
+                f"add it to the WhatsApp allow-list to enable access.")
+            return Response(status_code=200)
+
         # Per-user conversation context
         if from_ not in wa_contexts:
             wa_contexts[from_] = Context()

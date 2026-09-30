@@ -192,6 +192,15 @@ DEFAULTS: dict[str, Any] = {
     "telegram_enabled":       False,   # start the long-poll gateway at boot
     "telegram_bot_token":     "",      # from @BotFather; overrides TELEGRAM_BOT_TOKEN env
     "telegram_allowed_chats": [],      # allow-list of chat ids (strings); empty = fail closed
+    # ── WhatsApp (Twilio webhook) ────────────────────────────────────────
+    # The Twilio signature proves the REQUEST came from Twilio. It says nothing
+    # about WHO sent the message — anyone who knows the number could reach a
+    # full assistant. Telegram, Discord and Slack each gate the sender; this
+    # did not, and that was the gap.
+    # Fail closed, like the others: empty list = nobody is authorized. An
+    # unknown number is told its own number so the owner can add it, and its
+    # message is NOT run.
+    "whatsapp_allowed_numbers": [],    # e.g. ["+351912345678"]; empty = fail closed
     # ── Discord channel (Gateway WebSocket) ──────────────────────────────
     # Reach SUNI from Discord with NO public URL: when enabled, the server
     # connects OUT to Discord's Gateway (WebSocket) — works from a local machine.

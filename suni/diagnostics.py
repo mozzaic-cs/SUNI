@@ -255,8 +255,16 @@ def _check_channels() -> list[Finding]:
         return []
     for name, allow_key in (("telegram", "telegram_allowed_chats"),
                             ("discord", "discord_allowed_channels"),
-                            ("slack", "slack_allowed_channels")):
-        if not _cfg.get(f"{name}_enabled"):
+                            ("slack", "slack_allowed_channels"),
+                            # WhatsApp is on whenever Twilio is configured —
+                            # there is no separate enable, the webhook is
+                            # simply reachable — so it is checked on that.
+                            ("whatsapp", "whatsapp_allowed_numbers")):
+        if name == "whatsapp":
+            from .whatsapp.handler import is_configured as _wa_ok
+            if not _wa_ok():
+                continue
+        elif not _cfg.get(f"{name}_enabled"):
             continue
         allowed = _cfg.get(allow_key) or []
         if not allowed:
