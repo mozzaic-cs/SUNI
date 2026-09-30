@@ -186,6 +186,49 @@ def _is_tool_failure(result) -> bool:
 # Structured tool-selection (delegation, scheduling) needs at least a mid tier.
 # Measured: at tier 2 the same prompt chose four different wrong tools across
 # four runs. Below this, escalate rather than answer badly.
+# Task mode asks a yes/no question and then acts on the answer, so reading the
+# answer has to be exact. It used to be a substring test over
+# ("approve","yes","ok","proceed","go","sim"), which meant "ok" matched inside
+# "looks" and "go" inside "goal" and "sim" inside "assim" — so
+#
+#     "that looks dangerous, stop"   ->  APPROVED and ran the tool calls
+#     "what is the goal here?"       ->  APPROVED
+#     "assim nao"  ("not like that") ->  APPROVED
+#
+# on the one mode whose entire purpose is not acting until it is told to.
+#
+# The whole message must now BE one of these, not contain one. Anything else is
+# treated as a refusal, because a plan that is dropped costs a sentence and a
+# plan that runs by accident costs whatever it was about to do.
+_PLAN_APPROVE = frozenset({
+    "approve", "approved", "yes", "y", "ok", "okay", "proceed", "confirm",
+    "confirmed", "go", "go ahead", "do it", "run it", "run them",
+    "sim", "aprovar", "aprova", "aprovado", "avanca", "avança", "confirmo",
+    "podes", "podes avancar", "podes avançar", "faz", "faz isso",
+})
+_PLAN_CANCEL = frozenset({
+    "cancel", "cancelled", "no", "n", "stop", "abort", "drop it", "forget it",
+    "nao", "não", "cancela", "cancelar", "para", "esquece", "deixa",
+})
+
+
+def _read_plan_reply(text: str) -> str:
+    """"approve", "cancel", or "other" — from the WHOLE message.
+
+    Punctuation is dropped and spacing collapsed so that "Approve." and
+    "  approve  " are the same word, but nothing is matched inside a longer
+    sentence: that is the bug this replaced.
+    """
+    import re as _re
+    t = _re.sub(r"[^\w\s]", " ", str(text or "").strip().lower(), flags=_re.UNICODE)
+    t = _re.sub(r"\s+", " ", t).strip()
+    if t in _PLAN_APPROVE:
+        return "approve"
+    if t in _PLAN_CANCEL:
+        return "cancel"
+    return "other"
+
+
 _MIN_TIER_FOR_STRUCTURED = 3
 
 # An agent that declares tools needs a model that can call them rather than
@@ -523,7 +566,13 @@ class Orchestrator:
             self._tier_agents[DEFAULT_TIER] = primary
         self._router = TaskRouter()
         self._compressor = ContextCompressor()
-        self._pending_plans: dict = {}   # id(context) → list[ToolCall]
+        # A pending plan lives ON its conversation, not in a dictionary here.
+        # It used to be keyed by id(context) — an ADDRESS, not an identity.
+        # Sessions are evicted on a timer, the Context is freed, and CPython
+        # reuses the address: measured reuse on the second allocation. A new
+        # conversation could inherit the previous one's queued tool calls and
+        # run them on "ok". The dictionary was also never cleaned, which is
+        # what left stale entries lying about to be matched.
 
     def register_tier(self, tier: int, agent: BaseAgent) -> None:
         """Register an OllamaAgent for a specific tier number."""
@@ -682,10 +731,11 @@ class Orchestrator:
                   user_input[:120], ctx_tokens, user_role, conv_mode)
 
         # Task mode: handle approve/cancel responses to a pending plan
-        if conv_mode == "task" and id(context) in self._pending_plans:
-            lower = user_input.strip().lower()
-            if any(w in lower for w in ("approve", "yes", "ok", "proceed", "go", "sim", "sim.")):
-                saved_calls = self._pending_plans.pop(id(context))
+        if conv_mode == "task" and context.get("pending_plan"):
+            answer = _read_plan_reply(user_input)
+            if answer == "approve":
+                saved_calls = context.get("pending_plan")
+                context.set("pending_plan", None)
                 _log.info("[TASK] plan approved — executing %d tool call(s)", len(saved_calls))
                 tool_results = await self._execute_tool_calls(saved_calls)
                 for tc, result in tool_results:
@@ -698,7 +748,12 @@ class Orchestrator:
                     await _mem.add_exchange(user_input, final.content)
                 return final.content
             else:
-                self._pending_plans.pop(id(context), None)
+                # Anything that is not an unambiguous approval drops the plan.
+                # Nothing runs, which is the safe direction: the cost is asking
+                # again, and the cost of the other mistake is the tool calls.
+                context.set("pending_plan", None)
+                _log.info("[TASK] plan dropped; the reply was %r, read as %r",
+                          user_input[:60], answer)
                 cancelled = _say("plan_cancelled", response_language)
                 context.add(Message(role=Role.ASSISTANT, content=cancelled, agent=self.primary.name))
                 if _mem:
@@ -1933,7 +1988,7 @@ class Orchestrator:
                     for tc in response.tool_calls
                 ]
                 plan_text = "\n".join(f"  {i+1}. {s}" for i, s in enumerate(plan_steps))
-                self._pending_plans[id(context)] = response.tool_calls
+                context.set("pending_plan", response.tool_calls)
                 plan_msg = (
                     f"[TASK MODE] I plan to execute the following steps:\n\n"
                     f"{plan_text}\n\n"
