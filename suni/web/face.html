@@ -242,13 +242,13 @@ header{
    person most wants at a glance. It now sits under her and travels with her,
    and the pool she stands in carries the same state in motion. */
 #state-label{
-  /* Back where it was, under the wordmark. Moving it under her put it in the
-     middle of the scene, which is where the field and her face already are —
-     the corner is quiet, and at this size quiet is no longer the same as
-     invisible. */
-  position:absolute;top:56px;left:22px;
+  /* Far right, under the nav, rather than pressed against the wordmark.
+     It steps down when she shrinks into that same corner — measured, she
+     occupies x 1065..1371 and y 36..432 of a 1400x900 window at full shrink,
+     so a label at top 56 would be inside her head rather than beside it. */
+  position:absolute;top:56px;right:22px;text-align:right;
   font-family:'Syne',sans-serif;font-size:14px;font-weight:700;
-  letter-spacing:.24em;text-indent:.24em;
+  letter-spacing:.24em;
   text-transform:uppercase;color:rgba(190,205,235,.55);z-index:10;
   transition:color .45s ease,opacity .45s ease,font-size .3s ease;
   user-select:none;pointer-events:none;white-space:nowrap;
@@ -612,9 +612,9 @@ header{
    translated because it was three words baked into the markup. It is now an
    icon like its neighbours, and it wears her face: the column is arrangements
    and this is the way back to HER. */
-#net-exit{opacity:0;pointer-events:none;transition:opacity .3s ease;
-  margin-top:2px;align-self:flex-end}
-#net-exit.on{opacity:1;pointer-events:auto}
+/* Inside the arrangements row now, so it needs no placement of its own — it
+   shows and hides with the row it belongs to. */
+#net-exit{margin-right:3px}
 /* The field's own controls, in one column on the right: the legend, then the
    things you can do to it. They were pinned to the top-left, where they sat on
    top of her name in the header — and being separately positioned meant every
@@ -1908,6 +1908,9 @@ function renderHead(dt){
     // idle, rings travelling outward while she thinks, flaring with her own
     // voice as she speaks. stateSmooth is eased, so it crossfades.
     _net.state = stateSmooth;
+    // She takes this corner when the field has the screen, so the word gets
+    // out from under her rather than being read through her face.
+    if (stateLabel) stateLabel.style.top = (56 + (H * 0.52 - 56) * _stageT) + 'px';
     _net.level = mouthOpen;
 
     _net.draw(proj, [nc[0] / 255, nc[1] / 255, nc[2] / 255], canvas.height);
@@ -2772,6 +2775,12 @@ function _netBuildLayouts(){
   ).join('');
   _netLay.querySelectorAll('button').forEach(b =>
     b.addEventListener('click', () => _netSetLayout(b.dataset.lay)));
+  /* The way out goes at the head of the same row rather than sitting alone
+     underneath it. Moved here rather than written into the markup because the
+     line above replaces this row's contents wholesale, which would throw away
+     a child that the HTML had put there. */
+  _netBuildExit();
+  if (_netExitBtn) _netLay.prepend(_netExitBtn);
   _netMarkLayout();
 }
 
@@ -3231,7 +3240,7 @@ function _netSetFocus(on){
   // pill was toggled only when a level loaded, which is not when focus
   // changes. Two controls I had described as being on screen were not.
   _netTrail.classList.toggle('on', on);
-  _netExitBtn.classList.toggle('on', on);
+  // The exit lives in the arrangements row and fades with it.
   _netLay.classList.toggle('on', on);
   if (on && !_netLay.childElementCount) _netBuildLayouts();
   if (on) _netBuildExit();

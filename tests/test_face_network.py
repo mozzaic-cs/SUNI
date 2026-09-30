@@ -898,7 +898,11 @@ def test_the_state_word_is_readable():
     css = css[:css.index("}")]
     size = float(re.search(r"font-size:([\d.]+)px", css).group(1))
     assert size >= 12, f"{size}px is no better than it was"
-    assert "top:56px;left:22px" in css, "it left the corner it belongs in"
+    # Far right rather than against the wordmark, and it steps down when she
+    # shrinks into that same corner — measured, her head occupies y 36..432
+    # there, so a label pinned at 56 would be read through her face.
+    assert "top:56px;right:22px" in css, "it is not where it was put"
+    assert "H * 0.52 - 56" in FACE, "it does not get out from under her"
 
 
 def test_the_word_announces_a_change_rather_than_only_the_new_state():
@@ -910,3 +914,15 @@ def test_the_word_announces_a_change_rather_than_only_the_new_state():
     )
     assert "void stateLabel.offsetWidth" in fn, "a CSS animation cannot replay without a reflow"
     assert "prefers-reduced-motion" in FACE
+
+
+def test_the_way_out_sits_in_the_row_with_the_arrangements():
+    """It was alone underneath them, which read as a different kind of thing
+    when it is the same kind of thing: one icon among six."""
+    build = FACE[FACE.index("function _netBuildLayouts(){"):]
+    build = build[:build.index("\n}")]
+    assert "_netLay.prepend(_netExitBtn)" in build, "it is still on its own"
+    # Prepended AFTER the row's innerHTML is written, or it would be discarded.
+    assert build.index("_netLay.innerHTML") < build.index("_netLay.prepend"), (
+        "the row is rebuilt after the exit is put in it, which throws it away"
+    )
