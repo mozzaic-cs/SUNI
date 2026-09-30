@@ -1875,6 +1875,11 @@ function renderHead(dt){
     // when there is something to carry.
     _net.flow = (state === 'idle') ? 0.22 : (state === 'speaking' ? 0.7 : 0.95);
     const nc = stateColor(stateSmooth);
+    // She is the source, so the pool the floor is projected from sits under
+    // her — and travels with her when she gives the field the screen. The
+    // same 0.5 → 0.87 journey _headBox uses, so the light and the head agree
+    // about where she is.
+    _net.emitter = 0.5 + 0.37 * _stageT;
     _net.draw(proj, [nc[0] / 255, nc[1] / 255, nc[2] / 255], canvas.height);
     _netPaint();
   }

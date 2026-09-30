@@ -34,8 +34,11 @@ def test_the_field_is_built_on_the_faces_own_context():
 
 
 def test_it_is_drawn_behind_the_head_not_over_it():
+    # To the end of the block, not a fixed 700 characters of it: a comment
+    # added inside pushed the call past the window, which is the third time a
+    # slice-sized test in this file has failed over prose rather than code.
     i = FACE.index("drawBackground();")
-    block = FACE[i:i + 700]
+    block = FACE[i:FACE.index("_netPaint();", i)]
     assert "_net.draw(" in block, "the field is not drawn with the background"
     # Depth writes are what put it behind her, rather than draw order alone.
     assert "depthMask(false)" in MOD and "DEPTH_TEST" in MOD
@@ -757,3 +760,63 @@ def test_a_category_is_not_named_twice():
     assert "if (this.rings.length) return []" in body, (
         "cluster markers and ring names would both label every category"
     )
+
+
+# ── the floor ───────────────────────────────────────────────────────────────
+
+
+def test_there_is_a_floor_and_it_is_under_everything():
+    """Everything on this page floated in nothing."""
+    assert "_drawFloor(tint)" in MOD, "the floor is never drawn"
+    body = MOD[MOD.index("    draw(proj, tint, canvasH) {"):]
+    body = body[:body.index("\n    }\n")]
+    first = body.index("this._drawFloor(")
+    for later in ("this._drawNebula()", "this._drawRings()", "gl.useProgram(this.lprog)"):
+        assert first < body.index(later), f"the floor is painted after {later}"
+
+
+def test_the_floor_is_screen_space_on_purpose():
+    """The head and the field are drawn through two different cameras — the
+    head has its own mvp and, once it shrinks, its own viewport in the corner.
+    A plane placed in either one lines up with that one and drifts from the
+    other the moment she moves."""
+    body = MOD[MOD.index("_drawFloor(tint) {"):]
+    body = body[:body.index("\n    }\n")]
+    assert "this._mvp" not in body and "uniformMatrix4fv" not in body, (
+        "the floor has been put into one of the two camera spaces"
+    )
+    assert "gl.disable(gl.DEPTH_TEST)" in body
+
+
+def test_the_floor_turns_with_the_field():
+    """A floor that stays put while the network turns above it reads as a
+    photograph of a floor."""
+    body = MOD[MOD.index("_drawFloor(tint) {"):]
+    body = body[:body.index("\n    }\n")]
+    assert "this.yaw" in body, "the grid never pans"
+
+
+def test_the_projector_sits_under_her_and_travels_with_her():
+    assert "_net.emitter = 0.5 + 0.37 * _stageT" in FACE, (
+        "the light comes from a fixed point while she moves away from it"
+    )
+    # Same journey the head box makes, so the two agree about where she is.
+    box = FACE[FACE.index("function _headBox("):][:700]
+    assert "w * 0.87" in box
+
+
+def test_the_floor_follows_focus_like_everything_else():
+    body = MOD[MOD.index("_drawFloor(tint) {"):]
+    body = body[:body.index("\n    }\n")]
+    call = re.search(r"this\.fu\.gain, ([\d.]+) \+ ([\d.]+) \* this\.focus", body)
+    assert call, "the floor does not fade with the field"
+    base = float(call.group(1))
+    assert base <= 0.25, f"ambient gain {base} puts a floor under her idle face"
+
+
+def test_the_floor_costs_no_memory():
+    """Another light source, on a card that is already evicting the model."""
+    body = MOD[MOD.index("_drawFloor(tint) {"):]
+    body = body[:body.index("\n    }\n")]
+    assert "this.bQuad" in body, "the floor allocated its own buffer"
+    assert "createFramebuffer" not in MOD

@@ -308,6 +308,93 @@
       gl_FragColor = vec4(sum, 1.0);
     }`;
 
+  /* ── the floor ────────────────────────────────────────────────────────
+     Everything on this page floats in nothing. A plane underneath gives the
+     projection somewhere to come FROM: a grid receding to darkness, and the
+     pool of light it is being emitted out of.
+
+     SCREEN SPACE, not a quad in the scene, and that is not a shortcut. The head
+     and the field are drawn through two different cameras — the head has its
+     own mvp and, once it shrinks, its own viewport in the corner — so a plane
+     placed in either one lines up with that one and drifts from the other the
+     moment she moves. Painted first in screen space it is under both by
+     construction, and the perspective is done here instead: for a fragment
+     below the horizon, the depth of the floor at that height is 1/(horizon-y),
+     which is what makes the lines converge correctly.
+
+     It still parallaxes, because the grid is panned by the field's own yaw —
+     a floor that stays put while the network turns above it reads as a
+     photograph of a floor.
+
+     One fullscreen triangle, sharing the nebula's buffer. No framebuffer, as
+     everywhere else here: this machine cannot spare a render target. */
+  const FLOOR_Z = 6.0;          // how far in front of the camera the pool sits
+
+  const FVS = `
+    attribute vec2 a_xy;
+    void main(){ gl_Position = vec4(a_xy, 0.9995, 1.0); }`;
+
+  const FFS = `
+    precision mediump float;
+    uniform vec2  u_res;
+    uniform vec3  u_tint;
+    uniform float u_focus;
+    uniform float u_pan;      /* grid offset, driven by the field's yaw */
+    uniform float u_emit;     /* where the projector is, 0..1 across the screen */
+    uniform float u_gain;
+
+    void main(){
+      vec2 uv = gl_FragCoord.xy / u_res;
+      const float HORIZON = 0.31;
+      /* Her own light, pulled towards the cool blue the rims use, so the floor
+         belongs to the same projection as everything standing on it. */
+      vec3 tint = mix(u_tint, vec3(0.50, 0.85, 1.00), 0.35);
+      vec3 col = vec3(0.0);
+
+      if (uv.y < HORIZON) {
+        /* Depth of the floor at this height. Clamped away from the horizon
+           itself, where it goes to infinity and mediump gives up. */
+        float d = 0.95 / max(HORIZON - uv.y, 0.0016);
+        float gx = (uv.x - 0.5) * d * 2.2 + u_pan;
+        float gz = d;
+
+        /* Lines kept a roughly constant width on SCREEN by widening them in
+           world units as the floor recedes; otherwise the far grid collapses
+           into a solid sheet. */
+        float lw = clamp(0.018 * d, 0.004, 0.42);
+        float lx = smoothstep(0.5 - lw, 0.5, abs(fract(gx) - 0.5));
+        float lz = smoothstep(0.5 - lw, 0.5, abs(fract(gz) - 0.5));
+        float grid = max(lx, lz);
+
+        /* Gone well before the horizon, so there is no hard line across the
+           screen where the floor stops. */
+        float far = exp(-d * 0.085);
+
+        /* The pool the whole thing is projected out of. Defined as a point ON
+           the floor, so perspective flattens it into an ellipse by itself. */
+        float poolX = (u_emit - 0.5) * FLOOR_Z_JS * 2.2;
+        float pd = length(vec2(gx - poolX, gz - FLOOR_Z_JS));
+        float pool = exp(-pd * pd * 0.20);
+
+        col += tint * grid * far * 0.085;
+        col += tint * pool * 0.32;
+        /* A brighter ring right at the emitter's lip. */
+        col += tint * smoothstep(0.55, 0.0, abs(pd - 1.5)) * 0.10;
+      } else {
+        /* Above the horizon: the light leaving the pool. Not a volume, just a
+           soft column that fades with height — enough that the head looks lit
+           from underneath rather than sitting in front of a picture. */
+        float up = exp(-abs(uv.x - u_emit) * 7.0)
+                 * exp(-(uv.y - HORIZON) * 3.4);
+        col += tint * up * 0.16;
+      }
+
+      col *= u_gain;
+      /* Scanlines, as on every other surface here. */
+      col *= 0.90 + 0.10 * (0.5 + 0.5 * sin(gl_FragCoord.y * 1.5));
+      gl_FragColor = vec4(col, 1.0);
+    }`.replace(/FLOOR_Z_JS/g, FLOOR_Z.toFixed(2));
+
   /* ── the ring guides ──────────────────────────────────────────────────
      The rings layout has always put one category on each ring, and never drawn
      the rings. Without them the arrangement reads as scattered dots that
@@ -740,6 +827,21 @@
         gl.bindBuffer(gl.ARRAY_BUFFER, this.bRing);
         gl.bufferData(gl.ARRAY_BUFFER, unit, gl.STATIC_DRAW);
       }
+      this.fprog = program(gl, FVS, FFS);
+      if (this.fprog) {
+        this.fa = { xy: gl.getAttribLocation(this.fprog, 'a_xy') };
+        this.fu = {
+          res:   gl.getUniformLocation(this.fprog, 'u_res'),
+          tint:  gl.getUniformLocation(this.fprog, 'u_tint'),
+          focus: gl.getUniformLocation(this.fprog, 'u_focus'),
+          pan:   gl.getUniformLocation(this.fprog, 'u_pan'),
+          emit:  gl.getUniformLocation(this.fprog, 'u_emit'),
+          gain:  gl.getUniformLocation(this.fprog, 'u_gain'),
+        };
+      }
+      /* Where the projector is, across the screen. The page sets this each
+         frame: she is the source, so it follows her into the corner. */
+      this.emitter = 0.5;
       this.rings = [];        // {kind, rx, ry, col} while the rings layout is on
       this.ok = !!(this.prog && this.lprog);
       if (!this.ok) return;
@@ -1325,6 +1427,7 @@
 
       gl.enable(gl.DEPTH_TEST);
       gl.enable(gl.BLEND);
+      this._drawFloor(tint);
       this._drawNebula();
       this._drawRings();
       // Edges stay additive — they are light, and light adds. The nodes below
@@ -1575,6 +1678,33 @@
         .filter(hb => !blocked(hb.x, hb.y))
         .sort((a, b) => b.count - a.count)
         .slice(0, o.max || 8);
+    }
+
+    /* Under everything, and painted before everything. */
+    _drawFloor(tint) {
+      if (!this.fprog || !this.bQuad) return;
+      const gl = this.gl;
+      gl.useProgram(this.fprog);
+      gl.uniform2f(this.fu.res, gl.drawingBufferWidth, gl.drawingBufferHeight);
+      gl.uniform3f(this.fu.tint, tint[0], tint[1], tint[2]);
+      gl.uniform1f(this.fu.focus, this.focus);
+      // Panned by the yaw, so turning the field drags the floor under it.
+      gl.uniform1f(this.fu.pan, this.yaw * 0.85);
+      gl.uniform1f(this.fu.emit, this.emitter);
+      // The same curve the wash and the guides follow: a hint behind her head,
+      // present once the field has the floor. It is another light source, and
+      // the last one that arrived at full strength washed out the nodes.
+      gl.uniform1f(this.fu.gain, 0.15 + 0.85 * this.focus);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.bQuad);
+      gl.enableVertexAttribArray(this.fa.xy);
+      gl.vertexAttribPointer(this.fa.xy, 2, gl.FLOAT, false, 0, 0);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+      gl.depthMask(false);
+      gl.disable(gl.DEPTH_TEST);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.enable(gl.DEPTH_TEST);
+      gl.depthMask(true);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     }
 
     /* One wash per category, centred on where that category actually IS.
