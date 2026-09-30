@@ -12,6 +12,7 @@
 
   var _T = {
     en: {
+    "face.net_exit": "Back to SUNI",
     // --- the strip along the top of the Face ---
     // Never translated: the header was written before the i18n sweep and the
     // sweep never came back for it, so a Portuguese session read English
@@ -729,6 +730,7 @@
     },
 
     pt: {
+    "face.net_exit": "Voltar à SUNI",
     // --- the strip along the top of the Face ---
     "face.nav_orb": "◎ ORBE",
     "face.nav_orb_t": "Mudar para o modo Orbe",

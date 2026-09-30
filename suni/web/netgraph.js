@@ -603,6 +603,21 @@
         ctx.quadraticCurveTo(R * 0.72, R * 0.1, R * 0.72, R * 0.95);
         ctx.stroke();
         break;
+      case "face":
+        /* Her, small. Not in ICON_ORDER because no node kind is her — it is
+           drawn on demand for the button that goes back to her, which is the
+           one control on that column that points at a person rather than at
+           an arrangement. */
+        /* No mouth. With one it read as a smiley, which is not what she
+           looks like: her face is a narrow projection carrying a pair of very
+           deliberate eyes, and at seventeen pixels the eyes are the only thing
+           with room to be recognisable anyway. */
+        ctx.beginPath();
+        ctx.ellipse(0, R * 0.04, R * 0.58, R * 0.90, 0, 0, 6.283);
+        ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(-R * 0.26, -R * 0.08, R * 0.15, R * 0.19, 0, 0, 6.283); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(R * 0.26, -R * 0.08, R * 0.15, R * 0.19, 0, 0, 6.283); ctx.fill();
+        break;
       case "user":
         // Head and shoulders. The one glyph here that is a person, so it stays
         // plainly a person rather than anything cleverer.

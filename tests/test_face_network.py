@@ -825,3 +825,30 @@ def test_the_floor_costs_no_memory():
     body = body[:body.index("\n    }\n")]
     assert "this.bQuad" in body, "the floor allocated its own buffer"
     assert "createFramebuffer" not in MOD
+
+
+def test_the_way_back_to_her_is_an_icon_like_its_neighbours():
+    """It was a pill reading "back to SUNI" in a column of icons — the one
+    control that said its name out loud, and the only one that could not be
+    translated, because the words were baked into the markup."""
+    assert '<button id="net-exit" type="button"></button>' in FACE, (
+        "the exit control still carries its label in the HTML"
+    )
+    assert "function _netBuildExit(" in FACE
+    assert "iconDataURL('face'" in FACE, "it has no face on it"
+    assert "t('face.net_exit')" in FACE, "the label is not translated"
+    # One set of rules for the whole column, so the two cannot drift apart.
+    assert "#net-lay button, #net-exit{" in FACE
+
+
+def test_the_field_no_longer_writes_messages_into_its_own_exit_button():
+    """_netToast used to replace the button's contents and put them back after
+    a couple of seconds, because that button was the only text on the field.
+    Overloading the one control that gets somebody out is a poor place for a
+    warning, and there is a real notice now."""
+    fn = FACE[FACE.index("function _netToast(msg){"):]
+    fn = fn[:fn.index("\n}")]
+    assert "_showToast(msg, 'warn')" in fn
+    assert "_netExitBtn.innerHTML" not in fn, (
+        "the warning still overwrites the way out"
+    )

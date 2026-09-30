@@ -507,20 +507,20 @@ header{
 #net-lay{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;
   max-width:250px;opacity:0;pointer-events:none;transition:opacity .3s ease}
 #net-lay.on{opacity:1;pointer-events:auto}
-#net-lay button{position:relative;width:30px;height:30px;padding:0;cursor:pointer;
+#net-lay button, #net-exit{position:relative;width:30px;height:30px;padding:0;cursor:pointer;
   display:flex;align-items:center;justify-content:center;border-radius:8px;
   border:1px solid rgba(120,170,220,.28);background:rgba(8,14,26,.72)}
-#net-lay button img{width:17px;height:17px;opacity:.72;
+#net-lay button img, #net-exit img{width:17px;height:17px;opacity:.72;
   transition:opacity .15s ease,filter .15s ease}
-#net-lay button:hover{border-color:rgba(0,212,255,.6)}
-#net-lay button:hover img{opacity:1;filter:drop-shadow(0 0 4px rgba(0,212,255,.8))}
+#net-lay button:hover, #net-exit:hover{border-color:rgba(0,212,255,.6)}
+#net-lay button:hover img, #net-exit:hover img{opacity:1;filter:drop-shadow(0 0 4px rgba(0,212,255,.8))}
 #net-lay button.on{background:rgba(0,212,255,.18);border-color:rgba(0,212,255,.75)}
 #net-lay button.on img{opacity:1;filter:drop-shadow(0 0 5px rgba(0,212,255,.95))}
 /* The tooltip. An icon without words is a rebus: the name and the reason both
    appear, because "rings" alone does not say what rings are FOR. Placed to the
    LEFT because this column sits against the right edge of the window, where a
    tooltip growing rightwards would be cut off. */
-#net-lay button::after{content:attr(data-tip);position:absolute;right:calc(100% + 9px);
+#net-lay button::after, #net-exit::after{content:attr(data-tip);position:absolute;right:calc(100% + 9px);
   top:50%;transform:translateY(-50%);white-space:nowrap;
   font-family:'DM Mono',monospace;font-size:10px;line-height:1.5;
   color:rgba(228,236,255,.92);background:rgba(6,11,22,.96);
@@ -581,17 +581,14 @@ header{
 /* Leaving the network. Escape did this from the first version, which is no
    use at all to someone who does not already know it is there: the head
    shrinking into a corner with no visible way back is a trap, not a mode. */
-#net-exit{opacity:0;pointer-events:none;
-  transition:opacity .3s ease;display:flex;gap:6px;align-items:center;
-  padding:5px 10px 5px 8px;border-radius:999px;cursor:pointer;
-  background:rgba(8,14,26,.72);border:1px solid rgba(120,170,220,.28);
-  backdrop-filter:blur(7px);white-space:nowrap;
-  font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.03em;
-  color:rgba(215,230,250,.86)}
+/* It was a pill reading "back to SUNI", in a column of icons — the one
+   control that said its name out loud, and the only one that could not be
+   translated because it was three words baked into the markup. It is now an
+   icon like its neighbours, and it wears her face: the column is arrangements
+   and this is the way back to HER. */
+#net-exit{opacity:0;pointer-events:none;transition:opacity .3s ease;
+  margin-top:2px;align-self:flex-end}
 #net-exit.on{opacity:1;pointer-events:auto}
-#net-exit:hover{border-color:rgba(0,212,255,.6);color:#fff;
-  background:rgba(12,22,38,.86)}
-#net-exit b{font-size:11px;line-height:1;color:rgba(0,212,255,.9)}
 /* The field's own controls, in one column on the right: the legend, then the
    things you can do to it. They were pinned to the top-left, where they sat on
    top of her name in the header — and being separately positioned meant every
@@ -703,7 +700,7 @@ header{
   <div id="net-side">
     <div id="net-legend"></div>
     <div id="net-lay"></div>
-    <div id="net-exit"><b>&#10005;</b> back to SUNI</div>
+    <button id="net-exit" type="button"></button>
   </div>
   <div id="net-menu"></div>
   <!-- background scanlines removed — the head keeps its own scanlines from the FS2 shader -->
@@ -2765,13 +2762,26 @@ function _netCluster(on){
 _netExitBtn.addEventListener('click', _netExit);
 
 /* A one-line note over the field. Used when an action had nothing to act on —
-   silence there reads as the click not having registered. */
-let _netToastT = null;
+   silence there reads as the click not having registered.
+
+   This used to write itself into the "back to SUNI" button and put the button
+   back afterwards, because that button was the only strip of text on the
+   field. There is a real notice in the middle of the screen now, so the field
+   borrows it instead of overloading the one control that gets somebody out. */
 function _netToast(msg){
-  _netExitBtn.dataset.was = _netExitBtn.dataset.was || _netExitBtn.innerHTML;
-  _netExitBtn.innerHTML = '<b>&#9888;</b> ' + _esc(msg);
-  clearTimeout(_netToastT);
-  _netToastT = setTimeout(() => { _netExitBtn.innerHTML = _netExitBtn.dataset.was; }, 2600);
+  _showToast(msg, 'warn');
+}
+
+/* The way back to her. Built rather than written into the markup so the label
+   can be in the reader's language: data-tip is CSS content, which the
+   translation sweep cannot reach. */
+function _netBuildExit(){
+  if (!_netExitBtn || _netExitBtn.childElementCount) return;
+  const label = t('face.net_exit');
+  _netExitBtn.setAttribute('aria-label', label);
+  _netExitBtn.dataset.tip = label;
+  _netExitBtn.innerHTML =
+    `<img src="${NetGraph.iconDataURL('face', 34)}" alt="">`;
 }
 
 /* Names, for as many nodes as currently have room for one. The module decides
@@ -3182,6 +3192,7 @@ function _netSetFocus(on){
   _netExitBtn.classList.toggle('on', on);
   _netLay.classList.toggle('on', on);
   if (on && !_netLay.childElementCount) _netBuildLayouts();
+  if (on) _netBuildExit();
   if (on && !_netLegend.childElementCount) _netBuildLegend();
   _netLegend.classList.toggle('on', on);
   if (!on) { _netPop.classList.remove('off'); _netPop.classList.remove('on'); _netHover = null; }
