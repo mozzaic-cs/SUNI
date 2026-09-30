@@ -108,8 +108,14 @@ def cards() -> list[dict]:
         return []
 
 
-def scan_static() -> dict:
+_static_cache: dict | None = None
+
+
+def scan_static(force: bool = False) -> dict:
     """The cheap facts. Safe to run on first start and whenever asked."""
+    global _static_cache
+    if _static_cache is not None and not force:
+        return _static_cache
     cs = cards()
     try:
         import psutil
@@ -119,7 +125,7 @@ def scan_static() -> dict:
     except Exception:      # noqa: BLE001
         cores = threads = 0
         ram_gb = 0.0
-    return {
+    out = {
         "os": f"{platform.system()} {platform.release()}",
         "cpu": platform.processor() or platform.machine(),
         "cores": cores,
@@ -133,6 +139,8 @@ def scan_static() -> dict:
         "vram_mb_max": max((c["vram_mb"] for c in cs), default=0),
         "scanned_at": time.time(),
     }
+    _static_cache = out
+    return out
 
 
 def fingerprint(static: dict) -> str:
@@ -227,3 +235,17 @@ def fastest(kind: str) -> dict | None:
         return None
     results = m.get("results") or []
     return results[0] if results else None
+
+
+
+def measured(kind: str) -> dict | None:
+    """One measurement set, without rescanning the machine.
+
+    scan_static shells out to nvidia-smi, and this is read at import time by
+    system_profile; the memo above means it happens once per process rather
+    than once per caller.
+    """
+    m = (load().get("measured") or {}).get(kind)
+    if not m or m.get("version") != MEASURE_VERSION:
+        return None
+    return m

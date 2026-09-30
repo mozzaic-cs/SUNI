@@ -142,13 +142,65 @@ SAFETY_RESCAN_S: int = 86400
 #
 # VRAM thresholds assume Q4_K_M quantisation (≈0.5 GB/B of params + 1 GB overhead).
 
+# Somebody else is already using the card. A desktop compositor holds 2.6 GB of
+# the 8 GB card on this machine — measured — and a model needs its KV cache on
+# top of its weights. Claiming all of it is how a 7B ends up paging to host
+# memory while every specification says it fits.
+_VRAM_RESERVE_MB = 2_048
+
+# Below this, a local model is not worth reaching for: the answer arrives, but
+# not while anybody is still waiting for it. From measurement rather than
+# taste — gpt-oss:120b ran here at 7.4 tok/s and was unusable, while a 1.5B on
+# the same card managed 153.
+INTERACTIVE_FLOOR_TPS = 15.0
+
+
+def _measured_max_tier() -> int | None:
+    """The highest tier MEASURED fast enough to be worth using, or None.
+
+    None means nobody has measured; 1 means somebody did and nothing cleared
+    the floor. Those are different answers and must not collapse into each
+    other — the second one is knowledge.
+    """
+    try:
+        from . import hardware as _hw
+        m = _hw.measured("llm")
+        if not m:
+            return None
+        usable = [int(r.get("tier", 0)) for r in (m.get("results") or [])
+                  if float(r.get("tokens_per_sec", 0)) >= INTERACTIVE_FLOOR_TPS]
+        return max(usable) if usable else 1
+    except Exception:      # noqa: BLE001
+        return None
+
+
 def _max_local_tier(vram_mb: int) -> int:
-    if vram_mb >= 36_000: return 4   # 70B @ Q4 ≈ 35 GB
-    if vram_mb >= 18_000: return 3   # 34B @ Q4 ≈ 17 GB
-    if vram_mb >= 7_000:  return 3   # 14B @ Q4 ≈  7 GB
-    if vram_mb >= 4_000:  return 2   #  7B @ Q4 ≈  4 GB
-    if vram_mb >= 1_500:  return 1   #  3B @ Q4 ≈  2 GB
-    return 1                          # CPU fallback — nano only
+    """How big a model this machine should reach for locally.
+
+    MEASURED first. What this used to be was an inference from a specification,
+    and it over-claimed by a whole tier here: 8 GB of VRAM was read as "can run
+    a 15-44B model", on a box where a 7B already pages because the desktop has
+    2.6 GB of the card. The same reasoning is what made a 120B the primary at
+    7.4 tok/s.
+
+    Unmeasured, it now takes the safe reading: reserve what something else is
+    using, and require the SMALLEST model in a tier to fit with its cache
+    rather than the tier's name to sound affordable. A tier that is claimed and
+    cannot be delivered is worse than one that is never offered — the model
+    loads, runs at walking pace, and every answer is late.
+    """
+    measured = _measured_max_tier()
+    if measured is not None:
+        return max(1, min(4, measured))
+
+    usable = max(0, vram_mb - _VRAM_RESERVE_MB)
+    # Q4 is roughly 0.6 GB per billion parameters, and the cache is on top.
+    # These are the tier MINIMUMS: to claim a tier you must fit its smallest
+    # member, not its most flattering one.
+    if usable >= 32_000: return 4    # 45B+ @ Q4 ≈ 27 GB + cache
+    if usable >= 12_000: return 3    # 15B  @ Q4 ≈  9 GB + cache
+    if usable >=  5_000: return 2    #  5B  @ Q4 ≈  3 GB + cache
+    return 1                          #  1-4B, or the CPU
 
 
 MAX_LOCAL_TIER: int  = _max_local_tier(VRAM_MB)
