@@ -119,17 +119,21 @@ def _pick_device(name: str) -> tuple[str, int, str]:
         return "cpu", 0, "int8"
 
     # A MEASUREMENT beats a specification, whenever one exists. The threshold
-    # below is an inference from what the hardware is, and that inference has
-    # now been wrong twice on this machine: the card with the most free memory
-    # lost to the CPU, and so did the card with tensor cores. Where somebody
-    # has actually measured this job on this machine, that answer wins.
-    if want == "auto":
+    # further down is an inference from what the hardware IS, and that
+    # inference has now been wrong twice on this same machine: the card with
+    # the most free memory lost to the CPU by 35%, and so did the card with
+    # tensor cores. Where somebody has actually measured this job here, that
+    # answer wins outright.
+    # Naming a card is an explicit instruction, so it is read before anything
+    # else decides on the caller's behalf.
+    forced_first = int(_cfg.get("meeting_whisper_device_index", -1) or -1)
+    if forced_first < 0 and want == "auto":
         best = _hw.fastest("whisper")
         if best:
             dev = str(best.get("device") or "")
             if dev == "cpu":
-                log.info("[TRANSCRIBE] measured on this machine: the CPU is fastest "
-                         "for whisper (%.0fs vs the next at %s); using it",
+                log.info("[TRANSCRIBE] measured here: the CPU is fastest for whisper "
+                         "(%.0fs against %s); using it",
                          best.get("seconds", 0), _second_best_note())
                 return "cpu", 0, "int8"
             if dev.startswith("cuda:"):
@@ -138,7 +142,21 @@ def _pick_device(name: str) -> tuple[str, int, str]:
                 except ValueError:
                     idx = 0
                 compute = "float16" if "float16" in str(best.get("detail", "")) else "int8_float32"
+                log.info("[TRANSCRIBE] measured here: %s is fastest for whisper (%.0fs)",
+                         dev, best.get("seconds", 0))
                 return "cuda", idx, compute
+
+        # NOTHING MEASURED, so take the safe option rather than the clever one.
+        # The CPU is the path that works on every machine: it cannot run out of
+        # VRAM, it cannot fight the language model for a card, and it has no
+        # driver that might not match its runtime. It may be slower somewhere —
+        # but slower is a complaint, and a transcription that will not start is
+        # a fault. A card gets used when it has been shown to be better, or
+        # when somebody asks for it by name.
+        log.info("[TRANSCRIBE] nothing measured on this machine yet, so whisper "
+                 "runs on the CPU. Measure the devices to let it choose, or set "
+                 "meeting_whisper_device=cuda to insist.")
+        return "cpu", 0, "int8"
 
     cards = _cuda_cards()
     if not cards:

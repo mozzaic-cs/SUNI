@@ -13,9 +13,24 @@ rather than accelerated. A picker that chose the card with the most free memory
 would have chosen it every single time, because the capable card in this
 machine is the one the language model is sitting on.
 
-So the test is capability, and these check the decision rather than the
-hardware: the real cards are replaced with described ones, which is the only
-way to cover "the big card is free" without evicting the model to find out.
+Then the capability rule that replaced it was measured too, on the card that
+HAS tensor cores:
+
+    Quadro RTX 4000       116.5s   1.0x realtime     <- 30% slower as well
+
+Two sound inferences from a specification, both wrong. So "auto" no longer
+guesses at all: it uses whatever has been MEASURED fastest here, and the CPU
+until something has been. The CPU cannot run out of VRAM, cannot fight the
+language model for a card, and has no driver that might not match its runtime.
+Slower is a complaint; a transcription that will not start is a fault.
+
+The guess still exists for anyone who asks for cuda by name, and naming a card
+outranks everything — that is the escape hatch for hardware none of this was
+measured on.
+
+These check the decision rather than the hardware: the real cards are replaced
+with described ones, which is the only way to cover "the big card is free"
+without evicting the language model to find out.
 """
 from __future__ import annotations
 
@@ -52,7 +67,22 @@ def test_a_slow_card_is_refused_however_much_memory_it_has(cards):
     assert tr._pick_device("base") == ("cpu", 0, "int8")
 
 
-def test_the_capable_card_is_used_when_it_has_room(cards):
+def test_auto_takes_the_safe_option_until_something_is_measured(cards):
+    """The CPU cannot run out of VRAM, cannot fight the language model for a
+    card, and has no driver that might not match its runtime. Slower is a
+    complaint; a transcription that will not start is a fault. Both guesses
+    that preferred a card have been measured wrong on real hardware."""
+    cards([RTX4000, P600])          # a capable card, plenty of room
+    assert tr._pick_device("base") == ("cpu", 0, "int8"), (
+        "auto is guessing at a card again instead of taking the safe path"
+    )
+
+
+def test_asking_for_cuda_gets_the_capable_card(monkeypatch, cards):
+    """The guess still exists — it is just opt-in now."""
+    monkeypatch.setattr(tr._cfg, "get", lambda k, d=None: {
+        "meeting_whisper_device": "cuda",
+        "meeting_whisper_device_index": -1}.get(k, d))
     cards([RTX4000, P600])
     device, index, compute = tr._pick_device("base")
     assert (device, index) == ("cuda", 0), "the capable card was passed over"
@@ -66,7 +96,10 @@ def test_the_capable_card_is_skipped_when_the_model_has_it(cards):
     assert tr._pick_device("base") == ("cpu", 0, "int8")
 
 
-def test_a_bigger_model_needs_more_room(cards):
+def test_a_bigger_model_needs_more_room(monkeypatch, cards):
+    monkeypatch.setattr(tr._cfg, "get", lambda k, d=None: {
+        "meeting_whisper_device": "cuda",
+        "meeting_whisper_device_index": -1}.get(k, d))
     cards([{"index": 0, "name": "RTX 4000", "cap": 7.5, "free_mb": 1000}])
     assert tr._pick_device("tiny")[0] == "cuda", "tiny fits in a gigabyte"
     assert tr._pick_device("medium")[0] == "cpu", "medium does not"
@@ -78,8 +111,10 @@ def test_no_card_at_all_is_not_an_error(cards):
     assert tr._pick_device("base") == ("cpu", 0, "int8")
 
 
-def test_the_index_can_be_forced_past_the_capability_test(monkeypatch, cards):
-    """The escape hatch for hardware this was never measured on."""
+def test_naming_a_card_outranks_the_safe_default(monkeypatch, cards):
+    """An explicit instruction is read before anything decides on the caller's
+    behalf — including the rule that auto stays on the CPU. This is the escape
+    hatch for hardware none of this was measured on."""
     monkeypatch.setattr(tr._cfg, "get", lambda k, d=None: {
         "meeting_whisper_device": "auto",
         "meeting_whisper_device_index": 1,

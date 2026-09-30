@@ -249,13 +249,19 @@ DEFAULTS: dict[str, Any] = {
     "meeting_devices":      [],
     # base = ~150 MB, fast on CPU. small = ~500 MB, better on accented speech.
     "meeting_whisper_model": "base",
-    # auto = a graphics card when one is worth using, otherwise the CPU.
-    # "Worth using" is a capability test, not a free-memory test: this machine
-    # has an idle Quadro P600 and putting whisper on it measured 35% SLOWER
-    # than the CPU, because Pascal has no tensor cores. See _pick_device.
+    # auto = whichever device has been MEASURED fastest here, and the CPU until
+    # something has been. The CPU is the safe option: it cannot run out of
+    # VRAM, cannot fight the language model for a card, and has no driver that
+    # might not match its runtime. Slower is a complaint; a transcription that
+    # will not start is a fault.
+    #
+    # Both guesses that preferred a card have now been measured wrong on the
+    # development machine — the one with the most free memory by 35%, and the
+    # one with tensor cores by 30%. A card is used when it has been shown to
+    # be better, or when it is asked for by name.
     "meeting_whisper_device": "auto",      # auto | cpu | cuda
-    # -1 = choose. Set a card index to overrule the capability test, which is
-    # the escape hatch for hardware this was not measured on.
+    # -1 = choose. Naming a card overrules every test, which is the escape
+    # hatch for hardware none of this was measured on.
     "meeting_whisper_device_index": -1,
     # Live speech is a few seconds at a time, so accuracy is worth more than
     # speed: measured on one European Portuguese sentence, "base" heard
