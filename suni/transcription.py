@@ -27,6 +27,7 @@ from pathlib import Path
 
 from . import config as _cfg
 from .logger import get_logger
+from . import hardware as _hw
 
 log = get_logger("suni.transcription")
 
@@ -100,11 +101,44 @@ def _cuda_cards() -> list[dict]:
         return []
 
 
+def _second_best_note() -> str:
+    """For the log line: what the next-fastest device was. A decision reads as
+    a failure unless it says what it chose over."""
+    try:
+        m = (_hw.load().get("measured") or {}).get("whisper") or {}
+        rs = m.get("results") or []
+        return f"{rs[1]['device']} {rs[1]['seconds']:.0f}s" if len(rs) > 1 else "nothing else"
+    except Exception:      # noqa: BLE001
+        return "nothing else"
+
+
 def _pick_device(name: str) -> tuple[str, int, str]:
     """(device, index, compute_type) for this model on this machine."""
     want = str(_cfg.get("meeting_whisper_device", "auto") or "auto").lower()
     if want == "cpu":
         return "cpu", 0, "int8"
+
+    # A MEASUREMENT beats a specification, whenever one exists. The threshold
+    # below is an inference from what the hardware is, and that inference has
+    # now been wrong twice on this machine: the card with the most free memory
+    # lost to the CPU, and so did the card with tensor cores. Where somebody
+    # has actually measured this job on this machine, that answer wins.
+    if want == "auto":
+        best = _hw.fastest("whisper")
+        if best:
+            dev = str(best.get("device") or "")
+            if dev == "cpu":
+                log.info("[TRANSCRIBE] measured on this machine: the CPU is fastest "
+                         "for whisper (%.0fs vs the next at %s); using it",
+                         best.get("seconds", 0), _second_best_note())
+                return "cpu", 0, "int8"
+            if dev.startswith("cuda:"):
+                try:
+                    idx = int(dev.split(":", 1)[1])
+                except ValueError:
+                    idx = 0
+                compute = "float16" if "float16" in str(best.get("detail", "")) else "int8_float32"
+                return "cuda", idx, compute
 
     cards = _cuda_cards()
     if not cards:

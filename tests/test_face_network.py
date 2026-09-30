@@ -926,3 +926,21 @@ def test_the_way_out_sits_in_the_row_with_the_arrangements():
     assert build.index("_netLay.innerHTML") < build.index("_netLay.prepend"), (
         "the row is rebuilt after the exit is put in it, which throws it away"
     )
+
+
+def test_the_fields_labels_do_not_come_along_when_the_page_is_copied():
+    """Every node name is its own absolutely-positioned span, so they carry no
+    order and no separator in the document. Copying the page ran the whole
+    field together into one word, which turned up in a pasted transcript as
+    "everythingeverythingDirectHit..." and read like a broken breadcrumb —
+    while the breadcrumb was joining its own steps with a slash quite
+    correctly. The giveaway was the centre's name appearing twice: once in the
+    trail, once as a node."""
+    for layer in ("#net-labels{", "#net-hubs{"):
+        css = FACE[FACE.index(layer):]
+        css = css[:css.index("}")]
+        assert "user-select:none" in css, f"{layer} is still copyable prose"
+    # The trail IS text and should stay selectable.
+    trail = FACE[FACE.index("#net-trail{"):]
+    trail = trail[:trail.index("}")]
+    assert "user-select:none" not in trail, "the breadcrumb is real text"

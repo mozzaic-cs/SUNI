@@ -570,7 +570,15 @@ header{
   background:transparent;color:rgba(215,230,250,.9);
   font-family:inherit;font-size:11px;letter-spacing:.02em}
 #net-menu button:hover{background:rgba(0,212,255,.17);color:#fff}
-#net-labels{position:absolute;inset:0;z-index:6;pointer-events:none;overflow:hidden}
+/* Not selectable. Each node's name is its own absolutely-positioned span, so
+   they have no order and no separator in the document — copying the page runs
+   the whole field together into one word. It turned up in a pasted transcript
+   as "everythingeverythingDirectHitM_Simoes_e_Filhos..." and read like a bug
+   in the breadcrumb, which joins its own steps with a slash quite correctly.
+   The centre's name appearing twice is the tell: once in the trail, once as a
+   node. These are a picture; the trail below is the text. */
+#net-labels{position:absolute;inset:0;z-index:6;pointer-events:none;overflow:hidden;
+  user-select:none;-webkit-user-select:none}
 #net-labels span{position:absolute;transform:translate(-50%,0);
   font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.02em;
   color:rgba(228,236,255,.82);text-shadow:0 1px 3px rgba(0,0,0,.9),0 0 8px rgba(0,0,0,.7);
@@ -581,7 +589,8 @@ header{
    the question a viewer has first. Reads as a marker rather than a caption:
    the initial in a filled disc in the category's own colour, the name beside
    it, the count under that. */
-#net-hubs{position:absolute;inset:0;z-index:7;pointer-events:none;overflow:hidden}
+#net-hubs{position:absolute;inset:0;z-index:7;pointer-events:none;overflow:hidden;
+  user-select:none;-webkit-user-select:none}
 #net-hubs .hub{position:absolute;transform:translate(-50%,-50%);
   display:flex;align-items:center;gap:7px;cursor:pointer;pointer-events:auto;
   opacity:0;transition:opacity .3s ease}

@@ -22,13 +22,21 @@ def _ram_gb() -> float:
 
 
 def _vram_mb() -> int:
-    """Return TOTAL VRAM (MB) summed across all CUDA devices visible to this process."""
+    """VRAM (MB) of the BIGGEST single card, not the sum of all of them.
+
+    It used to sum. A model runs on ONE card: two 4 GB cards are not an 8 GB
+    card, and summing them claims a tier that neither of them could hold. On
+    this machine the sum is 10,238 MB across an 8 GB card and a 2 GB one, and
+    it happens not to cross a tier boundary — which is exactly how a wrong
+    number survives, by being wrong somewhere it does not yet show.
+    """
     try:
         import torch
         if torch.cuda.is_available():
-            return sum(
-                torch.cuda.get_device_properties(i).total_memory // 1024 ** 2
-                for i in range(torch.cuda.device_count())
+            return max(
+                (torch.cuda.get_device_properties(i).total_memory // 1024 ** 2
+                 for i in range(torch.cuda.device_count())),
+                default=0,
             )
     except Exception:
         pass
@@ -40,7 +48,7 @@ def _vram_mb() -> int:
         )
         lines = [l.strip() for l in r.stdout.strip().splitlines() if l.strip().isdigit()]
         if lines:
-            return sum(int(l) for l in lines)
+            return max(int(l) for l in lines)
     except Exception:
         pass
     return 0
