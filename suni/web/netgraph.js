@@ -1694,7 +1694,7 @@
       // The same curve the wash and the guides follow: a hint behind her head,
       // present once the field has the floor. It is another light source, and
       // the last one that arrived at full strength washed out the nodes.
-      gl.uniform1f(this.fu.gain, 0.15 + 0.85 * this.focus);
+      gl.uniform1f(this.fu.gain, 0.45 + 0.55 * this.focus);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.bQuad);
       gl.enableVertexAttribArray(this.fa.xy);
       gl.vertexAttribPointer(this.fa.xy, 2, gl.FLOAT, false, 0, 0);

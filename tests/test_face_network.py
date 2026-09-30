@@ -810,8 +810,13 @@ def test_the_floor_follows_focus_like_everything_else():
     body = body[:body.index("\n    }\n")]
     call = re.search(r"this\.fu\.gain, ([\d.]+) \+ ([\d.]+) \* this\.focus", body)
     assert call, "the floor does not fade with the field"
-    base = float(call.group(1))
-    assert base <= 0.25, f"ambient gain {base} puts a floor under her idle face"
+    base, lift = float(call.group(1)), float(call.group(2))
+    # This asked for base <= 0.25 when it was written, which was taste dressed
+    # up as a requirement: at 0.15 the floor was invisible behind her full-size
+    # head, and it was asked for back. What actually has to hold is that
+    # ambient is the QUIETER of the two states, not that it is dark.
+    assert lift > 0, "the floor does not brighten when the field takes the screen"
+    assert base < base + lift <= 1.0, "ambient is as bright as focus, or over it"
 
 
 def test_the_floor_costs_no_memory():
