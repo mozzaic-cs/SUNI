@@ -1718,10 +1718,28 @@ class Orchestrator:
             if "filesystem" in (role_prefixes or []):
                 include.append("filesystem")
 
+        _allowed = (grants["allowed_tools"] if grants else _rbac.allowed_tools(user_role))
+        _blocked = (grants["blocked_tools"] if grants else _rbac.blocked_tools(user_role))
+        if conv_mode == "read-only":
+            # Read-only mode promises nothing that writes, sends or changes
+            # anything. It was enforced for the direct routes and for MCP, and
+            # NOT HERE — so the model was still handed every native tool the
+            # caller's ROLE allows, which for an admin is all of them. The mode
+            # blocked the shortcuts and left the front door open.
+            #
+            # The list it needs already exists and is already maintained: the
+            # read-only ROLE's allowance. The mode and the role shared a name
+            # and nothing else. Intersected, never widened — the same rule
+            # agent grants follow, so selecting read-only can only ever take
+            # tools away from whatever the caller already had.
+            _ro = _rbac.allowed_tools("read-only")
+            if _ro is not None:
+                _allowed = (list(_ro) if _allowed is None
+                            else [t for t in _allowed if t in set(_ro)])
         tools = self.registry.get_ollama_tools(
             include_prefixes=include,
-            allowed_tools=(grants["allowed_tools"] if grants else _rbac.allowed_tools(user_role)),
-            blocked_tools=(grants["blocked_tools"] if grants else _rbac.blocked_tools(user_role)),
+            allowed_tools=_allowed,
+            blocked_tools=_blocked,
         )
         # Offering more tool definitions than the context can hold does not
         # degrade gracefully: the prompt is truncated and the model answers from

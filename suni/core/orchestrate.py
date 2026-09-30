@@ -131,7 +131,7 @@ async def collaborate(task: str, agents: list, event_cb=None,
                 "capable provider (e.g. Claude Code or Codex) to use this mode.")
 
     # The record. Phase events go to the interface and are gone the moment the
-    # turn ends; when Joaquim asked SUNI which models had answered, the honest
+    # turn ends; when someone asked SUNI which models had answered, the honest
     # reply was that no trace of it existed. Now it does, in the same log as
     # everything else, and an operator can check her answer against it.
     log.info("[COLLAB] panel of %d: %s", len(entries),

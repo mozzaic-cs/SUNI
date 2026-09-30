@@ -1,7 +1,7 @@
 """What the panel leaves behind, and what it admits to.
 
-Joaquim asked SUNI, in collaborate mode, which models had produced an answer.
-She said she was a single model and had no record of how the reply was made.
+Asked, in collaborate mode, which models had produced an answer, SUNI said
+she was a single model and had no record of how the reply was made.
 Both halves of that were the code's doing rather than hers: the synthesis
 prompt told her never to mention the other models, and the panel logged
 nothing at all, so no record existed to consult.
