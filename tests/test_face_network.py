@@ -852,3 +852,61 @@ def test_the_field_no_longer_writes_messages_into_its_own_exit_button():
     assert "_netExitBtn.innerHTML" not in fn, (
         "the warning still overwrites the way out"
     )
+
+
+# ── what she is doing ───────────────────────────────────────────────────────
+
+
+def test_the_pool_carries_her_state():
+    """The label was 7.5px at 42% alpha in a corner — smaller than any other
+    text on the page, for the fact a person most wants at a glance. The pool
+    is the brightest thing on screen and already under her, so it carries the
+    state in motion as well."""
+    assert "uniform float u_state;" in MOD
+    body = MOD[MOD.index("_drawFloor(tint) {"):]
+    body = body[:body.index("\n    }\n")]
+    assert "this.fu.state" in body and "this.fu.level" in body
+    assert "_net.state = stateSmooth" in FACE, "the page never tells it"
+    assert "_net.level = mouthOpen" in FACE, (
+        "speaking flares on a timer rather than on her actual voice"
+    )
+
+
+def test_the_states_crossfade_rather_than_switch():
+    """stateSmooth is eased, and the weights are a distance, so two states can
+    be partly true at once and the pool moves between them."""
+    assert "float w(float s)" in MOD
+    assert "1.0 - abs(u_state - s)" in MOD
+
+
+def test_a_nan_can_never_reach_the_floor_shader():
+    """This one cost an hour. The harness passed NaN for the voice level, and
+    a NaN does not misdraw one thing: it is multiplied by a state weight that
+    is usually ZERO, and 0 * NaN is NaN — so it poisoned the sum and then
+    every colour added after it, and the ENTIRE floor disappeared, grid
+    included. The shader compiled and linked perfectly throughout, which is
+    why neither of those checks noticed."""
+    body = MOD[MOD.index("_drawFloor(tint) {"):]
+    body = body[:body.index("\n    }\n")]
+    assert "Number(this.state) || 0" in body, "a non-number still reaches u_state"
+    assert "Number(this.level) || 0" in body, "a non-number still reaches u_level"
+
+
+def test_the_state_word_is_readable():
+    """7.5px at 42% alpha, in the corner, for the one fact that matters most."""
+    css = FACE[FACE.index("#state-label{"):]
+    css = css[:css.index("}")]
+    size = float(re.search(r"font-size:([\d.]+)px", css).group(1))
+    assert size >= 12, f"{size}px is no better than it was"
+    assert "top:56px;left:22px" in css, "it left the corner it belongs in"
+
+
+def test_the_word_announces_a_change_rather_than_only_the_new_state():
+    assert "@keyframes state-turn" in FACE
+    fn = FACE[FACE.index("function setState(s, toolName) {"):][:900]
+    assert "const changed =" in fn, (
+        "the sweep replays on every call, and setState is called repeatedly "
+        "with the same state — that is a flicker, not a signal"
+    )
+    assert "void stateLabel.offsetWidth" in fn, "a CSS animation cannot replay without a reflow"
+    assert "prefers-reduced-motion" in FACE

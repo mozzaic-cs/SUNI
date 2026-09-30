@@ -237,15 +237,41 @@ header{
 @keyframes blink-dot{0%,100%{opacity:1}55%{opacity:.3}}
 
 /* ── STATE LABEL ── */
+/* What she is doing. This was 7.5px at 42% alpha in the top-left corner —
+   smaller than every other piece of text on the page, for the one fact a
+   person most wants at a glance. It now sits under her and travels with her,
+   and the pool she stands in carries the same state in motion. */
 #state-label{
+  /* Back where it was, under the wordmark. Moving it under her put it in the
+     middle of the scene, which is where the field and her face already are —
+     the corner is quiet, and at this size quiet is no longer the same as
+     invisible. */
   position:absolute;top:56px;left:22px;
-  font-family:'Syne',sans-serif;font-size:7.5px;letter-spacing:.26em;
-  text-transform:uppercase;color:var(--dim);z-index:10;
-  transition:color .4s;user-select:none;
+  font-family:'Syne',sans-serif;font-size:14px;font-weight:700;
+  letter-spacing:.24em;text-indent:.24em;
+  text-transform:uppercase;color:rgba(190,205,235,.55);z-index:10;
+  transition:color .45s ease,opacity .45s ease,font-size .3s ease;
+  user-select:none;pointer-events:none;white-space:nowrap;
+  text-shadow:0 0 18px rgba(0,0,0,.9);
 }
-#state-label.thinking{color:var(--cyan)}
-#state-label.speaking{color:var(--gold)}
-#state-label.working{color:#14d98c;font-size:8.5px;letter-spacing:.06em}
+#state-label.thinking{color:var(--cyan);text-shadow:0 0 22px rgba(0,212,255,.55)}
+#state-label.speaking{color:var(--gold);text-shadow:0 0 22px rgba(201,162,39,.55)}
+#state-label.working{color:#14d98c;text-shadow:0 0 22px rgba(20,217,140,.5)}
+#state-label.browsing{color:#b072ff;text-shadow:0 0 22px rgba(176,114,255,.5)}
+/* Idle is the state she is in most of the time, so it is the quietest: still
+   readable, but it does not ask to be looked at. */
+#state-label.idle{opacity:.55;font-size:11.5px}
+/* A sweep across the word when the state changes, so a glance catches the
+   CHANGE and not only the new word. */
+#state-label.turn{animation:state-turn .55s ease-out}
+@keyframes state-turn{
+  0%   {opacity:0;letter-spacing:.8em;filter:blur(5px)}
+  55%  {opacity:1;letter-spacing:.20em;filter:blur(0)}
+  100% {letter-spacing:.24em}
+}
+@media (prefers-reduced-motion: reduce){
+  #state-label.turn{animation:none}
+}
 #state-label.browsing{color:#09bfd8;font-size:8.5px;letter-spacing:.06em}
 
 /* ── LIVE CAPTION (what SUNI is saying) ── */
@@ -1878,6 +1904,12 @@ function renderHead(dt){
     // same 0.5 → 0.87 journey _headBox uses, so the light and the head agree
     // about where she is.
     _net.emitter = 0.5 + 0.37 * _stageT;
+    // The pool tells the same story as the word, in motion: breathing when
+    // idle, rings travelling outward while she thinks, flaring with her own
+    // voice as she speaks. stateSmooth is eased, so it crossfades.
+    _net.state = stateSmooth;
+    _net.level = mouthOpen;
+
     _net.draw(proj, [nc[0] / 255, nc[1] / 255, nc[2] / 255], canvas.height);
     _netPaint();
   }
@@ -2225,9 +2257,19 @@ let   _activeToolName = '';
 
 const _STATE_KEYS = {idle:'orb.idle', thinking:'orb.thinking', speaking:'orb.speaking', working:'orb.working', browsing:'orb.browsing'};
 function setState(s, toolName) {
+  const changed = (state !== s) || (_activeToolName !== (toolName || ''));
   state = s;
   _activeToolName = toolName || '';
   stateLabel.className = s;
+  // The sweep plays on a CHANGE, not on every call: setState is called
+  // repeatedly with the same state, and an animation restarting forever is a
+  // flicker rather than a signal. Re-armed by taking the class off and forcing
+  // a reflow, which is the only way to replay a CSS animation.
+  if (changed) {
+    stateLabel.classList.remove('turn');
+    void stateLabel.offsetWidth;
+    stateLabel.classList.add('turn');
+  }
   stateLabel.textContent = toolName
     ? toolName.replace(/_/g,' ').replace(/^playwright /,'').toUpperCase()
     : (typeof t !== 'undefined' && _STATE_KEYS[s] ? t(_STATE_KEYS[s]) : s.toUpperCase());

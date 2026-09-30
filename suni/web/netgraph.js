@@ -342,6 +342,14 @@
     uniform float u_pan;      /* grid offset, driven by the field's yaw */
     uniform float u_emit;     /* where the projector is, 0..1 across the screen */
     uniform float u_gain;
+    uniform float u_time;
+    uniform float u_state;    /* 0 idle · 1 thinking · 2 speaking · 3 working · 4 browsing */
+    uniform float u_level;    /* her voice, 0..1, while she is speaking */
+
+    /* How much this state counts right now. The page eases between states
+       rather than switching, so at any moment two of these can be partly true
+       and the pool crossfades instead of jumping. */
+    float w(float s) { return max(0.0, 1.0 - abs(u_state - s)); }
 
     void main(){
       vec2 uv = gl_FragCoord.xy / u_res;
@@ -373,8 +381,45 @@
         /* The pool the whole thing is projected out of. Defined as a point ON
            the floor, so perspective flattens it into an ellipse by itself. */
         float poolX = (u_emit - 0.5) * FLOOR_Z_JS * 2.2;
-        float pd = length(vec2(gx - poolX, gz - FLOOR_Z_JS));
+        vec2 rel = vec2(gx - poolX, gz - FLOOR_Z_JS);
+        float pd = length(rel);
         float pool = exp(-pd * pd * 0.20);
+
+        /* ── what she is doing ────────────────────────────────────────────
+           This was a label in a corner at 7.5px and 42% alpha — smaller than
+           anything else on the page, for the one fact a person most wants at
+           a glance. The pool is the brightest thing on screen and it is
+           already under her, so it carries the state instead. */
+        /* atan(0, 0) is undefined in GLSL and the pool's exact centre is
+           that point, so it is nudged off it. This was not the bug that made
+           the floor disappear — that was a NaN arriving from outside — but it
+           is the same hazard and costs nothing to close. */
+        float ang = atan(rel.y, rel.x + 1e-4);
+
+        /* Idle: breathing, about six seconds in and out. Present, asking for
+           nothing, which is what idle is. */
+        float breath = 0.80 + 0.20 * sin(u_time * 1.05);
+
+        /* Thinking: rings travelling outward from the middle. Motion away
+           from the source reads as effort leaving it. */
+        float rings = 0.62 + 0.55 * sin(pd * 2.6 - u_time * 3.6);
+
+        /* Speaking: the pool flares with her actual voice, not a timer. The
+           jaw already follows this signal, so the floor and her mouth move
+           together rather than to two different clocks. */
+        float voice = 0.72 + 1.15 * u_level;
+
+        /* Working: a bar going round, the way anything that is busy and has
+           no idea how long it will take says so. */
+        float turn = mod(ang - u_time * 1.7 + 3.14159, 6.28318) - 3.14159;
+        float sweep = 0.68 + 0.95 * smoothstep(0.6, 0.0, abs(turn));
+
+        /* Browsing: a line crossing back and forth, reading something. */
+        float scan = 0.68 + 0.85 * smoothstep(1.1, 0.0,
+                                              abs(rel.x - sin(u_time * 1.25) * 3.2));
+
+        pool *= w(0.0) * breath + w(1.0) * rings + w(2.0) * voice
+              + w(3.0) * sweep + w(4.0) * scan;
 
         col += tint * grid * far * 0.085;
         col += tint * pool * 0.32;
@@ -852,11 +897,18 @@
           pan:   gl.getUniformLocation(this.fprog, 'u_pan'),
           emit:  gl.getUniformLocation(this.fprog, 'u_emit'),
           gain:  gl.getUniformLocation(this.fprog, 'u_gain'),
+          time:  gl.getUniformLocation(this.fprog, 'u_time'),
+          state: gl.getUniformLocation(this.fprog, 'u_state'),
+          level: gl.getUniformLocation(this.fprog, 'u_level'),
         };
       }
       /* Where the projector is, across the screen. The page sets this each
          frame: she is the source, so it follows her into the corner. */
       this.emitter = 0.5;
+      /* What she is doing, and how loudly. Both set by the page each frame —
+         the state eased rather than switched, so the pool crossfades. */
+      this.state = 0;
+      this.level = 0;
       this.rings = [];        // {kind, rx, ry, col} while the rings layout is on
       this.ok = !!(this.prog && this.lprog);
       if (!this.ok) return;
@@ -1706,6 +1758,14 @@
       // Panned by the yaw, so turning the field drags the floor under it.
       gl.uniform1f(this.fu.pan, this.yaw * 0.85);
       gl.uniform1f(this.fu.emit, this.emitter);
+      gl.uniform1f(this.fu.time, this._t);
+      /* Forced to numbers. A NaN here does not misdraw one thing: it is
+         multiplied by a state weight that is usually zero, and 0 * NaN is
+         NaN, so it poisons the whole sum and then every colour added after
+         it — the entire floor, grid included, silently disappears. The
+         shader still compiles and links, so neither check notices. */
+      gl.uniform1f(this.fu.state, Number(this.state) || 0);
+      gl.uniform1f(this.fu.level, Number(this.level) || 0);
       // The same curve the wash and the guides follow: a hint behind her head,
       // present once the field has the floor. It is another light source, and
       // the last one that arrived at full strength washed out the nodes.
