@@ -52,9 +52,103 @@ def available() -> bool:
         return False
 
 
+# Weights plus the CUDA context and activations, which are most of it.
+_VRAM_NEEDED_MB = {"tiny": 500, "base": 900, "small": 1400,
+                   "medium": 3000, "large-v3": 5000}
+
+# Volta and later. Below this a card has no tensor cores, and half precision is
+# emulated rather than accelerated.
+#
+# THIS NUMBER IS THE WHOLE POINT OF THIS FUNCTION, and it is there because of a
+# measurement rather than a specification. This machine has a second, idle card
+# — a Quadro P600, compute 6.1 — and "use the idle GPU" is the obvious thing to
+# do. Measured on 120 seconds of a real meeting: the CPU took 80.3s and the
+# P600 took 108.2s. The obvious thing was 35% SLOWER. A picker that chose by
+# free memory would have picked it every time.
+_MIN_COMPUTE_CAP = 7.0
+
+
+def _cuda_cards() -> list[dict]:
+    """[{index, name, cap, free_mb}] for each card, best capability first.
+
+    Asked through nvidia-smi: there is no Python binding installed and this is
+    one call. It runs through suni.proc, so asking does not put a console
+    window on someone's screen.
+    """
+    try:
+        from . import proc as _proc
+        r = _proc.run(["nvidia-smi",
+                       "--query-gpu=index,name,compute_cap,memory.free",
+                       "--format=csv,noheader,nounits"],
+                      capture_output=True, text=True, timeout=10)
+        if r.returncode != 0:
+            return []
+        cards = []
+        for line in r.stdout.strip().splitlines():
+            parts = [p.strip() for p in line.split(",")]
+            if len(parts) < 4:
+                continue
+            try:
+                cards.append({"index": int(parts[0]), "name": parts[1],
+                              "cap": float(parts[2]), "free_mb": int(parts[3])})
+            except ValueError:
+                # An older driver that does not know compute_cap. Reporting no
+                # cards is the safe answer: it means the CPU, which works.
+                return []
+        return sorted(cards, key=lambda c: (-c["cap"], -c["free_mb"]))
+    except Exception:      # noqa: BLE001 — no driver, no nvidia-smi, no card
+        return []
+
+
+def _pick_device(name: str) -> tuple[str, int, str]:
+    """(device, index, compute_type) for this model on this machine."""
+    want = str(_cfg.get("meeting_whisper_device", "auto") or "auto").lower()
+    if want == "cpu":
+        return "cpu", 0, "int8"
+
+    cards = _cuda_cards()
+    if not cards:
+        if want == "cuda":
+            log.warning("[TRANSCRIBE] cuda was asked for and no card answered; using the CPU")
+        return "cpu", 0, "int8"
+
+    need = _VRAM_NEEDED_MB.get(name, 1400)
+    forced = int(_cfg.get("meeting_whisper_device_index", -1) or -1)
+
+    if forced >= 0:
+        chosen = next((c for c in cards if c["index"] == forced), None)
+        if chosen is None:
+            log.warning("[TRANSCRIBE] card %d was asked for and is not there; using the CPU", forced)
+            return "cpu", 0, "int8"
+    else:
+        fit = [c for c in cards
+               if c["cap"] >= _MIN_COMPUTE_CAP and c["free_mb"] >= need]
+        if not fit:
+            # Say WHY, with the numbers. "Fell back to CPU" on its own is the
+            # sort of line that gets read as a failure when it is a decision.
+            log.info("[TRANSCRIBE] using the CPU for %r: %s",
+                     name, "; ".join(
+                         f"card {c['index']} ({c['name']}) "
+                         + ("too old, compute %.1f" % c["cap"]
+                            if c["cap"] < _MIN_COMPUTE_CAP
+                            else f"{c['free_mb']} MiB free, needs {need}")
+                         for c in cards))
+            return "cpu", 0, "int8"
+        chosen = fit[0]
+
+    # float16 on a card with tensor cores is the fast path they exist for.
+    return "cuda", chosen["index"], "float16"
+
+
 def _load(model: str = ""):
-    """Load (and keep) the whisper model. CPU, int8 — the quantisation is what
-    makes a CPU pass tolerable rather than an overnight job."""
+    """Load (and keep) the whisper model, on a card when one is worth using.
+
+    This was CPU-only, and on this machine the CPU is a Sandy Bridge Xeon with
+    NO AVX2 — the instruction set every fast inference path is written for. An
+    hour of meeting pinned every core and ran at about 1.5x realtime, so a
+    half-hour recording took twenty minutes and the machine was unusable while
+    it did.
+    """
     global _model, _model_name
     name = model or str(_cfg.get("meeting_whisper_model", "base") or "base")
     if _model is not None and _model_name == name:
@@ -63,7 +157,9 @@ def _load(model: str = ""):
         from faster_whisper import WhisperModel
     except Exception as exc:    # noqa: BLE001
         raise TranscriptionError(f"{_INSTALL_HINT}\n({exc})")
-    log.info("[TRANSCRIBE] loading whisper model %r on CPU (int8)", name)
+    device, index, compute = _pick_device(name)
+    log.info("[TRANSCRIBE] loading whisper %r on %s%s (%s)", name, device,
+             f" card {index}" if device == "cuda" else "", compute)
     # Try the local cache FIRST. Without this, every load contacts the Hugging
     # Face hub to check the model is current — measured at ~174s on this machine
     # against ~2s from disk. SUNI has been bitten by exactly this before: local
@@ -71,13 +167,39 @@ def _load(model: str = ""):
     #
     # The fallback is the download path, so a first run still works; it is only
     # the repeated cost that is removed.
-    try:
-        _model = WhisperModel(name, device="cpu", compute_type="int8",
-                              local_files_only=True)
-        log.info("[TRANSCRIBE] loaded %r from the local cache", name)
-    except Exception:                       # noqa: BLE001 — not cached yet
-        log.info("[TRANSCRIBE] %r not cached; downloading it once", name)
-        _model = WhisperModel(name, device="cpu", compute_type="int8")
+    def _build(dev, idx, comp, cached):
+        kw = {"device": dev, "compute_type": comp}
+        if dev == "cuda":
+            kw["device_index"] = idx
+        if cached:
+            kw["local_files_only"] = True
+        return WhisperModel(name, **kw)
+
+    # The chosen device, then the CPU. A card can be present, capable and still
+    # refuse to load — a driver and a cuDNN that disagree is the usual reason,
+    # and it throws at load rather than at import. Falling back is the whole
+    # difference between slower transcription and none.
+    plan = [(device, index, compute)]
+    if device != "cpu":
+        plan.append(("cpu", 0, "int8"))
+
+    _model = None
+    for dev, idx, comp in plan:
+        try:
+            _model = _build(dev, idx, comp, True)
+            log.info("[TRANSCRIBE] loaded %r from the local cache on %s", name, dev)
+            break
+        except Exception:                   # noqa: BLE001 — or not cached yet
+            try:
+                _model = _build(dev, idx, comp, False)
+                log.info("[TRANSCRIBE] downloaded %r and loaded it on %s", name, dev)
+                break
+            except Exception as exc:        # noqa: BLE001
+                log.warning("[TRANSCRIBE] %s would not load %r (%s); %s", dev, name,
+                            str(exc)[:120],
+                            "trying the CPU" if dev != "cpu" else "giving up")
+    if _model is None:
+        raise TranscriptionError(f"whisper model {name!r} could not be loaded")
     _model_name = name
     return _model
 
