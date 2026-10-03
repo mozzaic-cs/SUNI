@@ -18,51 +18,83 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;
 /* The same nebula and stars /face draws behind her head, in her idle tint. */
 #bg{position:fixed;inset:0;width:100%;height:100%;display:block;pointer-events:none}
 
+/* ── the stage: wordmark over a quiet card ─────────────────────────────── */
+.stage{position:relative;z-index:1;width:100%;max-width:380px;
+  display:flex;flex-direction:column;align-items:center}
+
+/* ── the wordmark ────────────────────────────────────────────────────────
+   The one memorable thing on the page: her name materialises the way her
+   head does on /face. A cyan ghost outline locks on first, then the gold
+   fill sweeps down from the top behind a thin bright edge, the letters made
+   of scanlines. The ghost stays as a faint cyan fringe on the left, the
+   misregistration of a projection. No glitch jitter, no violet, and the
+   edge stays thin: a wide bright band reads as a blowout, not an edge. */
+.mark{position:relative;display:inline-block;margin-bottom:10px;
+  font-family:'Syne',sans-serif;font-weight:800;text-transform:uppercase;
+  font-size:clamp(44px,15vw,76px);line-height:1;letter-spacing:.06em}
+.mark .fill{
+  font:inherit;letter-spacing:inherit;color:transparent;
+  background:repeating-linear-gradient(to bottom,#f0c040 0 2px,#b08c1e 2px 3px);
+  -webkit-background-clip:text;background-clip:text;
+  filter:drop-shadow(0 0 18px rgba(201,162,39,.42));
+  animation:mark-fill 1.1s cubic-bezier(.45,0,.2,1) .5s both;
+}
+.mark .ghost{
+  position:absolute;inset:0;transform:translateX(-1.5px);pointer-events:none;
+  /* a filled silhouette, not -webkit-text-stroke: Syne's N is built from
+     overlapping contours and a stroke draws the overlap as a triangle */
+  color:rgba(0,212,255,.30);text-shadow:0 0 14px rgba(0,212,255,.55);
+  animation:mark-lock .5s ease-out both, mark-settle .8s ease-out 1.6s both;
+}
+.mark .edge{
+  position:absolute;left:-8%;right:-8%;height:2px;top:0;pointer-events:none;
+  background:linear-gradient(90deg,transparent,rgba(255,240,190,.95),transparent);
+  box-shadow:0 0 14px rgba(240,192,64,.7);
+  animation:mark-edge 1.1s cubic-bezier(.45,0,.2,1) .5s both;
+}
+@keyframes mark-lock{
+  0%  {opacity:0;transform:translateX(-1.5px) scale(1.06);filter:blur(5px)}
+  100%{opacity:1;transform:translateX(-1.5px) scale(1);filter:blur(0)}
+}
+@keyframes mark-settle{to{opacity:.45}}
+@keyframes mark-fill{
+  from{clip-path:inset(-40% -10% 140% -10%)}
+  to  {clip-path:inset(-40% -10% -40% -10%)}
+}
+@keyframes mark-edge{
+  0%  {top:0;opacity:0}
+  8%  {opacity:1}
+  90% {opacity:1}
+  100%{top:100%;opacity:0}
+}
+.tagline{font-size:12px;letter-spacing:.02em;color:#8fa6b8;margin-bottom:32px;text-align:center}
+
 /* ── the card ────────────────────────────────────────────────────────────
    /face's hologram material (its notice and camera panel): translucent,
    scanlined, a rim that reads as projected rather than drawn. It arrives out
-   of focus and settles, with one bright line sweeping down it — her
-   materialise, at the size of a form. */
+   of focus and settles while the name is still drawing. */
 .card{
-  width:100%;max-width:380px;padding:44px 40px;position:relative;z-index:1;overflow:hidden;
+  width:100%;padding:32px;position:relative;overflow:hidden;
   background:linear-gradient(180deg,rgba(6,22,36,.80),rgba(4,12,24,.88));
   border:1px solid rgba(0,212,255,.40);border-radius:6px;
   box-shadow:inset 0 0 0 1px rgba(0,212,255,.10),
              0 18px 60px rgba(0,0,0,.65), 0 0 90px rgba(0,170,255,.14);
   backdrop-filter:blur(10px) saturate(1.2);-webkit-backdrop-filter:blur(10px) saturate(1.2);
-  animation:holo-in .6s cubic-bezier(.2,.9,.25,1) both;
+  animation:holo-in .6s cubic-bezier(.2,.9,.25,1) .9s both;
 }
 .card::before{
   content:'';position:absolute;inset:0;pointer-events:none;
   background:repeating-linear-gradient(to bottom,
              rgba(0,212,255,.055) 0 1px, transparent 1px 3px);
 }
-.card::after{
-  content:'';position:absolute;left:0;right:0;height:2px;top:-2px;pointer-events:none;
-  background:linear-gradient(90deg,transparent,rgba(130,242,255,.95),transparent);
-  animation:holo-sweep 1.1s ease-out .1s both;
-}
 @keyframes holo-in{
-  0%   {opacity:0;transform:scale(.92);filter:blur(7px)}
-  62%  {opacity:1;transform:scale(1.012);filter:blur(0)}
+  0%   {opacity:0;transform:scale(.96);filter:blur(7px)}
+  62%  {opacity:1;transform:scale(1.006);filter:blur(0)}
   100% {opacity:1;transform:scale(1);filter:blur(0)}
 }
-@keyframes holo-sweep{
-  0%   {top:-2px;opacity:0}
-  12%  {opacity:1}
-  100% {top:100%;opacity:0}
-}
-
-.logo{
-  font-family:'Syne',sans-serif;font-size:26px;font-weight:800;
-  letter-spacing:.08em;color:#c9a227;text-transform:uppercase;
-  margin-bottom:4px;
-  text-shadow:0 0 22px rgba(201,162,39,.55),0 0 2px rgba(240,192,64,.35);
-}
-.tagline{font-size:11px;letter-spacing:.04em;color:#8fa6b8;margin-bottom:36px}
 
 .field{display:flex;flex-direction:column;gap:6px;margin-bottom:18px}
-label{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.55)}
+label{font-size:12px;color:rgba(255,255,255,.66)}
 input{
   background:rgba(0,0,0,.35);border:1px solid rgba(0,212,255,.18);
   color:#e3eef6;padding:10px 13px;border-radius:4px;
@@ -70,15 +102,14 @@ input{
   transition:border-color .2s,box-shadow .2s;width:100%;
 }
 input:focus{border-color:rgba(0,212,255,.7);box-shadow:0 0 0 1px rgba(0,212,255,.18),0 0 16px rgba(0,212,255,.22)}
-input::placeholder{color:#8fa6b8}
 
-.remember{display:flex;align-items:center;gap:8px;margin-bottom:24px;font-size:11px;color:#8fa6b8;cursor:pointer}
+.remember{display:flex;align-items:center;gap:8px;margin-bottom:24px;font-size:12px;color:#8fa6b8;cursor:pointer}
 .remember input[type=checkbox]{accent-color:#c9a227;width:14px;height:14px}
 
 .btn{
   width:100%;padding:11px;background:#c9a227;color:#080808;
-  font-family:'Syne',sans-serif;font-size:12px;font-weight:700;
-  letter-spacing:.12em;text-transform:uppercase;border:none;border-radius:4px;
+  font-family:'Syne',sans-serif;font-size:14px;font-weight:700;
+  letter-spacing:.02em;border:none;border-radius:4px;
   cursor:pointer;transition:background .2s,box-shadow .2s;
 }
 .btn:hover{background:#e8c547;box-shadow:0 0 22px rgba(201,162,39,.45)}
@@ -91,7 +122,7 @@ input::placeholder{color:#8fa6b8}
 .btn.sso:hover{background:rgba(0,212,255,.16);box-shadow:0 0 18px rgba(0,212,255,.25)}
 .divider{
   display:flex;align-items:center;gap:10px;margin:0 0 16px;
-  font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#8fa6b8;
+  font-size:12px;color:#8fa6b8;
 }
 .divider::before,.divider::after{content:'';flex:1;height:1px;background:rgba(0,212,255,.16)}
 
@@ -99,7 +130,7 @@ input::placeholder{color:#8fa6b8}
 .error{
   display:none;margin-top:14px;padding:9px 12px;border-radius:4px;
   background:rgba(40,12,10,.6);border:1px solid rgba(255,120,90,.5);
-  color:#ffb4a2;font-size:11px;text-shadow:0 0 12px rgba(255,120,90,.4);
+  color:#ffb4a2;font-size:12px;
 }
 .error.show{display:block}
 
@@ -111,19 +142,28 @@ input::placeholder{color:#8fa6b8}
 
 /* Somebody who has asked for less motion gets the look without the motion. */
 @media (prefers-reduced-motion: reduce){
-  .card{animation:none}
-  .card::after{display:none}
+  .card,.mark .fill,.mark .ghost{animation:none}
+  .mark .ghost{opacity:.45}
+  .mark .edge{display:none}
 }
+/* keyboard focus stays visible on everything you can tab to */
+.btn:focus-visible,.remember input:focus-visible{outline:2px solid #00d4ff;outline-offset:2px}
 </style>
 </head>
 <body>
 <canvas id="bg" aria-hidden="true"></canvas>
+<main class="stage">
+  <div class="mark">
+    <span class="ghost" aria-hidden="true" data-brand>SUNI</span>
+    <h1 class="fill" data-brand>SUNI</h1>
+    <span class="edge" aria-hidden="true"></span>
+  </div>
+  <p class="tagline" id="brand-tagline">System of Unified Networked Intelligence</p>
+
 <div class="card">
-  <div class="logo" id="brand-name">SUNI</div>
-  <div class="tagline" id="brand-tagline">System of Unified Networked Intelligence</div>
 
   <div id="setup-note" class="setup-note" style="display:none">
-    First run detected. Creating the admin account below will set up SUNI for multi-user access.
+    Nobody has signed in here yet. The account you create now becomes the administrator.
   </div>
 
   <a id="sso-btn" class="btn sso" href="#" style="display:none">Sign in with <span id="sso-name">SSO</span></a>
@@ -131,24 +171,25 @@ input::placeholder{color:#8fa6b8}
 
   <form id="login-form">
     <div class="field">
-      <label>Username</label>
-      <input type="text" id="username" autocomplete="username" placeholder="your username" required>
+      <label for="username">Username</label>
+      <input type="text" id="username" autocomplete="username" required>
     </div>
     <div class="field">
-      <label id="pw-label">Password</label>
-      <input type="password" id="password" autocomplete="current-password" placeholder="••••••••" required>
+      <label id="pw-label" for="password">Password</label>
+      <input type="password" id="password" autocomplete="current-password" required>
     </div>
     <div id="confirm-wrap" class="field" style="display:none">
-      <label>Confirm password</label>
-      <input type="password" id="confirm" placeholder="••••••••">
+      <label for="confirm">Confirm password</label>
+      <input type="password" id="confirm" autocomplete="new-password">
     </div>
     <label class="remember">
       <input type="checkbox" id="remember"> Keep me signed in for 30 days
     </label>
     <button type="submit" class="btn" id="submit-btn">Sign in</button>
-    <div class="error" id="error-msg"></div>
+    <div class="error" id="error-msg" role="alert"></div>
   </form>
 </div>
+</main>
 
 <script>
 /* ── background: /face's nebula + parallax stars ─────────────────────────
@@ -257,7 +298,7 @@ if (_qerr) {
     // The sign-in screen spells out what SUNI stands for; the configured
     // tagline still shows in the app headers. A rebranded instance gets its
     // own tagline here too, since the expansion only fits the name SUNI.
-    if (s.display_name) document.getElementById('brand-name').textContent = s.display_name;
+    if (s.display_name) document.querySelectorAll('[data-brand]').forEach(e => e.textContent = s.display_name);
     if (s.display_name && s.display_name.trim().toUpperCase() !== 'SUNI')
       document.getElementById('brand-tagline').textContent = s.tagline || '';
     const next = new URLSearchParams(location.search).get('next') || '/';
@@ -288,8 +329,8 @@ document.getElementById('login-form').addEventListener('submit', async e => {
   try {
     if (isSetup) {
       const confirm = document.getElementById('confirm').value;
-      if (password !== confirm) { throw new Error('Passwords do not match'); }
-      if (password.length < 8) { throw new Error('Password must be at least 8 characters'); }
+      if (password !== confirm) { throw new Error("The two passwords don't match. Type the same one in both fields."); }
+      if (password.length < 8) { throw new Error('Use a password of at least 8 characters.'); }
       // First-run: create admin
       const r = await fetch('/api/auth/setup', {
         method: 'POST',
@@ -304,8 +345,11 @@ document.getElementById('login-form').addEventListener('submit', async e => {
       form.append('username', username);
       form.append('password', password);
       const r = await fetch('/api/auth/login', {method:'POST', body:form});
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.detail || 'Invalid credentials');
+      const d = await r.json().catch(() => ({}));
+      // Say what went wrong and what to do; the API's wording is for clients.
+      if (r.status === 401) throw new Error("That username and password don't match. Check both and try again.");
+      if (r.status === 429) throw new Error('Too many attempts. Wait a minute, then try again.');
+      if (!r.ok) throw new Error(d.detail || 'Sign-in failed. Try again in a moment.');
       storeAndRedirect(d);
     }
   } catch(ex) {
