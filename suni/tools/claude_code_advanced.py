@@ -73,13 +73,19 @@ async def _run_claude(args: list[str], timeout: int = 300, cwd: str | None = Non
             stderr=asyncio.subprocess.PIPE,
             env=env,
             cwd=cwd,
+            **_proc.own_group(),
         )
         try:
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
             return proc.returncode, stdout.decode("utf-8", errors="replace"), stderr.decode("utf-8", errors="replace")
         except asyncio.TimeoutError:
-            proc.kill()
+            _proc.kill_tree(proc)
             return 1, "", f"Claude Code timed out after {timeout}s"
+        except BaseException:
+            # Cancelled (the stop button, a dropped client): the CLI must die
+            # with the request, or it carries on working with nobody watching.
+            _proc.kill_tree(proc)
+            raise
     finally:
         if _stdin is not None:
             _stdin.close()
@@ -132,6 +138,7 @@ async def _run_claude_stream(args: list[str], on_line, timeout: int = 300,
             stderr=asyncio.subprocess.PIPE,
             env=env,
             cwd=cwd,
+            **_proc.own_group(),
         )
 
         async def _pump() -> None:
@@ -166,8 +173,13 @@ async def _run_claude_stream(args: list[str], on_line, timeout: int = 300,
             await asyncio.wait_for(_pump(), timeout=timeout)
             await asyncio.wait_for(proc.wait(), timeout=30)
         except asyncio.TimeoutError:
-            proc.kill()
+            _proc.kill_tree(proc)
             return 1, "\n".join(out_parts), f"Claude Code timed out after {timeout}s"
+        except BaseException:
+            # Cancelled: see _run_claude. Measured: without this, claude.exe
+            # was still running 4s after the request was cancelled.
+            _proc.kill_tree(proc)
+            raise
 
         stderr_b = b""
         try:

@@ -102,12 +102,17 @@ async def _run_codex(prompt: str, timeout: int = 300, cwd: str | None = None,
             stderr=asyncio.subprocess.PIPE,
             env=env,
             cwd=cwd or _CODEX_HOME,
+            **_proc.own_group(),
         )
         try:
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         except asyncio.TimeoutError:
-            proc.kill()
+            _proc.kill_tree(proc)
             return 1, "", f"Codex timed out after {timeout}s"
+        except BaseException:
+            # cancelled: the CLI must not outlive the request (see proc.kill_tree)
+            _proc.kill_tree(proc)
+            raise
         # Prefer the clean final-message file; fall back to stdout.
         final = ""
         try:

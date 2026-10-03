@@ -21,7 +21,8 @@ import asyncio
 import subprocess
 import sys
 
-__all__ = ["no_window", "run", "exec_", "shell", "CREATE_NO_WINDOW"]
+__all__ = ["no_window", "run", "exec_", "shell", "CREATE_NO_WINDOW",
+           "own_group", "kill_tree"]
 
 # 0 on every platform that has no such concept, so it can be OR-ed into other
 # creation flags without a branch at the call site.
@@ -48,6 +49,48 @@ def run(*args, **kwargs):
 async def exec_(*args, **kwargs):
     """asyncio.create_subprocess_exec, minus the window."""
     return await asyncio.create_subprocess_exec(*args, **no_window(**kwargs))
+
+
+def own_group(**kwargs):
+    """Keyword arguments that make the child the head of its own process group
+    on POSIX, so kill_tree can take its descendants with it. Windows needs
+    nothing here: taskkill /T walks the tree by parent id."""
+    if sys.platform != "win32":
+        kwargs["start_new_session"] = True
+    return kwargs
+
+
+def kill_tree(proc) -> None:
+    """Kill a child AND everything it started, then return without waiting.
+
+    proc.kill() alone is not enough for the agent CLIs. Measured 2026-10-03:
+    cancelling a Claude Code run left claude.exe running 4s later, because
+    nothing killed it on cancellation at all, and on timeout only the direct
+    child dies while the shells and test runners it launched keep going. With
+    edit rights that means pressing stop does not stop the edits.
+    """
+    if proc is None or proc.returncode is not None:
+        return
+    pid = proc.pid
+    try:
+        if sys.platform == "win32":
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)],
+                           capture_output=True, **no_window())
+        else:
+            import os
+            import signal
+            try:
+                if os.getpgid(pid) == pid:      # started with own_group()
+                    os.killpg(pid, signal.SIGKILL)
+                    return
+            except (ProcessLookupError, PermissionError):
+                pass
+            proc.kill()
+    except Exception:       # noqa: BLE001 — best effort; never mask the caller's error
+        try:
+            proc.kill()
+        except Exception:   # noqa: BLE001
+            pass
 
 
 async def shell(cmd, **kwargs):

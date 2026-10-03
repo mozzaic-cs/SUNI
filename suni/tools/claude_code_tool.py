@@ -77,6 +77,7 @@ async def handler(
     with os.fdopen(_fd, "w", encoding="utf-8") as _f:
         _f.write(task)
     _stdin = open(_tmp_path, "rb")
+    proc = None
     try:
         proc = await _proc.exec_(
             *cmd,
@@ -84,8 +85,14 @@ async def handler(
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=working_dir,
+            **_proc.own_group(),
         )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        except BaseException:
+            # timeout or cancellation: the CLI and what it started die with it
+            _proc.kill_tree(proc)
+            raise
         output = stdout.decode(errors="replace").strip()
         err = stderr.decode(errors="replace").strip()
 
