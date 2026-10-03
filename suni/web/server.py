@@ -2781,6 +2781,14 @@ def create_app() -> FastAPI:
         return Response(content=I18N_FILE.read_text(encoding="utf-8"),
                         media_type="application/javascript; charset=utf-8")
 
+    # Every page's browser asks for this on its own; without it each load
+    # logged a 404. Public like the login page it first appears on.
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon():
+        return Response(content=(Path(__file__).parent / "favicon.ico").read_bytes(),
+                        media_type="image/x-icon",
+                        headers={"Cache-Control": "public, max-age=86400"})
+
     @app.get("/netgraph.js")
     async def netgraph_js():
         return Response(
