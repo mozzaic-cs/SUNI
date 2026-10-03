@@ -24,7 +24,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;
   letter-spacing:.08em;color:#c9a227;text-transform:uppercase;
   margin-bottom:4px;
 }
-.tagline{font-size:11px;letter-spacing:.12em;color:#8c8878;margin-bottom:36px}
+.tagline{font-size:11px;letter-spacing:.04em;color:#8c8878;margin-bottom:36px}
 
 .field{display:flex;flex-direction:column;gap:6px;margin-bottom:18px}
 label{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.5)}
@@ -77,7 +77,7 @@ input::placeholder{color:#8c8878}
 <body>
 <div class="card">
   <div class="logo" id="brand-name">SUNI</div>
-  <div class="tagline" id="brand-tagline"></div>
+  <div class="tagline" id="brand-tagline">System of Unified Networked Intelligence</div>
 
   <div id="setup-note" class="setup-note" style="display:none">
     First run detected. Creating the admin account below will set up SUNI for multi-user access.
@@ -130,8 +130,12 @@ if (_qerr) {
     const s = await (await fetch('/api/auth/status')).json();
     // Branding is operator-configurable (Admin -> Configuration -> Identity).
     // The login page cannot read /api/config, so it comes through auth/status.
+    // The sign-in screen spells out what SUNI stands for; the configured
+    // tagline still shows in the app headers. A rebranded instance gets its
+    // own tagline here too, since the expansion only fits the name SUNI.
     if (s.display_name) document.getElementById('brand-name').textContent = s.display_name;
-    document.getElementById('brand-tagline').textContent = s.tagline || '';
+    if (s.display_name && s.display_name.trim().toUpperCase() !== 'SUNI')
+      document.getElementById('brand-tagline').textContent = s.tagline || '';
     const next = new URLSearchParams(location.search).get('next') || '/';
     if (s.oidc_enabled && !isSetup) {
       const b = document.getElementById('sso-btn');
