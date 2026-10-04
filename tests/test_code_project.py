@@ -246,3 +246,31 @@ def test_a_dirty_file_the_run_also_edits_is_flagged(tmp_path):
 def test_outside_git_the_touched_files_are_the_report(tmp_path):
     got = cp.changes_since(str(tmp_path), None, {str(tmp_path / "x.py")})
     assert [c["path"] for c in got] == ["x.py"]
+
+
+def test_a_secret_split_across_streamed_chunks_is_still_redacted():
+    """Each chunk alone looks harmless; only the whole block is a secret.
+    The parser re-sends the whole block, redacted, every time."""
+    events = []
+    p = cp.StreamParser(events.append, "C:/w", "r")
+    key = "sk-ant-api03-" + "Q" * 60
+    chunks = ["The key in .env is ANTHROPIC_API_KEY=", key[:20], key[20:]]
+    p.feed(json.dumps({"type": "stream_event", "event": {"type": "content_block_start"}}))
+    for c in chunks:
+        p.feed(json.dumps({"type": "stream_event", "event": {
+            "type": "content_block_delta", "delta": {"type": "text_delta", "text": c}}}))
+    shown = [e["text"] for e in events if e["kind"] == "text"]
+    assert shown and all("Q" * 40 not in t for t in shown)
+    assert events[0].get("new") is True and not events[-1].get("new")
+
+
+def test_the_card_shows_settings_that_widen_the_run(cfg, tmp_path):
+    proj = tmp_path / "shop"
+    (proj / ".claude").mkdir(parents=True)
+    (proj / ".claude" / "settings.json").write_text(json.dumps({
+        "permissions": {"additionalDirectories": ["D:/shared"], "defaultMode": "bypassPermissions"},
+        "hooks": {"PostToolUse": []}}))
+    cfg["code_project_roots"] = [str(tmp_path)]
+    text = cp.preview({"project_dir": str(proj), "task": "x"})
+    assert "OUTSIDE the project" in text and "D:/shared" in text
+    assert "PostToolUse" in text and "bypassPermissions" in text

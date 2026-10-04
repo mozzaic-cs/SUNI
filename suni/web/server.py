@@ -237,8 +237,10 @@ def get_current_user(
     raw_token = raw_token or x_api_key or ""
 
     # Static service token (backward compat for MCP and scripts)
+    # "auth": "token" marks a script, not a person signed in to a browser.
+    # Approvals that need a human (approval.NEVER_TRUSTED) check it.
     if raw_token == _API_TOKEN:
-        return _SERVICE_USER
+        return {**_SERVICE_USER, "auth": "token"}
 
     # JWT (browser users)
     user = _auth.verify_token(raw_token)
@@ -248,7 +250,7 @@ def get_current_user(
     # Per-user API token (programmatic access)
     user = _auth.verify_api_token(raw_token)
     if user:
-        return user
+        return {**user, "auth": "token"}
 
     raise HTTPException(status_code=401, detail="Not authenticated")
 
@@ -2988,6 +2990,12 @@ def create_app() -> FastAPI:
         decision = str(body.get("decision", "deny")).lower()
         if decision not in ("allow", "deny"):
             raise HTTPException(400, "decision must be 'allow' or 'deny'")
+        # The service token and per-user API tokens can open /api/chat AND
+        # answer approvals, so a script could start a coding run and approve
+        # it itself. A NEVER_TRUSTED tool waits for a person in a browser.
+        if (decision == "allow" and user.get("auth") == "token"
+                and _ap.pending_tool(approval_id) in _ap.NEVER_TRUSTED):
+            raise HTTPException(403, "This needs approving by a signed-in person, not an API token.")
         always = bool(body.get("always_allow", False))
 
         ok = _ap.resolve_approval(approval_id, decision, user_id=user["id"])

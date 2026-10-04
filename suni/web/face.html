@@ -3658,7 +3658,7 @@ _stageBtn.addEventListener('click', () => _setStage(!_stageMode));
 // Fed by `term` events from the code_task tool. The prompt line sends what you
 // type to Claude Code in the same project (the server's code follow-up path),
 // approved like any run. TERM_BUILD tells "didn't work" from "didn't load".
-const TERM_BUILD = '2026-10-03a';
+const TERM_BUILD = '2026-10-04a';
 console.log('[term] build', TERM_BUILD);
 const _ccTerm = (() => {
   const slot = document.getElementById('stage-term');
@@ -3746,9 +3746,11 @@ const _ccTerm = (() => {
       return;
     }
     if (!el) return;
-    if (ev.kind === 'delta') {
-      if (!textEl) { textEl = mk('div', 'cc-text'); textEl._raw = ''; add(textEl); }
-      const s = stick(); textEl._raw += ev.text || ''; renderMd(textEl, textEl._raw);
+    if (ev.kind === 'text') {
+      // The server sends the whole block so far, already redacted; the
+      // terminal replaces what it shows rather than appending chunks.
+      if (!textEl || ev.new || ev.whole) { textEl = mk('div', 'cc-text'); add(textEl); }
+      const s = stick(); renderMd(textEl, String(ev.text || ''));
       if (s) body.scrollTop = body.scrollHeight;
     } else if (ev.kind === 'tool') {
       textEl = null;

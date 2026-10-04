@@ -730,6 +730,34 @@ class Orchestrator:
         _log.info("[REQUEST] %r  ctx~%d tok  role=%s mode=%s",
                   user_input[:120], ctx_tokens, user_role, conv_mode)
 
+        # ── coding work in a named project: before every other route ──
+        # A line typed into the /face terminal, or a message naming a folder
+        # inside code_project_roots, goes to Claude Code in that folder.
+        # Ahead of task mode, collaborate and the forced Claude Code route,
+        # each of which returns first and would otherwise swallow it: with
+        # force_claude_code on (as it is on the reference box) every turn went
+        # to the CLI in the home folder, with no edit rights, and code_task was
+        # unreachable from chat. Measured, not assumed.
+        if "code_task" in self.registry.names():
+            from ..tools import code_project as _cp
+            _code = _cp.CODE_FOLLOWUP.get()
+            if not _code:
+                _proj = _cp.project_in(user_input)
+                _code = {"project_dir": _proj} if _proj else None
+            if _code:
+                ts = time.perf_counter()
+                reply = await self._handle_code_followup(
+                    user_input, _code, user_id, user_role, event_cb,
+                    conv_mode == "read-only")
+                context.add(Message(role=Role.USER, content=user_input))
+                context.add(reply)
+                if _mem:
+                    await _mem.add_exchange(user_input, reply.content)
+                # (_tick is defined further down, so log the timing directly)
+                _log.info("[CODE] %s handled in %.1fs", _code.get("project_dir"),
+                          time.perf_counter() - ts)
+                return reply.content
+
         # Task mode: handle approve/cancel responses to a pending plan
         if conv_mode == "task" and context.get("pending_plan"):
             answer = _read_plan_reply(user_input)
@@ -1090,18 +1118,8 @@ class Orchestrator:
             r'from\s+this\s+(page|site|url)|based\s+on\s+this\s+(page|url))\b',
             user_input, re.IGNORECASE,
         ))
-        # ── terminal follow-up: a line typed into the /face terminal ──
-        # goes to Claude Code in that project, not to the model.
-        from ..tools.code_project import CODE_FOLLOWUP as _CODE_FU
-        _code_fu = _CODE_FU.get()
-        if _code_fu and "code_task" in self.registry.names():
-            ts = time.perf_counter()
-            response = await self._handle_code_followup(
-                user_input, _code_fu, user_id, user_role, event_cb, _readonly)
-            context.add(response)
-            _tick("code follow-up", ts)
         # ── direct vision path (image attachment + VLM configured) ────
-        elif images and _vision.enabled():
+        if images and _vision.enabled():
             ts = time.perf_counter()
             response = await self._handle_vision_direct(user_input, images, trace)
             context.add(response)
@@ -1657,6 +1675,11 @@ class Orchestrator:
         # the session id is for SUNI, not for reading aloud
         shown = "\n".join(l for l in result.splitlines()
                           if not l.startswith("[code session:")).strip()
+        # The tool loop scans every result; this path bypasses the loop, and
+        # its reply reaches the chat, speech and memory. Claude's summary can
+        # quote a file it read.
+        from .. import output_guard as _og
+        shown, _ = _og.scan("code_task", shown)
         return _msg(shown)
 
     async def _handle_email_direct(

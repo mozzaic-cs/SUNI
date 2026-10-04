@@ -110,6 +110,26 @@ def resolve_project(path: str) -> tuple[str | None, str]:
     return None, f"{real} is outside the folders allowed for coding work."
 
 
+_PATH_RE = re.compile(r'"([^"\n]+)"|\'([^\'\n]+)\'|([A-Za-z]:[\\/][^\s"\'<>|?*]*|~?/[^\s"\'<>|?*]+)')
+
+
+def project_in(text: str) -> str | None:
+    """The first folder named in `text` that lies inside an allowed root, or
+    None. Quoted paths may contain spaces; bare ones lose trailing
+    punctuation. Only a path that resolves inside code_project_roots counts,
+    so this never fires while coding work is off."""
+    if not _roots():
+        return None
+    for m in _PATH_RE.finditer(text or ""):
+        cand = (m.group(1) or m.group(2) or m.group(3) or "").strip().rstrip(".,;:!?)]}")
+        if not cand or not re.search(r"[\\/]", cand):
+            continue
+        real, _ = resolve_project(cand)
+        if real:
+            return real
+    return None
+
+
 def _commands() -> list[str]:
     raw = _cfg.get("code_allowed_commands")
     cmds = raw if isinstance(raw, list) and raw else DEFAULT_COMMANDS
@@ -124,15 +144,29 @@ def allowed_tools_arg() -> str:
     return ",".join(rules)
 
 
-def project_settings_allows(real: str) -> list[str]:
-    """Allow rules from the project's shared .claude/settings.json. They still
-    apply under --setting-sources project, so the card has to show them."""
+def project_settings(real: str) -> dict:
+    """What the project's shared .claude/settings.json adds to a run. It still
+    loads under --setting-sources project, so the card must show anything in
+    it that widens what Claude Code may do: extra allow rules, extra folders
+    it may write to, hooks (which run commands), and a default mode."""
     try:
         d = json.loads((Path(real) / ".claude" / "settings.json").read_text(encoding="utf-8"))
-        allow = (d.get("permissions") or {}).get("allow") or []
-        return [str(a) for a in allow][:40]
-    except (OSError, ValueError, AttributeError):
-        return []
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(d, dict):
+        return {}
+    perm = d.get("permissions") if isinstance(d.get("permissions"), dict) else {}
+    hooks = d.get("hooks") if isinstance(d.get("hooks"), dict) else {}
+    return {
+        "allow": [str(a) for a in (perm.get("allow") or [])][:40],
+        "dirs": [str(a) for a in (perm.get("additionalDirectories") or [])][:20],
+        "hooks": sorted(str(k) for k in hooks)[:20],
+        "mode": str(perm.get("defaultMode") or ""),
+    }
+
+
+def project_settings_allows(real: str) -> list[str]:
+    return project_settings(real).get("allow", [])
 
 
 def preview(args: dict) -> str:
@@ -146,10 +180,17 @@ def preview(args: dict) -> str:
     lines.append("Claude Code may edit files in this folder, and run:")
     lines.append("  " + ", ".join(c.replace(":*", "") for c in _commands()))
     lines.append("Running tests or builds executes the project's own code.")
-    extra = project_settings_allows(real) if real else []
-    if extra:
+    ps = project_settings(real) if real else {}
+    if ps.get("allow"):
         lines.append("The project's .claude/settings.json also allows:")
-        lines.append("  " + ", ".join(extra))
+        lines.append("  " + ", ".join(ps["allow"]))
+    if ps.get("dirs"):
+        lines.append("It also lets Claude Code work in these folders, OUTSIDE the project:")
+        lines.append("  " + ", ".join(ps["dirs"]))
+    if ps.get("hooks"):
+        lines.append("It has hooks that run commands on: " + ", ".join(ps["hooks"]))
+    if ps.get("mode"):
+        lines.append(f"Its default permission mode ({ps['mode']}) is overridden by acceptEdits.")
     if args.get("resume_latest"):
         lines.append("Continues the most recent Claude Code session in this folder.")
     lines.append("")
@@ -332,6 +373,10 @@ class StreamParser:
         self.session_id = ""
         self._delta_msgs: set[str] = set()
         self._cur_msg = ""
+        # The text block being streamed. Each delta re-sends the WHOLE block,
+        # redacted, and the terminal replaces what it shows: a secret split
+        # across two deltas is invisible to a per-chunk scan.
+        self._block = ""
 
     def _ev(self, kind: str, **kw) -> None:
         try:
@@ -356,11 +401,15 @@ class StreamParser:
             ev = d.get("event") or {}
             if ev.get("type") == "message_start":
                 self._cur_msg = (ev.get("message") or {}).get("id", "")
+            elif ev.get("type") == "content_block_start":
+                self._block = ""
             elif ev.get("type") == "content_block_delta":
                 delta = ev.get("delta") or {}
                 if delta.get("type") == "text_delta" and delta.get("text"):
                     self._delta_msgs.add(self._cur_msg)
-                    self._ev("delta", text=delta["text"])
+                    first = not self._block
+                    self._block += delta["text"]
+                    self._ev("text", text=_redact("term", self._block), new=first)
         elif t == "assistant":
             msg = d.get("message") or {}
             for b in msg.get("content") or []:
@@ -373,12 +422,13 @@ class StreamParser:
                         fp = inp.get("file_path") or inp.get("notebook_path")
                         if fp:
                             self.touched.add(str(fp))
+                    self._block = ""
                     self._ev("tool", id=b.get("id", ""), name=name,
                              summary=_redact(name, tool_summary(name, inp, self.real)))
                 elif b.get("type") == "text" and msg.get("id") not in self._delta_msgs:
                     # partial messages off, or a block that never streamed
                     if b.get("text"):
-                        self._ev("delta", text=b["text"])
+                        self._ev("text", text=_redact("term", b["text"]), whole=True)
         elif t == "user":
             content = (d.get("message") or {}).get("content")
             if not isinstance(content, list):
@@ -499,18 +549,24 @@ async def handler(project_dir: str, task: str, new_session: bool = False,
         from .. import usage as _usage
         _usage.record_model("claude-code (CLI, model chosen by the CLI)")
 
-        before = snapshot(real)
+        before = await asyncio.to_thread(snapshot, real)
         timeout = int(_cfg.get("code_task_timeout", 1800) or 1800)
         t0 = time.monotonic()
         try:
             rc, stdout, stderr = await _run_claude_stream(
                 args, parser.feed, timeout=timeout, cwd=real, stdin_data=task)
         except asyncio.CancelledError:
-            parser._ev("end", ok=False, stopped=True,
-                       changes=changes_since(real, before, parser.touched))
+            # shielded: the request is being cancelled, but what the run had
+            # already changed is worth one last look
+            try:
+                ch = await asyncio.shield(asyncio.to_thread(
+                    changes_since, real, before, parser.touched))
+            except BaseException:      # noqa: BLE001
+                ch = []
+            parser._ev("end", ok=False, stopped=True, changes=ch)
             raise
 
-        changes = changes_since(real, before, parser.touched)
+        changes = await asyncio.to_thread(changes_since, real, before, parser.touched)
         res = parser.result
         if res:
             try:

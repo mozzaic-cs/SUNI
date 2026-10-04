@@ -677,6 +677,11 @@ def cancel_all_for_user(user_id: str) -> int:
     return count
 
 
+def pending_tool(approval_id: str) -> str:
+    """The tool a pending approval is for, or "" if there is none."""
+    return str((_pending.get(approval_id) or {}).get("tool", ""))
+
+
 def pending_for_user(user_id: str) -> list[dict]:
     return [
         {"id": aid, "tool": e["tool"], "summary": e["summary"], "created": e["created"]}
