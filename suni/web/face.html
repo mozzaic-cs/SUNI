@@ -665,7 +665,13 @@ header{
 #net-trail span{cursor:pointer;padding:2px 5px;border-radius:3px}
 #net-trail span:hover{color:#00d4ff;background:rgba(0,212,255,.08)}
 #net-trail b{color:rgba(228,236,255,.9);font-weight:400;padding:2px 5px}
-#content-stage{position:absolute;top:60px;left:3.5%;width:60%;bottom:118px;z-index:5;
+/* Wide enough to reach just short of her: shrunk, she occupies roughly the
+   right quarter (x ~74%..99%), so 68% ends with a gap before her face. */
+/* z-index 8: above the network's labels (6), hubs and trail (7) — with the
+   stage open the field is a backdrop, and its node names were printed over
+   the panel ("everything", at the centre). Below the network menu (9) and
+   the state label (10). */
+#content-stage{position:absolute;top:60px;left:3.5%;width:68%;bottom:118px;z-index:8;
   opacity:0;transform:translateY(10px);pointer-events:none;
   transition:opacity .5s ease,transform .5s ease;display:flex;flex-direction:column}
 #content-stage.on{opacity:1;transform:none;pointer-events:auto}
@@ -1979,9 +1985,10 @@ function renderHead(dt){
     // idle, rings travelling outward while she thinks, flaring with her own
     // voice as she speaks. stateSmooth is eased, so it crossfades.
     _net.state = stateSmooth;
-    // She takes this corner when the field has the screen, so the word gets
-    // out from under her rather than being read through her face.
-    if (stateLabel) stateLabel.style.top = (56 + (H * 0.52 - 56) * _stageT) + 'px';
+    // The word stays where it is, top right under the nav: dropping it to
+    // half the window height to get out from under her read as a stray label
+    // in the middle of the screen. She sits lower instead (see `my` below).
+    if (stateLabel) stateLabel.style.top = '56px';
     _net.level = mouthOpen;
 
     _net.draw(proj, [nc[0] / 255, nc[1] / 255, nc[2] / 255], canvas.height);
@@ -2000,8 +2007,9 @@ function renderHead(dt){
     // The head only fills the middle ~65% of its viewport's width (the viewport
     // keeps the canvas aspect, the head is about as wide as it is tall), so the
     // overhang costs empty space, not face, and buys the network the room it
-    // wanted. Top margin stays generous so she sits below the edge.
-    const mx = canvas.width * -0.055, my = canvas.height * 0.06;
+    // wanted. Top margin leaves room for the state label above her head,
+    // which no longer moves out of her way.
+    const mx = canvas.width * -0.055, my = Math.max(canvas.height * 0.10, 84 * (canvas.height / H));
     gl.viewport((canvas.width - vpW - mx) * _stageT, (canvas.height - vpH - my) * _stageT, vpW, vpH);
   }
   gl.useProgram(prog);
