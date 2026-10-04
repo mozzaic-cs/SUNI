@@ -117,6 +117,8 @@ _CONSEQUENTIAL: dict[str, list[str]] = {
     # so these fail closed on unattended paths (e.g. webhooks).
     "claude_task":           ["task"],
     "claude_code":           ["task"],
+    # Edits a real project and runs its tests. Also in NEVER_TRUSTED below.
+    "code_task":             ["project_dir", "task"],
     # Creates recurring, unattended execution under the user's identity — a
     # heavier commitment than writing a file, which is already gated. The
     # preview shows the cadence and where results are sent.
@@ -130,6 +132,12 @@ _CONSEQUENTIAL: dict[str, list[str]] = {
     # asked about. The card is where a person decides that is fine right now.
     "look_at_screen":          ["reason"],
 }
+
+# Tools a person approves EVERY time. No "always allow" rule is ever written
+# or honoured for them, and an admin policy-allow does not skip the card
+# either. Trust patterns match a substring of ANY argument, so a rule granted
+# for one project folder could be satisfied by a task that merely mentions it.
+NEVER_TRUSTED: frozenset[str] = frozenset({"code_task"})
 
 # Pending approvals: {approval_id: {"user_id": str, "future": Future, "tool": str, ...}}
 _pending: dict[str, dict] = {}
@@ -434,6 +442,8 @@ async def assess_intent(
 
 def is_trusted(user_id: str, tool_name: str, args: dict) -> bool:
     """Return True if the user has an always-allow rule covering this call."""
+    if tool_name in NEVER_TRUSTED:
+        return False
     _load_trust(user_id)
     rules = _trust_rules.get(user_id, {})
     patterns = rules.get(tool_name, [])
@@ -445,6 +455,11 @@ def is_trusted(user_id: str, tool_name: str, args: dict) -> bool:
 
 
 def add_trust_rule(user_id: str, tool_name: str, pattern: str = "*") -> None:
+    # The resolve endpoint takes the tool name from the browser, so hiding the
+    # checkbox is not the boundary; this is.
+    if tool_name in NEVER_TRUSTED:
+        log.info("[APPROVAL] refused always-allow for %s (approved every time)", tool_name)
+        return
     _load_trust(user_id)
     _trust_rules.setdefault(user_id, {}).setdefault(tool_name, [])
     if pattern not in _trust_rules[user_id][tool_name]:
@@ -503,6 +518,10 @@ def _build_preview(tool_name: str, args: dict) -> str | None:
     if tool_name == "run_shell":
         cmd = args.get("command", "")
         return cap(f"$ {cmd}") if cmd else None
+
+    if tool_name == "code_task":
+        from .tools.code_project import preview as _code_preview
+        return cap(_code_preview(args))
 
     if tool_name in ("claude_task", "claude_code"):
         task = args.get("task", "")
@@ -607,6 +626,8 @@ async def request_approval(
             "preview": preview,
             "args":    {k: str(v)[:120] for k, v in args.items()},
             "risk":    risk,
+            # the card hides "always allow" rather than offer a box that does nothing
+            "no_always": tool_name in NEVER_TRUSTED,
         })
 
     try:

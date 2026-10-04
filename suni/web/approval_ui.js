@@ -77,11 +77,14 @@
       // email still has a model-composed body and attachment — so asking every
       // time is the safe default. This is the way out of it, and chat.html was
       // the only surface that offered it.
+      // ev.no_always: approved every time (code_task); the server refuses
+      // the rule anyway, so offering the box would be a promise it can't keep.
+      (ev.no_always ? '' :
       '<label style="display:flex;align-items:center;gap:7px;margin-top:10px;' +
       'font-size:11px;color:#93a4bb;cursor:pointer">' +
         '<input type="checkbox" data-always style="width:auto;margin:0">' +
         esc(label('chat.always_allow', 'Always allow this tool')) +
-      '</label>';
+      '</label>');
     document.body.appendChild(wrap);
 
     var btns = wrap.querySelectorAll('button');

@@ -139,6 +139,11 @@ DEFAULTS: dict[str, Any] = {
     "imap_port":              993,     # overrides SUNI_IMAP_PORT
     "force_claude_code":      False,  # bypass all local models; route every request to T5
     "claude_code_timeout":    300,     # seconds before a Claude Code (T5) call is aborted
+    # code_task: Claude Code working inside a real project. Empty roots = the
+    # tool refuses everywhere until an admin names the folders it may touch.
+    "code_project_roots":     [],
+    "code_task_timeout":      1800,    # real coding runs take longer than a chat turn
+    "code_allowed_commands":  [],      # empty = code_project.DEFAULT_COMMANDS
     # ── Codex (OpenAI Codex CLI) — 2nd no-key frontier provider ───────────
     "codex_cmd_path":         "",      # optional explicit path to codex.exe; "" = auto-discover
     "codex_timeout":          300,     # seconds before a `codex exec` call is aborted

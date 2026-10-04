@@ -38,7 +38,7 @@ from ..models.ollama_agent import OllamaAgent
 from ..models.claude_code_agent import ClaudeCodeAgent
 from ..memory.manager import MemoryManager
 from ..tools.registry import ToolRegistry
-from ..tools import shell_tool, file_tool, claude_code_tool, claude_code_advanced, web_tool, email_tool, pdf_tool, document_tool, download_tool, kb_tool, skills_tool, contacts_tool, monitor_tool, task_tool, project_tool, database_tool, calendar_tool, articles_tool, image_tool, meeting_tool
+from ..tools import shell_tool, file_tool, claude_code_tool, claude_code_advanced, code_project, web_tool, email_tool, pdf_tool, document_tool, download_tool, kb_tool, skills_tool, contacts_tool, monitor_tool, task_tool, project_tool, database_tool, calendar_tool, articles_tool, image_tool, meeting_tool
 from ..skills import SkillStore
 from ..tools.mcp_bridge import MCPBridge, CLAUDE_DESKTOP_CONFIG
 from ..ingestion.watcher import watch
@@ -280,6 +280,7 @@ def _build_orchestrator(
     registry.register(file_tool.LIST_SCHEMA, file_tool.list_files)
     registry.register(claude_code_tool.SCHEMA, claude_code_tool.handler)
     registry.register(claude_code_advanced.TASK_SCHEMA, claude_code_advanced.task_handler)
+    registry.register(code_project.SCHEMA, code_project.handler)
     registry.register(claude_code_advanced.AGENT_SCHEMA, claude_code_advanced.agent_handler)
     registry.register(claude_code_advanced.INIT_SCHEMA, claude_code_advanced.init_handler)
     registry.register(claude_code_advanced.SCHEDULE_SCHEMA, claude_code_advanced.schedule_handler)
@@ -2353,6 +2354,15 @@ def create_app() -> FastAPI:
                     # while it works. Essential for the multi-minute collaborate mode
                     # (draft/critique/synthesize phases) — otherwise every event would
                     # buffer until the run finished. Benefits tool events too.
+                    # A line typed into the /face terminal names its project.
+                    # The task copies this context when created, so the token
+                    # is reset right after; the folder is checked again by the
+                    # tool against code_project_roots, never trusted from here.
+                    _code_req = body.get("code")
+                    _code_tok = code_project.CODE_FOLLOWUP.set(
+                        {"project_dir": str(_code_req.get("project_dir", ""))[:1024],
+                         "new_session": bool(_code_req.get("new_session"))}
+                        if isinstance(_code_req, dict) and _code_req.get("project_dir") else None)
                     _run_task = asyncio.create_task(orchestrator._safe_run(
                         message, context,
                         agent_profile=_agent_profile,
@@ -2374,6 +2384,7 @@ def create_app() -> FastAPI:
                         # is the bloat this codebase has already been bitten by.
                         memory_for=None,
                     ))
+                    code_project.CODE_FOLLOWUP.reset(_code_tok)
                     _run_entry = {"task": _run_task, "stopped_by": None}
                     _active_runs[_run_key] = _run_entry
                     while True:

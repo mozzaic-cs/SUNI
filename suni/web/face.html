@@ -698,6 +698,62 @@ header{
 @keyframes focusPulse{0%,100%{box-shadow:0 0 12px rgba(0,229,255,.6),inset 0 0 12px rgba(0,229,255,.22)}
   50%{box-shadow:0 0 22px rgba(0,229,255,.95),inset 0 0 16px rgba(0,229,255,.4)}}
 #stage-text img,#stage-text video{max-width:100%;border-radius:8px;margin:8px 0;display:block}
+/* ── the Claude Code terminal (code_task) ─────────────────────────────────
+   A live mirror of a Claude Code run in a project folder, in the stage's
+   hologram material. Everything in it is text set with textContent: it
+   comes from files and command output, never trusted as markup. */
+#stage-term:empty{display:none}
+.cc-term{position:relative;display:flex;flex-direction:column;margin-bottom:16px;
+  max-height:min(64vh,660px);overflow:hidden;border-radius:6px;
+  font-family:'DM Mono',monospace;font-size:12.5px;line-height:1.55;color:#dce8f0;
+  background:linear-gradient(180deg,rgba(4,14,26,.93),rgba(2,8,18,.96));
+  border:1px solid rgba(0,212,255,.36);
+  box-shadow:inset 0 0 0 1px rgba(0,212,255,.08),0 0 44px rgba(0,170,255,.10)}
+.cc-term::before{content:'';position:absolute;inset:0;pointer-events:none;z-index:2;
+  background:repeating-linear-gradient(to bottom,rgba(0,212,255,.035) 0 1px,transparent 1px 3px)}
+.cc-head{display:flex;align-items:center;gap:9px;padding:7px 12px;font-size:11.5px;
+  color:#8fb8cc;border-bottom:1px solid rgba(0,212,255,.18);background:rgba(0,212,255,.04)}
+.cc-dot{width:7px;height:7px;border-radius:50%;background:#5d6b78;flex:none}
+.cc-dot.live{background:#14d98c;box-shadow:0 0 8px rgba(20,217,140,.8);animation:cc-pulse 1.4s ease-in-out infinite}
+.cc-dot.fail{background:#ff7a5a}
+@keyframes cc-pulse{50%{opacity:.35}}
+.cc-agent{color:#c9a227}
+.cc-path{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
+.cc-state{color:#8fa6b8}
+.cc-x{background:none;border:none;color:#8fa6b8;cursor:pointer;font:inherit;padding:0 2px}
+.cc-x:hover{color:#fff}
+.cc-body{flex:1;overflow-y:auto;padding:10px 14px 12px}
+.cc-body::-webkit-scrollbar{width:3px}
+.cc-body::-webkit-scrollbar-thumb{background:rgba(0,212,255,.3);border-radius:2px}
+.cc-text{white-space:pre-wrap;word-break:break-word;margin:4px 0}
+.cc-text b{color:#fff;font-weight:400;text-shadow:0 0 1px rgba(255,255,255,.6)}
+.cc-text code{color:#7fe3f0;font:inherit}
+.cc-tool{margin-top:6px;color:#bfeefa;white-space:pre-wrap;word-break:break-all}
+.cc-tool .b{color:#00d4ff}
+.cc-tool.ok .b{color:#14d98c}
+.cc-tool.err .b{color:#ff7a5a}
+.cc-tool .n{color:#7fe3f0}
+.cc-tool .ct{color:#8fa6b8;margin-left:6px}
+.cc-out{margin:1px 0 0 16px;color:#8fa6b8}
+.cc-out summary{cursor:pointer;list-style:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cc-out summary::-webkit-details-marker{display:none}
+.cc-out pre{margin:4px 0 2px;padding:6px 8px;max-height:260px;overflow:auto;white-space:pre-wrap;
+  word-break:break-word;background:rgba(0,0,0,.3);border-radius:4px;font:inherit;color:#c8d6e0}
+.cc-out .add{color:#5be3a0}
+.cc-out .del{color:#ff8a7a}
+.cc-denied{margin:3px 0 0 16px;color:#ffb15a}
+.cc-sep{margin:12px 0 6px;color:#5d7a8c;border-top:1px dashed rgba(0,212,255,.18);padding-top:6px}
+.cc-end{margin-top:10px;padding-top:7px;border-top:1px dashed rgba(0,212,255,.22);color:#8fa6b8}
+.cc-end .f{color:#c8d6e0}
+.cc-prompt{display:flex;align-items:center;gap:8px;padding:8px 12px;
+  border-top:1px solid rgba(0,212,255,.18);background:rgba(0,0,0,.18)}
+.cc-prompt span{color:#c9a227}
+.cc-prompt input{flex:1;min-width:0;background:none;border:none;outline:none;color:#e3eef6;
+  font:inherit;caret-color:#00d4ff}
+.cc-prompt input::placeholder{color:#8fa6b8}
+.cc-prompt input:disabled{opacity:.55}
+.cc-term:focus-within{border-color:rgba(0,212,255,.6)}
+@media (prefers-reduced-motion: reduce){ .cc-dot.live{animation:none} }
 #stage-body::-webkit-scrollbar{width:3px}
 #stage-body::-webkit-scrollbar-thumb{background:rgba(0,212,255,.3);border-radius:2px}
 </style>
@@ -706,7 +762,7 @@ header{
 <div id="app">
   <canvas id="suni-canvas"></canvas>
   <div id="ingest-layer"></div>
-  <div id="content-stage"><div id="stage-body"><div id="stage-media"></div><div id="stage-text"></div></div></div>
+  <div id="content-stage"><div id="stage-body"><div id="stage-term"></div><div id="stage-media"></div><div id="stage-text"></div></div></div>
   <div id="net-pop"></div>
   <div id="net-trail"></div>
   <div id="net-labels"></div>
@@ -3425,7 +3481,8 @@ function _setStage(on){
   _stageBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
   _stageBtn.style.color       = on ? '#00d4ff' : 'rgba(201,162,39,.6)';
   _stageBtn.style.borderColor = on ? 'rgba(0,212,255,.6)' : 'rgba(201,162,39,.28)';
-  if(!on){ _stageMedia.innerHTML = ''; _stageText.innerHTML = ''; _stageFinal = false; } else { hideSub(); }
+  if(!on){ _stageMedia.innerHTML = ''; _stageText.innerHTML = ''; _stageFinal = false;
+           if (window._ccTerm) _ccTerm.clear(); } else { hideSub(); }
 }
 // Render attached files into the stage by type (Step D). Free-win tier:
 // image · video · audio · PDF (iframe) · text/code/csv (fetched) · else a card.
@@ -3596,11 +3653,160 @@ function _applyFocus(directives){
   });
 }
 _stageBtn.addEventListener('click', () => _setStage(!_stageMode));
+
+// ── Claude Code terminal ────────────────────────────────────────────────────
+// Fed by `term` events from the code_task tool. The prompt line sends what you
+// type to Claude Code in the same project (the server's code follow-up path),
+// approved like any run. TERM_BUILD tells "didn't work" from "didn't load".
+const TERM_BUILD = '2026-10-03a';
+console.log('[term] build', TERM_BUILD);
+const _ccTerm = (() => {
+  const slot = document.getElementById('stage-term');
+  let el = null, body = null, input = null, dot = null, stateEl = null;
+  let project = '', textEl = null, next = null, running = false;
+  const tools = {}, refused = new Set();
+  // **bold** and `code`, the two marks Claude Code's own terminal renders.
+  // Built as DOM nodes from the raw string: the text is never parsed as HTML.
+  function renderMd(node, raw){
+    node.textContent = '';
+    const re = /\*\*([^*\n]+)\*\*|`([^`\n]+)`/g;
+    let last = 0, m;
+    while ((m = re.exec(raw))){
+      if (m.index > last) node.appendChild(document.createTextNode(raw.slice(last, m.index)));
+      node.appendChild(mk(m[1] != null ? 'b' : 'code', null, m[1] != null ? m[1] : m[2]));
+      last = re.lastIndex;
+    }
+    if (last < raw.length) node.appendChild(document.createTextNode(raw.slice(last)));
+  }
+  const mk = (tag, cls, text) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  };
+  const stick = () => body && (body.scrollHeight - body.scrollTop - body.clientHeight < 40);
+  const add = (node) => { const s = stick(); body.appendChild(node); if (s) body.scrollTop = body.scrollHeight; };
+  function build(proj){
+    slot.textContent = '';
+    el = mk('div', 'cc-term'); el.title = 'terminal build ' + TERM_BUILD;
+    const head = mk('div', 'cc-head');
+    dot = mk('span', 'cc-dot');
+    head.append(dot, mk('span', 'cc-agent', 'claude'), mk('span', 'cc-path', proj));
+    stateEl = mk('span', 'cc-state', '');
+    const x = mk('button', 'cc-x', '×'); x.title = 'Close'; x.setAttribute('aria-label', 'Close terminal');
+    x.onclick = () => { clear(); if (_stageMode && !_stageMedia.childElementCount && !_stageText.textContent.trim()) _setStage(false); };
+    head.append(stateEl, x);
+    body = mk('div', 'cc-body'); body.setAttribute('role', 'log'); body.setAttribute('aria-live', 'polite');
+    const pr = mk('label', 'cc-prompt');
+    pr.append(mk('span', null, '❯'));
+    input = mk('input'); input.type = 'text'; input.autocomplete = 'off'; input.spellcheck = false;
+    input.placeholder = 'Tell Claude Code what to do next';
+    input.setAttribute('aria-label', 'Message to Claude Code in ' + proj);
+    input.addEventListener('keydown', e => {
+      e.stopPropagation();                         // keep page shortcuts out of the terminal
+      if (e.key !== 'Enter') return;
+      const v = input.value.trim();
+      if (!v || running || _isRunning) return;
+      next = { project_dir: project };
+      input.value = '';
+      inputEl.value = v;
+      send();
+    });
+    pr.append(input);
+    el.append(head, body, pr);
+    slot.appendChild(el);
+    project = proj;
+  }
+  function setRunning(on, ok){
+    running = on;
+    if (dot) dot.className = 'cc-dot' + (on ? ' live' : ok === false ? ' fail' : '');
+    if (stateEl) stateEl.textContent = on ? 'working' : (ok === false ? 'stopped' : 'done');
+    if (input) { input.disabled = on; if (!on) input.focus({preventScroll:true}); }
+  }
+  function outBlock(first, full, diff){
+    const d = mk('details', 'cc-out');
+    d.appendChild(mk('summary', null, '└ ' + first));
+    const pre = mk('pre');
+    if (diff) {
+      diff.split('\n').forEach(l => {
+        const s = mk('span', l.startsWith('+') ? 'add' : l.startsWith('-') ? 'del' : null, l + '\n');
+        pre.appendChild(s);
+      });
+    } else pre.textContent = full;
+    d.appendChild(pre);
+    return d;
+  }
+  function on(ev){
+    if (ev.kind === 'start') {
+      if (!_stageMode) _setStage(true);
+      if (!el || project !== ev.project) build(ev.project);
+      else add(mk('div', 'cc-sep', '── ' + (ev.session === 'new' ? 'new session' : 'continued') + ' ──'));
+      textEl = null;
+      setRunning(true);
+      return;
+    }
+    if (!el) return;
+    if (ev.kind === 'delta') {
+      if (!textEl) { textEl = mk('div', 'cc-text'); textEl._raw = ''; add(textEl); }
+      const s = stick(); textEl._raw += ev.text || ''; renderMd(textEl, textEl._raw);
+      if (s) body.scrollTop = body.scrollHeight;
+    } else if (ev.kind === 'tool') {
+      textEl = null;
+      const line = mk('div', 'cc-tool');
+      line.append(mk('span', 'b', '● '), mk('span', 'n', ev.name || ''),
+                  document.createTextNode('(' + (ev.summary || '') + ')'));
+      tools[ev.id] = line;
+      add(line);
+    } else if (ev.kind === 'result') {
+      if (!ev.ok && refused.has(ev.id)) return;      // already shown as refused
+      const line = tools[ev.id];
+      if (line) {
+        line.classList.add(ev.ok ? 'ok' : 'err');
+        if (ev.added != null) line.appendChild(mk('span', 'ct', '+' + ev.added + ' -' + (ev.removed || 0)));
+      }
+      const txt = String(ev.text || '');
+      const first = (txt.split('\n').find(l => l.trim()) || (ev.ok ? 'done' : 'failed')).slice(0, 140);
+      const n = txt.split('\n').length;
+      add(outBlock(first + (n > 1 ? '  (' + n + ' lines)' : ''), txt, ev.diff));
+    } else if (ev.kind === 'denied') {
+      const line = tools[ev.id];
+      if (line) line.classList.add('err');
+      refused.add(ev.id);
+      add(mk('div', 'cc-denied', '✕ refused · ' + (ev.tool || '') + ' — ' + (ev.text || '')));
+    } else if (ev.kind === 'end') {
+      textEl = null;
+      const box = mk('div', 'cc-end');
+      const ch = ev.changes || [];
+      const bits = [];
+      bits.push(ch.length ? ch.length + (ch.length === 1 ? ' file changed' : ' files changed') : 'no files changed');
+      if (ev.seconds != null) bits.push(ev.seconds >= 60 ? Math.floor(ev.seconds / 60) + 'm' + (ev.seconds % 60) + 's' : ev.seconds + 's');
+      if (typeof ev.cost === 'number') bits.push('$' + ev.cost.toFixed(2));
+      if (ev.denied) bits.push(ev.denied + ' refused');
+      if (ev.stopped) bits.unshift('stopped');
+      box.appendChild(mk('div', null, '─ ' + bits.join(' · ')));
+      ch.slice(0, 30).forEach(c => {
+        const n = c.added != null ? ' +' + c.added + ' -' + c.removed : '';
+        box.appendChild(mk('div', 'f', '  ' + c.status + '  ' + c.path + n + (c.was_dirty ? '  (had your uncommitted changes)' : '')));
+      });
+      if (ev.error) box.appendChild(mk('div', 'cc-denied', ev.error));
+      add(box);
+      setRunning(false, ev.ok !== false && !ev.stopped);
+    }
+  }
+  function clear(){ slot.textContent = ''; el = body = input = dot = stateEl = textEl = null; project = ''; running = false; }
+  return {
+    on, clear,
+    open: () => !!el,
+    take: () => { const n = next; next = null; return n; },
+  };
+})();
+window._ccTerm = _ccTerm;
 // Auto-retract: after a reply, wait a bit then close the stage + restore the head.
 // Extended while the user is engaging with the stage; cancelled on a new send.
 let _stageCloseT = null;
 function _armStageClose(){
   clearTimeout(_stageCloseT);
+  if (window._ccTerm && _ccTerm.open()) return;   // the terminal stays until you close it
   _stageCloseT = setTimeout(() => {
     if (state === 'speaking'){ _armStageClose(); return; }   // still talking — wait, don't retract mid-speech
     _stageCloseT = null;
@@ -3876,7 +4082,8 @@ async function send() {
     const res = await _apiFetch('/api/chat', {
       method: 'POST',
       headers: {'Content-Type':'application/json', 'x-session-id': _sessionId},
-      body: JSON.stringify({message: text || displayText, session_id: _sessionId, mode: _sessionMode, agent: _agentSlug, file_ids: fileIds, ui: 'face'})
+      body: JSON.stringify({message: text || displayText, session_id: _sessionId, mode: _sessionMode, agent: _agentSlug, file_ids: fileIds, ui: 'face',
+                            code: (window._ccTerm && _ccTerm.take()) || undefined})
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -3947,6 +4154,8 @@ async function send() {
         } else if (ev.type === 'skill_used') {
           showSub('SKILL: ' + (ev.name || ''));
           setTimeout(() => { if (state==='thinking') hideSub(); }, 2500);
+        } else if (ev.type === 'term') {
+          _ccTerm.on(ev);
         } else if (ev.type === 'cc_note') {
           // Progress while Claude Code works. Subtitle only: it never enters the
           // caption buffer and never reaches the speech queue.

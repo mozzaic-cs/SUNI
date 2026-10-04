@@ -1090,8 +1090,18 @@ class Orchestrator:
             r'from\s+this\s+(page|site|url)|based\s+on\s+this\s+(page|url))\b',
             user_input, re.IGNORECASE,
         ))
+        # ── terminal follow-up: a line typed into the /face terminal ──
+        # goes to Claude Code in that project, not to the model.
+        from ..tools.code_project import CODE_FOLLOWUP as _CODE_FU
+        _code_fu = _CODE_FU.get()
+        if _code_fu and "code_task" in self.registry.names():
+            ts = time.perf_counter()
+            response = await self._handle_code_followup(
+                user_input, _code_fu, user_id, user_role, event_cb, _readonly)
+            context.add(response)
+            _tick("code follow-up", ts)
         # ── direct vision path (image attachment + VLM configured) ────
-        if images and _vision.enabled():
+        elif images and _vision.enabled():
             ts = time.perf_counter()
             response = await self._handle_vision_direct(user_input, images, trace)
             context.add(response)
@@ -1609,6 +1619,46 @@ class Orchestrator:
             bits.append(f"emailed to {delivery['to']}")
         return ". ".join(bits) + f". Ask me to list your schedules to change it. (id: {rec['id']})"
 
+    async def _handle_code_followup(self, user_input: str, fu: dict, user_id: str,
+                                    user_role: str, event_cb, readonly: bool) -> Message:
+        """A line typed into the /face terminal, sent to Claude Code in the
+        project that terminal belongs to.
+
+        Deterministic on purpose: the local tier picks the wrong tool often
+        enough that something the user typed AT Claude Code must not depend on
+        the model choosing to pass it on. The floors are the tool loop's: RBAC,
+        a policy deny, and a person approving the run — every time, since
+        code_task is NEVER_TRUSTED. The handler adds its own (role floor,
+        allowed folders, one run per folder)."""
+        from ..tools import code_project as _cp
+
+        def _msg(text: str) -> Message:
+            return Message(role=Role.ASSISTANT, content=text, agent="code")
+
+        args = {"project_dir": str(fu.get("project_dir", "")), "task": user_input,
+                "new_session": bool(fu.get("new_session"))}
+        _allowed = _rbac.allowed_tools(user_role)
+        # _NEVER_ROLES as well as RBAC: a role file saved before code_task
+        # existed does not block it for "standard" (measured on this box).
+        if readonly or user_role in _cp._NEVER_ROLES \
+                or "code_task" in _rbac.blocked_tools(user_role) or \
+                (_allowed is not None and "code_task" not in _allowed):
+            return _msg("Coding work in project folders is not available here.")
+        pol = _policy.evaluate(user_role, "code_task", args)
+        if pol and pol.get("action") == "deny":
+            return _msg(f"That was blocked by policy: {pol.get('reason') or pol.get('rule')}")
+        if event_cb is None:
+            return _msg("This needs a live session where you can approve it.")
+        decision = await _approval.request_approval(
+            "code_task", args, user_id=user_id, event_cb=event_cb)
+        if decision != "allow":
+            return _msg("Left it. Claude Code did not run.")
+        result = str(await self.registry.execute("code_task", args))
+        # the session id is for SUNI, not for reading aloud
+        shown = "\n".join(l for l in result.splitlines()
+                          if not l.startswith("[code session:")).strip()
+        return _msg(shown)
+
     async def _handle_email_direct(
         self, user_input: str, context: Context, trace: list
     ) -> Message:
@@ -1791,6 +1841,12 @@ class Orchestrator:
             if _ro is not None:
                 _allowed = (list(_ro) if _allowed is None
                             else [t for t in _allowed if t in set(_ro)])
+        # code_task is never offered to these roles, whatever a saved role file
+        # says: one written before the tool existed lists every other block
+        # for "standard" but not this one, and the model would then see it.
+        from ..tools.code_project import _NEVER_ROLES as _CODE_NEVER
+        if user_role in _CODE_NEVER and "code_task" not in (_blocked or []):
+            _blocked = list(_blocked or []) + ["code_task"]
         tools = self.registry.get_ollama_tools(
             include_prefixes=include,
             allowed_tools=_allowed,
@@ -2105,8 +2161,11 @@ class Orchestrator:
                 # Consequential tools and policy 'ask' are bypassed by an explicit
                 # allow (trust rule OR policy-allow). The judge 'gate' is bypassed
                 # only by a per-user trust rule, NOT by a broad policy-allow.
-                _allow_bypass = _trusted or _pol_action == "allow"
-                _need_gate = (
+                # NEVER_TRUSTED tools (code_task) are approved every time: no
+                # trust rule or policy-allow collapses the card for them.
+                _always_ask = tc.name in _approval.NEVER_TRUSTED
+                _allow_bypass = (_trusted or _pol_action == "allow") and not _always_ask
+                _need_gate = _always_ask or (
                     # registry= lets MCP tools be classified; without it they are
                     # all treated as safe, which let an MCP shell bypass the gate.
                     ((_approval.is_consequential(tc.name, registry=self.registry)
@@ -2379,9 +2438,20 @@ class Orchestrator:
         return view
 
     async def _execute_tool_calls(self, tool_calls) -> list[tuple]:
-        tasks = [
-            (tc, self.registry.execute(tc.name, tc.args)) for tc in tool_calls
-        ]
+        # A task-mode plan approved by a text reply runs here, without the
+        # per-tool gate. That reply never showed a NEVER_TRUSTED tool's card
+        # (the folder, what it may run), so those still get their own.
+        from ..tools.claude_code_advanced import EVENT_CB_CTX
+        _cb, _uid = EVENT_CB_CTX.get(), USER_ID_CTX.get("")
+
+        async def _gated(tc):
+            if tc.name in _approval.NEVER_TRUSTED:
+                if _cb is None or await _approval.request_approval(
+                        tc.name, tc.args, user_id=_uid, event_cb=_cb) != "allow":
+                    return f"Action '{tc.name}' was denied by the user."
+            return await self.registry.execute(tc.name, tc.args)
+
+        tasks = [(tc, _gated(tc)) for tc in tool_calls]
         results = await asyncio.gather(*[t for _, t in tasks], return_exceptions=True)
         return [(tc, r) for (tc, _), r in zip(tasks, results)]
 

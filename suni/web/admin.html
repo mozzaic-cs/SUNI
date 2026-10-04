@@ -711,6 +711,12 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
             <input type="number" name="claude_code_timeout" min="30" max="3600" step="30">
             <div class="field-hint" data-i18n-html="admin.hint_cc_timeout">How long a Claude Code (T5) request may run before it is aborted. Raise it for long file-analysis or multi-step tasks (default 300 = 5 min).</div>
           </div>
+          <div style="margin-top:12px">
+            <label data-i18n="admin.lbl_code_roots">Project folders for coding work</label>
+            <textarea name="code_project_roots_raw" rows="3"
+              data-i18n-placeholder="admin.ph_code_roots" placeholder="One folder per line e.g.&#10;C:\Projects&#10;D:\Clients\shop"></textarea>
+            <div class="field-hint" data-i18n="admin.hint_code_roots">Claude Code may edit files and run tests only inside these folders and their subfolders, and only after you approve each run. Empty means coding work is off.</div>
+          </div>
         </div>
 
         <div data-cfg-group="models" class="section-head" style="margin-top:8px" data-i18n-html="admin.sec_model_prefs">Model Preferences <span style="font-weight:400;color:var(--muted);font-size:10px">· pluggable</span></div>
@@ -2294,6 +2300,10 @@ function applyConfigToForm(cfg) {
                   // display-only — the box read blank whatever was stored.
                   'smtp_host','smtp_user','notify_to','imap_host',
                   'smtp_port','imap_port','doc_top_k'];
+  if (cfg.code_project_roots !== undefined) {
+    const rt = form.elements['code_project_roots_raw'];
+    if (rt) rt.value = (cfg.code_project_roots || []).join('\n');
+  }
   // doc_paths: stored as array, edited as newline-separated textarea
   if (cfg.doc_paths !== undefined) {
     const ta = form.elements['doc_paths_raw'];
@@ -2642,6 +2652,8 @@ document.getElementById('cfg-form').addEventListener('submit', async e => {
   data.email_poll_interval = parseInt(form.elements.email_poll_interval_min?.value) * 60;
   data.force_claude_code = !!(document.getElementById('force_claude_code')?.checked);
   data.claude_code_timeout = parseInt(form.elements.claude_code_timeout?.value) || 300;
+  const rawRoots = (form.elements['code_project_roots_raw']?.value || '').trim();
+  data.code_project_roots = rawRoots ? rawRoots.split('\n').map(s=>s.trim()).filter(Boolean) : [];
   // Log shipping. The two secrets follow the same rule as smtp_pass and the bot
   // tokens: an empty field means "keep what is stored", so an unchanged form
   // never wipes a configured credential.

@@ -1876,9 +1876,9 @@ function _renderApprovalCard(container, ev) {
     <div class="ap-btns">
       <button class="ap-btn allow" data-decision="allow">${t('common.allow')}</button>
       <button class="ap-btn deny"  data-decision="deny">${t('common.deny')}</button>
-      <label class="ap-chk">
+      ${ev.no_always ? '' : `<label class="ap-chk">
         <input type="checkbox" id="ap-always-${ev.id}"> ${t('chat.always_allow')}
-      </label>
+      </label>`}
     </div>`;
 
   container.appendChild(card);

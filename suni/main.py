@@ -14,7 +14,7 @@ from .models.ollama_agent import OllamaAgent
 from .models.claude_code_agent import ClaudeCodeAgent
 from .memory.manager import MemoryManager
 from .tools.registry import ToolRegistry
-from .tools import shell_tool, file_tool, claude_code_tool, claude_code_advanced, web_tool, email_tool, pdf_tool, document_tool, download_tool, kb_tool, skills_tool, network_tool, memory_tool, articles_tool, image_tool
+from .tools import shell_tool, file_tool, claude_code_tool, claude_code_advanced, code_project, web_tool, email_tool, pdf_tool, document_tool, download_tool, kb_tool, skills_tool, network_tool, memory_tool, articles_tool, image_tool
 from .ingestion import claude_code as cc_ingestion
 from .ingestion.watcher import watch
 from .ingestion.articles import ingest_articles
@@ -91,6 +91,7 @@ def _build_registry() -> ToolRegistry:
     registry.register(file_tool.LIST_SCHEMA, file_tool.list_files)
     registry.register(claude_code_tool.SCHEMA, claude_code_tool.handler)
     registry.register(claude_code_advanced.TASK_SCHEMA, claude_code_advanced.task_handler)
+    registry.register(code_project.SCHEMA, code_project.handler)
     registry.register(claude_code_advanced.AGENT_SCHEMA, claude_code_advanced.agent_handler)
     registry.register(claude_code_advanced.INIT_SCHEMA, claude_code_advanced.init_handler)
     registry.register(claude_code_advanced.SCHEDULE_SCHEMA, claude_code_advanced.schedule_handler)

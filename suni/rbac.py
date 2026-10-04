@@ -40,6 +40,7 @@ DEFAULTS: dict[str, dict[str, Any]] = {
             "run_shell",
             "claude_task", "claude_code", "claude_create_agents",
             "claude_schedule_task", "claude_advisor", "claude_init_project",
+            "code_task",
             "skill_save", "skill_delete",
         ],
         "mcp_prefixes": [],
