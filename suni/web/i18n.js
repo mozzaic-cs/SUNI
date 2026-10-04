@@ -543,6 +543,10 @@
       'admin.dash_no_paths_cfg':'No paths configured — add paths in Configuration → Knowledge Base',
       'admin.dash_no_activity_empty': 'No activity yet.',
       'admin.dash_not_loaded':  'not loaded',
+      'admin.dash_expired':     'expired',
+      'admin.dash_kept_loaded': 'kept loaded',
+      'admin.dash_forced_cc':   'Claude Code (forced)',
+      'admin.cfg_model_overridden': 'Not in use while "Force Claude Code" is on: every request goes to Claude Code.',
       'admin.dash_utilisation': 'Utilisation',
 
       // ── Admin config ────────────────────────────────────────────
@@ -1274,6 +1278,10 @@
       'admin.dash_no_paths_cfg':'Nenhuma pasta configurada — adicione pastas em Configuração → Base de Conhecimento',
       'admin.dash_no_activity_empty': 'Sem atividade ainda.',
       'admin.dash_not_loaded':  'não carregado',
+      'admin.dash_expired':     'expirado',
+      'admin.dash_kept_loaded': 'mantido carregado',
+      'admin.dash_forced_cc':   'Claude Code (forçado)',
+      'admin.cfg_model_overridden': 'Sem efeito enquanto "Forçar Claude Code" estiver ligado: todos os pedidos vão para o Claude Code.',
       'admin.dash_utilisation': 'Utilização',
 
       // ── Admin config ────────────────────────────────────────────

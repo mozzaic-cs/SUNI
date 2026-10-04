@@ -246,6 +246,9 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
 .field input[type=range]{padding:0;cursor:pointer;accent-color:var(--gold)}
 .range-val{font-size:12px;color:var(--gold);white-space:nowrap;min-width:50px;text-align:right}
 .field-hint{font-size:10px;color:rgba(255,255,255,.45);font-style:italic}
+/* a setting another setting currently overrides: still editable, visibly not in use */
+.field.is-overridden select,.field.is-overridden input{opacity:.5}
+.field-overridden{margin-top:6px;font-size:12px;color:#e0b84a}
 .cfg-footer{margin-top:24px;display:flex;align-items:center;gap:14px;padding-top:18px;border-top:1px solid var(--border)}
 .btn{
   font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.12em;
@@ -665,6 +668,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
         <div class="field">
           <label data-i18n="admin.cfg_ollama_model">Ollama model</label>
           <select name="model" id="cfg-model"></select>
+          <div class="field-overridden" id="cfg-model-overridden" hidden data-i18n="admin.cfg_model_overridden">Not in use while "Force Claude Code" is on: every request goes to Claude Code.</div>
         </div>
         <div class="field">
           <label data-i18n="admin.cfg_num_ctx">Context window (num_ctx)</label>
@@ -2056,7 +2060,9 @@ function fmtExpiry(iso) {
   try {
     const d = new Date(iso), now = new Date();
     const diff = Math.round((d - now) / 60000);
-    if (diff < 0) return 'expired';
+    if (diff < 0) return t('admin.dash_expired');
+    // Ollama's keep_alive "forever" comes back as a date centuries away
+    if (diff > 60 * 24 * 365) return t('admin.dash_kept_loaded');
     if (diff < 60) return `${diff}m`;
     return `${Math.round(diff/60)}h`;
   } catch { return '—'; }
@@ -2097,10 +2103,20 @@ function renderDashboard(d) {
     set('d-route', acts[acts.length-1].route || '—');
   }
 
-  // Model card
-  const ps = d.ollama_ps || [];
-  if (ps.length) {
-    const m = ps[0];
+  // Model card: the model that ANSWERS, not whatever Ollama loaded first —
+  // the embedding model is usually resident too, and was shown here.
+  const cfg = d.config || {};
+  const embed = String(cfg.embed_model || 'nomic-embed-text').split(':')[0];
+  const isEmbed = n => /embed/i.test(n || '') || String(n || '').split(':')[0] === embed;
+  const want = String(cfg.model || '');
+  const all = d.ollama_ps || [];
+  const ps = all.filter(x => !isEmbed(x.name));
+  const pick = ps.find(x => want && (x.name === want || x.name.split(':')[0] === want.split(':')[0])) || ps[0];
+  if (cfg.force_claude_code) {
+    set('d-model-name', t('admin.dash_forced_cc'));
+    set('d-ctx', '—'); set('d-vram', pick ? pick.size_vram_mb + ' MB' : '—'); set('d-exp', '—');
+  } else if (pick) {
+    const m = pick;
     set('d-model-name', m.name || '—');
     set('d-ctx', (m.context_length || '—') + ' tok');
     set('d-vram', m.size_vram_mb ? m.size_vram_mb + ' MB' : '—');
@@ -2333,6 +2349,17 @@ function applyConfigToForm(cfg) {
   // Checkbox fields
   const fcc = document.getElementById('force_claude_code');
   if (fcc) { fcc.checked = !!cfg.force_claude_code; fcc.defaultChecked = !!cfg.force_claude_code; }
+  // The Ollama model still saves, but nothing uses it while Claude Code is
+  // forced; say so on the field instead of letting it look live.
+  const _syncOverride = () => {
+    const on = !!(fcc && fcc.checked);
+    const note = document.getElementById('cfg-model-overridden');
+    const sel = document.getElementById('cfg-model');
+    if (note) note.hidden = !on;
+    if (sel) sel.closest('.field')?.classList.toggle('is-overridden', on);
+  };
+  if (fcc && !fcc._overrideBound) { fcc.addEventListener('change', _syncOverride); fcc._overrideBound = true; }
+  _syncOverride();
   const mcr = document.getElementById('model_chain_routing');
   if (mcr) { mcr.checked = !!cfg.model_chain_routing; }
   const orgx = document.getElementById('memory_org_extraction');
@@ -2722,7 +2749,7 @@ async function loadInventory(refresh) {
 async function loadHardware() {
   const box = el('hw-rows');
   if (!box) return;
-  const d = await apiFetch('/api/hardware').then(r => r.json()).catch(() => null);
+  const d = await _apiFetch('/api/hardware').then(r => r.json()).catch(() => null);
   if (!d) { box.textContent = t('admin.hw_unavailable'); return; }
   const s = d.static || {};
   const rows = [];
@@ -2754,7 +2781,7 @@ async function measureHardware(btn) {
   btn.disabled = true;
   note.textContent = t('admin.hw_running');
   try {
-    const r = await apiFetch('/api/hardware/measure', {
+    const r = await _apiFetch('/api/hardware/measure', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({kind: 'whisper'}),
     });
@@ -2909,7 +2936,11 @@ async function loadRoles(){
   ]);
   // Get tool names from dashboard
   const dash = await _apiFetch('/api/dashboard').then(r=>r.json()).catch(()=>({}));
-  _allToolNames = (dash.tools?.all || []).filter(t=>!t.includes('_'));  // non-MCP only
+  // Native tools only. MCP tools are named <prefix>_<tool>; filtering on any
+  // "_" (as this did) dropped run_shell, read_file and nearly every native
+  // tool too, so Roles showed an empty tool list for every role.
+  const _mcpPre = (dash.tools?.mcp_prefixes || []).map(p => p + '_');
+  _allToolNames = (dash.tools?.all || []).filter(t => !_mcpPre.some(p => t.startsWith(p)));
   renderRoles();
 }
 
