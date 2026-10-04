@@ -47,7 +47,9 @@
       "Voice-first: retractable dock + stream-driven live caption",
       "Solid mesh hologram · jaw driven by TTS amplitude · procedural eyes",
       "Opt-in webcam head/eye-tracking · vision snapshot · colour picker",
-      "Drag-drop upload · shares orb SSE/TTS/STT/auth · ORB/CHAT/FACE nav"
+      "Drag-drop upload · shares orb SSE/TTS/STT/auth · ORB/CHAT/FACE nav",
+      "Stage: the Claude Code terminal for code_task runs; stays open until closed",
+      "Stage is z 8, above the network's labels; 68% wide; the state label stays top right"
      ],
      "phase": "",
      "icon": ""
@@ -56,17 +58,35 @@
      "id": "admin-panel-admin-html",
      "title": "Admin Panel — admin.html",
      "where": "browser · /admin",
-     "lead": "Dashboard · Users · Roles · Audit · Skills",
+     "lead": "A calm console: grouped nav, readable type, the truth stated",
      "body": [
-      "MCP catalog · Backup · Config · Logs",
-      "GPU/VRAM charts · activity log · KB compress button",
-      "Skills tab: browse / edit / delete learned skills",
-      "Ollama Endpoints panel · Model Tiers inventory",
-      "Per-user API key field (Fernet encrypted)",
-      "Files & Output → global_output_dir (default files/output)",
-      "per-user subfolder · serve scoped to the caller"
+      "People · Intelligence · Data · System — bold gold group headings",
+      "DM Sans for the interface, DM Mono only for data, Syne for titles;",
+      "12/13/14px, muted text ≥5.2:1 (was 9–11px at 2.6:1)",
+      "Models opens with \"Who answers right now\" — one sentence resolving",
+      "force Claude Code / preference list / local model",
+      "Sticky save bar with an unsaved-changes count · #config/models links ·",
+      "Back steps through sections",
+      "SUNI's own dialogs replace alert/confirm/prompt (pt/en, Escape, focus);",
+      "Restore and Erase need a typed word · no delete on your own account",
+      "Backup age on Backup and the Dashboard · Usage counts one thing",
+      "Project folders for coding work (code_project_roots)"
      ],
-     "phase": "",
+     "phase": "15",
+     "icon": ""
+    },
+    {
+     "id": "sign-in-login-html",
+     "title": "Sign-in — login.html",
+     "where": "browser · /login",
+     "lead": "Her name materialises; the sky is the Face's own",
+     "body": [
+      "Wordmark: cyan ghost lock-on, then a gold scanlined sweep",
+      "Background: the Face's nebula shader (copied — keep in sync)",
+      "Tagline: System of Unified Networked Intelligence",
+      "Labels linked to inputs · errors that say what to do"
+     ],
+     "phase": "15",
      "icon": ""
     },
     {
@@ -630,7 +650,9 @@
       "GET /api/usage — per-user token totals (SMB cost view)",
       "models — which model(s) actually answered, in call order (a tier escalation reads qwen2.5:7b,qwen2.5:32b)",
       "route=\"chat.stopped\" — a human interrupted the run",
-      "route=\"approval\": allow · deny · timeout · cancelled"
+      "route=\"approval\": allow · deny · timeout · cancelled",
+      "Each chat turn records its tools and its mode (both were always empty)",
+      "Usage counts chat turns in every table, and says when some carry no tokens"
      ],
      "phase": "",
      "icon": ""
@@ -931,6 +953,21 @@
      ],
      "phase": "",
      "icon": ""
+    },
+    {
+     "id": "output-guard",
+     "title": "Output guard",
+     "where": "output_guard.py · scan()",
+     "lead": "Redacts secrets in tool results before the model or the screen sees them",
+     "body": [
+      "Vendor keys (AWS, GitHub, Slack, Stripe, Anthropic, OpenAI), JWTs,",
+      "private keys, and key/secret/token/password assignments",
+      "ANTHROPIC_API_KEY= and DB_PASSWORD= were missed until 2026-10-04:",
+      "`\\b` before the name, and `_` is a word character",
+      "Annotates text that reads as instructions aimed at the model"
+     ],
+     "phase": "15",
+     "icon": ""
     }
    ],
    "inventory": []
@@ -1132,6 +1169,119 @@
       "identical grant states collapsed because only a change is signal"
      ],
      "phase": "",
+     "icon": ""
+    }
+   ],
+   "inventory": []
+  },
+  {
+   "id": "coding",
+   "title": "Coding in real projects",
+   "where": "tools/code_project.py · code_task · face.html stage terminal",
+   "lead": "Claude Code edits a real codebase, approved every run, watched live",
+   "tone": "gold",
+   "kind": "set",
+   "items": [
+    {
+     "id": "code-task",
+     "title": "code_task",
+     "where": "suni/tools/code_project.py",
+     "lead": "Claude Code inside a project folder, with edit rights it can't widen",
+     "body": [
+      "Measured before trusting it: plain `claude --print` denies every write;",
+      "a bare Write rule writes ANYWHERE, ../outside.txt included",
+      "acceptEdits · Read/Glob/Grep + Bash(...)/PowerShell(...) patterns only",
+      "--setting-sources project keeps CLAUDE.md, drops settings.local.json",
+      "--strict-mcp-config: none of the user's personal connectors",
+      "Only inside code_project_roots (realpath + commonpath; empty = off)",
+      "One run per folder · never the standard or read-only roles"
+     ],
+     "phase": "15",
+     "icon": ""
+    },
+    {
+     "id": "reached-first",
+     "title": "Reached first",
+     "where": "_run_inner · project_in(text) · CODE_FOLLOWUP",
+     "lead": "A message naming an allowed folder goes to Claude Code before any route",
+     "body": [
+      "The first version worked when called and no chat turn reached it:",
+      "force_claude_code sent every turn to the CLI in the home folder",
+      "Now checked at the very start of the turn, ahead of task mode,",
+      "collaborate and the forced route; English and pt-PT alike,",
+      "because it matches the path, not the words"
+     ],
+     "phase": "15",
+     "icon": ""
+    },
+    {
+     "id": "approved-every-time",
+     "title": "Approved every time",
+     "where": "approval.NEVER_TRUSTED",
+     "lead": "No always-allow, no policy-allow, and a token can't say yes",
+     "body": [
+      "Trust patterns match a substring of any argument, so a rule for one",
+      "folder could be met by a task that only mentions it",
+      "The card shows the folder, the commands it may run, and anything the",
+      "project's shared settings add (extra folders, hooks, a default mode)",
+      "The service token and API tokens can open /api/chat AND answer",
+      "approvals; for these tools only a signed-in person can allow"
+     ],
+     "phase": "15",
+     "icon": ""
+    },
+    {
+     "id": "stage-terminal",
+     "title": "Terminal on the stage",
+     "where": "term events · #stage-term · _ccTerm",
+     "lead": "A live mirror of the run, with a prompt line that continues it",
+     "body": [
+      "Streamed text, each tool call, results with diffs, refusals, cost",
+      "The prompt line sends the next instruction straight to Claude Code",
+      "in that project on a deterministic path — not via the local model",
+      "Text is set with textContent and redacted as a WHOLE block on the",
+      "server: a secret split across two chunks passes a per-chunk scan"
+     ],
+     "phase": "15",
+     "icon": ""
+    },
+    {
+     "id": "change-report",
+     "title": "What the run changed",
+     "where": "snapshot() · changes_since()",
+     "lead": "Credited against a snapshot taken before the run, not against HEAD",
+     "body": [
+      "A diff against HEAD would credit Claude Code with the developer's",
+      "own uncommitted edits; the snapshot compares file hashes instead",
+      "Outside git, the files its Edit/Write calls touched",
+      "Sessions are remembered per user AND folder"
+     ],
+     "phase": "15",
+     "icon": ""
+    },
+    {
+     "id": "stop-means-stop",
+     "title": "Stop means stop",
+     "where": "proc.kill_tree · own_group",
+     "lead": "The CLI and everything it started die with the request",
+     "body": [
+      "Measured: cancelling a run left claude.exe working 4s later",
+      "taskkill /T on Windows, the process group on POSIX; on timeout and",
+      "on cancellation, for Claude Code and Codex alike"
+     ],
+     "phase": "15",
+     "icon": ""
+    },
+    {
+     "id": "codex-read-only",
+     "title": "Codex stays read-only",
+     "where": "codex exec -s read-only",
+     "lead": "Its edit sandbox fails on the reference box, so it isn't offered",
+     "body": [
+      "-s workspace-write: even the inside write failed, no shell started",
+      "(CryptUnprotectData) — measured, not assumed"
+     ],
+     "phase": "15",
      "icon": ""
     }
    ],
@@ -1424,6 +1574,24 @@
    "to": "server",
    "type": "packages",
    "note": "the same process, on three operating systems"
+  },
+  {
+   "from": "orchestrator",
+   "to": "coding",
+   "type": "delegates",
+   "note": "a named project folder sends the turn to Claude Code there"
+  },
+  {
+   "from": "coding",
+   "to": "auth",
+   "type": "asks",
+   "note": "every run is approved by a signed-in person"
+  },
+  {
+   "from": "coding",
+   "to": "interfaces",
+   "type": "streams",
+   "note": "the run is mirrored live as a terminal on the Face's stage"
   }
  ],
  "phases": {
@@ -1434,6 +1602,7 @@
   "11": "supervision & reachability",
   "12": "meeting recording",
   "13": "staffing: ceilings, fan-out, assignments",
-  "14": "the field behind her head"
+  "14": "the field behind her head",
+  "15": "coding in real projects; a readable admin"
  }
 }

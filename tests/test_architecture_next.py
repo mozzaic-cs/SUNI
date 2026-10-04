@@ -107,7 +107,9 @@ def test_every_lane_of_the_flat_page_is_here():
     page has thirteen, and three of its lanes use markup the first converter
     did not know about — it silently produced zero items for them."""
     flat = (ROOT / "suni/web/architecture.html").read_text(encoding="utf-8")
-    assert len(DOC["groups"]) == 13, f"{len(DOC['groups'])} subsystems, not 13"
+    # 14 since 2026-10-04: "Coding in real projects" (code_task) was added to
+    # both pages; the count still pins the two pages to each other.
+    assert len(DOC["groups"]) == 14, f"{len(DOC['groups'])} subsystems, not 14"
     items = sum(len(g["items"]) for g in DOC["groups"])
     # The flat page's own count of component headings.
     assert items == flat.count("node-title"), (

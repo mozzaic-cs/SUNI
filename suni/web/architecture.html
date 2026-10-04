@@ -273,16 +273,26 @@ body.simple .section-gap{height:6px!important}
     </div>
     <div class="node c-navy" id="n-admin" style="min-width:215px">
       <div class="node-tag" style="background:rgba(74,144,217,.1);color:#4a90d9">browser · /admin</div>
-      <div class="node-title">Admin Panel — admin.html</div>
+      <div class="node-title">Admin Panel — admin.html <span class="new-badge">Phase 15</span></div>
       <div class="node-detail">
-        <span>Dashboard · Users · Roles · Audit · Skills</span>
-        MCP catalog · Backup · Config · Logs<br>
-        GPU/VRAM charts · activity log · KB compress button<br>
-        Skills tab: browse / edit / delete learned skills<br>
-        <span style="color:var(--teal)">Ollama Endpoints panel · Model Tiers inventory</span><br>
-        <span style="color:var(--teal)">Per-user API key field (Fernet encrypted)</span><br>
-        <span style="color:var(--teal)">Files &amp; Output &rarr; global_output_dir (default files/output)</span><br>
+        <span>A calm console: grouped nav, readable type, the truth stated</span>
+        People · Intelligence · Data · System · Users · Roles · Audit · Usage<br>
+        Agents · Skills · MCP · Schedules · Memory · Backup · Config · Logs<br>
+        <span style="color:var(--teal)">DM Sans UI · DM Mono for data · 12/13/14px · muted ≥5.2:1</span><br>
+        <span style="color:var(--teal)">Models: "Who answers right now" · sticky save · #config/models</span><br>
+        <span style="color:var(--teal)">SUNI's own dialogs (pt/en) · Restore &amp; Erase need a typed word</span><br>
+        <span style="color:var(--teal)">Backup age · Usage counts one thing · project folders for coding</span><br>
         <span style="color:var(--gold)">per-user subfolder &middot; serve scoped to the caller</span>
+      </div>
+    </div>
+    <div class="node c-navy" style="min-width:200px">
+      <div class="node-tag" style="background:rgba(74,144,217,.1);color:#4a90d9">browser · /login</div>
+      <div class="node-title">Sign-in — login.html <span class="new-badge">Phase 15</span></div>
+      <div class="node-detail">
+        <span>Her name materialises; the sky is the Face's own</span>
+        Cyan ghost lock-on, then a gold scanlined sweep<br>
+        The Face's nebula shader (copied — keep in sync)<br>
+        <span style="color:var(--teal)">System of Unified Networked Intelligence</span>
       </div>
     </div>
     <div class="node c-navy" style="min-width:185px;opacity:.7">
@@ -1431,6 +1441,18 @@ body.simple .section-gap{height:6px!important}
       </div>
     </div>
 
+
+    <div class="node c-gold" style="min-width:250px">
+      <div class="node-tag" style="background:rgba(201,162,39,.07);color:var(--gold)">output_guard.py · scan()</div>
+      <div class="node-title">Output guard <span class="new-badge">Phase 15</span></div>
+      <div class="node-detail">
+        <span>Redacts secrets in tool results before the model or the screen sees them</span>
+        Vendor keys (AWS · GitHub · Slack · Stripe · Anthropic · OpenAI) · JWTs · private keys<br>
+        key/secret/token/password assignments — env-style names too since 2026-10-04<br>
+        <span style="color:var(--teal)">annotates text that reads as instructions aimed at the model</span>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -1608,6 +1630,107 @@ body.simple .section-gap{height:6px!important}
         <span style="color:var(--gold)">Grants are re-derived each run, so the profile as it stands later is not evidence of what applied</span><br>
         report(slug, days) reads it back — what it DID vs what it COULD reach,
         identical grant states collapsed because only a change is signal
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══ CODING IN REAL PROJECTS ══ -->
+<div class="section-gap" style="height:10px"></div>
+<div class="lane" id="lane-coding">
+  <div class="lane-header" style="color:var(--gold)">
+    <span>Coding in Real Projects</span>
+    <span style="font-size:9px;color:var(--muted);font-weight:400;letter-spacing:.04em">tools/code_project.py · code_task · face.html stage terminal</span>
+    <span class="new-badge">Phase 15</span>
+  </div>
+  <div class="lane-content" style="align-items:flex-start">
+
+    <div class="node c-gold" style="min-width:240px">
+      <div class="node-tag" style="background:rgba(201,162,39,.07);color:var(--gold)">suni/tools/code_project.py</div>
+      <div class="node-title">code_task</div>
+      <div class="node-detail">
+        <span>Claude Code inside a project folder, with edit rights it can't widen</span>
+        Measured before trusting it: plain `claude --print` denies every write;<br>
+        a bare Write rule writes ANYWHERE, ../outside.txt included<br>
+        acceptEdits · Read/Glob/Grep + Bash(...)/PowerShell(...) patterns only<br>
+        --setting-sources project keeps CLAUDE.md, drops settings.local.json<br>
+        --strict-mcp-config: none of the user's personal connectors<br>
+        Only inside code_project_roots (realpath + commonpath; empty = off)<br>
+        One run per folder · never the standard or read-only roles
+      </div>
+    </div>
+
+    <div class="node c-gold" style="min-width:240px">
+      <div class="node-tag" style="background:rgba(201,162,39,.07);color:var(--gold)">_run_inner · project_in(text) · CODE_FOLLOWUP</div>
+      <div class="node-title">Reached first</div>
+      <div class="node-detail">
+        <span>A message naming an allowed folder goes to Claude Code before any route</span>
+        The first version worked when called and no chat turn reached it:<br>
+        force_claude_code sent every turn to the CLI in the home folder<br>
+        Now checked at the very start of the turn, ahead of task mode,<br>
+        collaborate and the forced route; English and pt-PT alike,<br>
+        because it matches the path, not the words
+      </div>
+    </div>
+
+    <div class="node c-gold" style="min-width:240px">
+      <div class="node-tag" style="background:rgba(201,162,39,.07);color:var(--gold)">approval.NEVER_TRUSTED</div>
+      <div class="node-title">Approved every time</div>
+      <div class="node-detail">
+        <span>No always-allow, no policy-allow, and a token can't say yes</span>
+        Trust patterns match a substring of any argument, so a rule for one<br>
+        folder could be met by a task that only mentions it<br>
+        The card shows the folder, the commands it may run, and anything the<br>
+        project's shared settings add (extra folders, hooks, a default mode)<br>
+        The service token and API tokens can open /api/chat AND answer<br>
+        approvals; for these tools only a signed-in person can allow
+      </div>
+    </div>
+
+    <div class="node c-gold" style="min-width:240px">
+      <div class="node-tag" style="background:rgba(201,162,39,.07);color:var(--gold)">term events · #stage-term · _ccTerm</div>
+      <div class="node-title">Terminal on the stage</div>
+      <div class="node-detail">
+        <span>A live mirror of the run, with a prompt line that continues it</span>
+        Streamed text, each tool call, results with diffs, refusals, cost<br>
+        The prompt line sends the next instruction straight to Claude Code<br>
+        in that project on a deterministic path — not via the local model<br>
+        Text is set with textContent and redacted as a WHOLE block on the<br>
+        server: a secret split across two chunks passes a per-chunk scan
+      </div>
+    </div>
+
+    <div class="node c-gold" style="min-width:240px">
+      <div class="node-tag" style="background:rgba(201,162,39,.07);color:var(--gold)">snapshot() · changes_since()</div>
+      <div class="node-title">What the run changed</div>
+      <div class="node-detail">
+        <span>Credited against a snapshot taken before the run, not against HEAD</span>
+        A diff against HEAD would credit Claude Code with the developer's<br>
+        own uncommitted edits; the snapshot compares file hashes instead<br>
+        Outside git, the files its Edit/Write calls touched<br>
+        Sessions are remembered per user AND folder
+      </div>
+    </div>
+
+    <div class="node c-gold" style="min-width:240px">
+      <div class="node-tag" style="background:rgba(201,162,39,.07);color:var(--gold)">proc.kill_tree · own_group</div>
+      <div class="node-title">Stop means stop</div>
+      <div class="node-detail">
+        <span>The CLI and everything it started die with the request</span>
+        Measured: cancelling a run left claude.exe working 4s later<br>
+        taskkill /T on Windows, the process group on POSIX; on timeout and<br>
+        on cancellation, for Claude Code and Codex alike
+      </div>
+    </div>
+
+    <div class="node c-gold" style="min-width:240px">
+      <div class="node-tag" style="background:rgba(201,162,39,.07);color:var(--gold)">codex exec -s read-only</div>
+      <div class="node-title">Codex stays read-only</div>
+      <div class="node-detail">
+        <span>Its edit sandbox fails on the reference box, so it isn't offered</span>
+        -s workspace-write: even the inside write failed, no shell started<br>
+        (CryptUnprotectData) — measured, not assumed
       </div>
     </div>
 
