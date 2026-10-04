@@ -898,11 +898,13 @@ def test_the_state_word_is_readable():
     css = css[:css.index("}")]
     size = float(re.search(r"font-size:([\d.]+)px", css).group(1))
     assert size >= 12, f"{size}px is no better than it was"
-    # Far right rather than against the wordmark, and it steps down when she
-    # shrinks into that same corner — measured, her head occupies y 36..432
-    # there, so a label pinned at 56 would be read through her face.
+    # Far right rather than against the wordmark. It used to step down to half
+    # the window when she shrank into that corner; that read as a stray label
+    # mid-screen (2026-10-04, his call), so now it stays put and SHE sits lower:
+    # her shrunk head starts at least 84px down, below the label.
     assert "top:56px;right:22px" in css, "it is not where it was put"
-    assert "H * 0.52 - 56" in FACE, "it does not get out from under her"
+    assert "stateLabel.style.top = '56px'" in FACE, "it moves again"
+    assert "my = Math.max(canvas.height * 0.10, 84" in FACE, "her head would sit under the label"
 
 
 def test_the_word_announces_a_change_rather_than_only_the_new_state():

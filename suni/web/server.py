@@ -2330,9 +2330,15 @@ def create_app() -> FastAPI:
             # would print the whole answer a second time.
             _streamed_tokens = {"seen": False}
 
+            # which tools the turn used, for its audit row (the Audit table's
+            # Tools column was empty on every row: nothing ever recorded them)
+            _tools_used: list[str] = []
+
             def _event_cb(evt: dict) -> None:
                 if evt.get("type") == "token":
                     _streamed_tokens["seen"] = True
+                elif evt.get("type") == "tool_start" and evt.get("name")                         and evt["name"] not in _tools_used:
+                    _tools_used.append(str(evt["name"]))
                 _evt_queue.put_nowait(evt)
 
             async def _drain_events():
@@ -2453,6 +2459,8 @@ def create_app() -> FastAPI:
                     ip_address=request.client.host if request.client else "",
                     query_preview=message[:100],
                     route="chat",
+                    mode=conv_mode,
+                    tools_called=_tools_used,
                     duration_s=round(time.time() - t0, 2),
                     prompt_tokens=_usage_acc.prompt,
                     gen_tokens=_usage_acc.gen,

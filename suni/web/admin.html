@@ -457,8 +457,8 @@ code,pre,kbd,samp,#log-output,.mono{font-family:var(--font-mono)}
 #log-output{font-size:13px}
 
 /* ══ STRUCTURE ════════════════════════════════════════════════════════════ */
-.nav-group{margin:14px 20px 4px;font-family:var(--font-display);font-size:12px;font-weight:600;
-  letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.nav-group{margin:16px 20px 4px;font-family:var(--font-display);font-size:12px;font-weight:700;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--gold)}
 /* the update notice is news, not chrome: it belongs on the Dashboard */
 main:not(.on-dashboard) #update-banner{display:none!important}
 /* long hints: two lines, the rest on request */
@@ -490,6 +490,25 @@ main:not(.on-dashboard) #update-banner{display:none!important}
   .cfg-footer .btn{padding:8px 14px;min-height:36px}
 }
 .cfg-dirty:empty{display:none}
+
+/* ══ DIALOGS + NOTICES ════════════════════════════════════════════════════ */
+.ui-dialog{width:min(520px,94vw);max-height:86vh;overflow:auto}
+.ui-dialog h3{margin-bottom:12px}
+.ui-dialog-body{font-size:14px;line-height:1.55;color:var(--text);white-space:pre-line}
+.ui-dialog-err{min-height:0;margin-top:8px;font-size:13px;color:#ff8095}
+.ui-dialog-err:empty{display:none}
+.ui-dialog.is-danger{border-color:rgba(255,69,96,.45)}
+.btn-danger{background:#d63c52;color:#fff}
+.btn-danger:hover{background:#ff4560}
+.btn-danger:disabled{background:#5a2a33;color:rgba(255,255,255,.55)}
+.tbl-self{font-size:13px;color:var(--muted)}
+.mc-warn{flex-basis:100%;font-size:13px;color:var(--gold-b);padding-left:28px}
+.bk-age{padding:10px 18px;font-size:14px;color:var(--label);border-bottom:1px solid var(--border)}
+.bk-age.warn{color:var(--gold-b)}
+.bk-age.bad{color:#ff8095}
+.dash-warn{margin:0 0 14px;padding:11px 14px;border-radius:var(--radius);font-size:14px;color:var(--gold-b);
+  border:1px solid rgba(201,162,39,.35);background:rgba(201,162,39,.07)}
+.dash-warn a{color:var(--cyan);text-underline-offset:3px}
 
 /* ══ COLOUR ROLES ═════════════════════════════════════════════════════════ */
 .field-hint{color:var(--hint)}
@@ -572,6 +591,7 @@ input,textarea{caret-color:var(--cyan)}
 
 <!-- ════════════════════ DASHBOARD ════════════════════ -->
 <div class="panel active" id="panel-dashboard">
+  <div id="d-backup-warn" class="dash-warn" role="status" hidden></div>
 
   <div class="dash-top">
     <!-- Status -->
@@ -1396,25 +1416,26 @@ input,textarea{caret-color:var(--cyan)}
 <div class="panel" id="panel-usage">
   <div class="card" style="margin-bottom:16px">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
-      <h2 style="margin:0">Usage &amp; cost</h2>
-      <select id="usage-days" onchange="loadUsage()" style="margin-left:auto">
+      <div class="card-title" style="margin:0;flex:1" data-i18n="admin.usage_title">Usage</div>
+      <select id="usage-days" class="bm-sel" onchange="loadUsage()" style="margin-left:auto" aria-label="Period">
         <option value="7" data-i18n="admin.opt_last7">last 7 days</option>
         <option value="30" selected data-i18n="admin.opt_last30">last 30 days</option>
         <option value="90" data-i18n="admin.opt_last90">last 90 days</option>
       </select>
     </div>
     <div id="usage-totals" style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:6px"></div>
+    <div id="usage-partial" class="field-hint" style="color:var(--gold-b);margin-bottom:6px"></div>
     <div class="field-hint" data-i18n-html="admin.hint_tokens">Token counts come from the local model backend. <b>Subscription CLI models (Claude Code · Codex) don't report tokens</b>, so for the <b>collaborate</b> mode the <b>request count</b> is the cost proxy — each run ≈ several frontier calls.</div>
   </div>
   <div class="card" style="margin-bottom:16px">
-    <h3 style="margin:0 0 10px">By mode</h3>
+    <div class="card-title" data-i18n="admin.usage_by_mode">By conversation mode</div>
     <table style="width:100%;border-collapse:collapse"><thead><tr>
       <th style="text-align:left" data-i18n="admin.col_mode">Mode</th><th style="text-align:right" data-i18n="admin.col_requests">Requests</th>
       <th style="text-align:right" data-i18n="admin.col_prompt_tok">Prompt tok</th><th style="text-align:right" data-i18n="admin.col_gen_tok">Gen tok</th><th style="text-align:right" data-i18n="admin.col_total_tok">Total tok</th>
     </tr></thead><tbody id="usage-by-mode"></tbody></table>
   </div>
   <div class="card">
-    <h3 style="margin:0 0 10px">By user</h3>
+    <div class="card-title" data-i18n="admin.usage_by_user">By user</div>
     <table style="width:100%;border-collapse:collapse"><thead><tr>
       <th style="text-align:left" data-i18n="admin.col_user">User</th><th style="text-align:right" data-i18n="admin.col_requests">Requests</th>
       <th style="text-align:right" data-i18n="admin.col_prompt_tok">Prompt tok</th><th style="text-align:right" data-i18n="admin.col_gen_tok">Gen tok</th><th style="text-align:right" data-i18n="admin.col_total_tok">Total tok</th>
@@ -1774,6 +1795,7 @@ input,textarea{caret-color:var(--cyan)}
                 color:var(--label);border-bottom:1px solid var(--border)">
       <span data-i18n="admin.backup_history">Backup history</span> <span id="bk-count" style="color:var(--muted);font-weight:400"></span>
     </div>
+    <div id="bk-age" class="bk-age" role="status"></div>
     <table class="data-table" id="backup-table">
       <thead><tr><th data-i18n="admin.backup_col_file">Filename</th><th data-i18n="admin.backup_col_size">Size</th><th data-i18n="admin.backup_col_created">Created</th><th data-i18n="admin.backup_col_actions">Actions</th></tr></thead>
       <tbody id="backup-tbody"><tr><td colspan="4" style="text-align:center;color:var(--muted);padding:24px" data-i18n="admin.backup_empty">No backups yet.</td></tr></tbody>
@@ -1889,6 +1911,7 @@ async function _checkAuth(){
   // Verify JWT
   const me = await _apiFetch('/api/auth/me').then(r=>r.ok?r.json():null).catch(()=>null);
   if(!me){ location.href='/login?next=/admin'; return; }
+  window._meId = me.id;
   el('hdr-user').textContent = me.username + ' · ' + me.role;
   // Set UI language from user / global settings
   try {
@@ -1962,15 +1985,21 @@ async function loadUsage() {
   let d;
   try { d = await (await _apiFetch('/api/usage?days=' + days)).json(); }
   catch { return; }
-  const nf = n => (n || 0).toLocaleString();
-  const t = d.totals || {};
+  const loc = _uiLocale();
+  const nf = n => (n || 0).toLocaleString(loc);
+  const tot = d.totals || {};
   const card = (label, val, accent) =>
     `<div style="flex:1;min-width:120px;padding:12px;border:1px solid rgba(255,255,255,.1);border-radius:6px">
-       <div style="font-size:22px;font-weight:700;color:${accent||'var(--text)'}">${nf(val)}</div>
+       <div style="font-size:22px;font-weight:700;font-family:var(--font-mono);color:${accent||'var(--text)'}">${nf(val)}</div>
        <div style="font-size:13px;color:var(--muted);">${label}</div></div>`;
   document.getElementById('usage-totals').innerHTML =
-    card('requests', t.requests) + card('prompt tokens', t.prompt_tokens) +
-    card('gen tokens', t.gen_tokens) + card('total tokens', t.total_tokens, 'var(--cyan)');
+    card(t('admin.usage_requests'), tot.requests) + card(t('admin.usage_prompt'), tot.prompt_tokens) +
+    card(t('admin.usage_gen'), tot.gen_tokens) + card(t('admin.usage_total'), tot.total_tokens, 'var(--cyan)');
+  // Say so when some requests carry no token counts, instead of letting the
+  // token totals look like the whole picture.
+  const part = document.getElementById('usage-partial');
+  if (part) part.textContent = (tot.with_tokens != null && tot.with_tokens < tot.requests)
+    ? t('admin.usage_partial', {w: nf(tot.with_tokens), n: nf(tot.requests)}) : '';
   const MODE_COLOR = { collaborate:'var(--gold)', task:'var(--cyan)', 'read-only':'rgba(255,180,0,.8)' };
   document.getElementById('usage-by-mode').innerHTML = (d.by_mode || []).map(m =>
     `<tr style="border-top:1px solid rgba(255,255,255,.06)">
@@ -1979,7 +2008,7 @@ async function loadUsage() {
        <td style="text-align:right">${nf(m.prompt_tokens)}</td>
        <td style="text-align:right">${nf(m.gen_tokens)}</td>
        <td style="text-align:right">${nf(m.total_tokens)}</td></tr>`).join('')
-    || '<tr><td colspan="5" style="color:var(--muted);padding:8px 0">No usage in this window.</td></tr>';
+    || `<tr><td colspan="5" style="color:var(--muted);padding:8px 0">${t('admin.usage_none')}</td></tr>`;
   document.getElementById('usage-by-user').innerHTML = (d.by_user || []).map(u =>
     `<tr style="border-top:1px solid rgba(255,255,255,.06)">
        <td>${esc(u.username || u.user_id || '—')}</td>
@@ -1987,7 +2016,7 @@ async function loadUsage() {
        <td style="text-align:right">${nf(u.prompt_tokens)}</td>
        <td style="text-align:right">${nf(u.gen_tokens)}</td>
        <td style="text-align:right">${nf(u.total_tokens)}</td></tr>`).join('')
-    || '<tr><td colspan="5" style="color:var(--muted);padding:8px 0">No usage in this window.</td></tr>';
+    || `<tr><td colspan="5" style="color:var(--muted);padding:8px 0">${t('admin.usage_none')}</td></tr>`;
 }
 
 // ═══════════════════════════════════════════
@@ -2098,14 +2127,14 @@ async function runBenchmark() {
       body: JSON.stringify(body),
     });
     if (r.status === 409) {
-      alert('A benchmark run is already in progress.');
+      uiAlert(t('admin.bench_running'));
       btn.disabled = false;
       return;
     }
     if (!r.ok) throw new Error(r.status);
     startBmProgress();
   } catch(e) {
-    alert('Failed to start benchmark.');
+    uiAlert(t('admin.bench_failed'), {error: true});
     btn.disabled = false;
   }
 }
@@ -2543,7 +2572,11 @@ function applyConfigToForm(cfg) {
 // ── Pluggable model chain (drag-ordered preference list) ──────────────
 let _modelChain = [];
 let _mcDragId = null, _mcSeq = 0;
-const _MC_PROVIDERS = ['ollama','vllm','openai','anthropic','gemini','claude-code'];
+// codex was missing here (the factory and the panel list both support it): a
+// Codex row rendered as the first option, "ollama", and the next save wrote
+// that back. Unknown providers are now kept as they are, never replaced.
+const _MC_PROVIDERS = ['ollama','vllm','openai','anthropic','gemini','claude-code','codex'];
+const _MC_NEEDS_MODEL = ['ollama','vllm','openai','anthropic','gemini'];
 function _mcNewId(){ return 'm' + Date.now().toString(36) + (_mcSeq++); }
 
 // The familiar pre-configured tier ladder, used to seed the list on first use.
@@ -2574,7 +2607,8 @@ function _renderModelChain(){
       <span style="font-size:13px;color:var(--muted);width:14px;text-align:right">${i+1}</span>
       <input class="mc-label" placeholder="Label" value="${esc(e.label||'')}" style="flex:1;min-width:84px">
       <select class="mc-provider" style="min-width:104px">
-        ${_MC_PROVIDERS.map(p=>`<option value="${p}"${p===e.provider?' selected':''}>${p}</option>`).join('')}
+        ${(_MC_PROVIDERS.includes(e.provider) || !e.provider ? _MC_PROVIDERS : _MC_PROVIDERS.concat([e.provider]))
+          .map(p=>`<option value="${esc(p)}"${p===e.provider?' selected':''}>${esc(p)}</option>`).join('')}
       </select>
       <input class="mc-model" placeholder="${t('admin.ph_model_id')}" value="${esc(e.model||'')}" style="flex:1;min-width:108px">
       <input class="mc-base" placeholder="${t('admin.ph_base_url')}" value="${esc(e.base_url||'')}" style="flex:1;min-width:118px">
@@ -2582,7 +2616,9 @@ function _renderModelChain(){
       <label style="display:flex;align-items:center;gap:4px;font-size:13px;color:var(--muted);cursor:pointer">
         <input class="mc-enabled" type="checkbox"${e.enabled!==false?' checked':''} style="accent-color:var(--gold)"> on
       </label>
-      <button type="button" class="tbl-btn" title="Remove" onclick="_removeModelChain('${esc(e.id)}')">×</button>
+      <button type="button" class="tbl-btn" title="${t('admin.dlg_remove')}" aria-label="${t('admin.dlg_remove')}" onclick="_removeModelChain('${esc(e.id)}')">×</button>
+      ${e.enabled !== false && _MC_NEEDS_MODEL.includes(e.provider) && !(e.model||'').trim()
+        ? `<div class="mc-warn">${t('admin.mc_needs_model')}</div>` : ''}
     </div>`).join('');
   wrap.querySelectorAll('.mc-row').forEach(row => {
     row.addEventListener('dragstart', ev => { _mcDragId = row.dataset.id; ev.dataTransfer.effectAllowed='move'; });
@@ -3210,10 +3246,10 @@ async function saveMcp(){
 }
 
 async function deleteMcp(name){
-  if(!confirm(`Remove MCP server "${name}"?`)) return;
+  if(!(await uiConfirm({title: t('admin.mcp_remove_q', {name}), okLabel: t('admin.dlg_remove'), danger: true}))) return;
   const r = await _apiFetch(`/api/mcp/servers/${name}`, {method:'DELETE'});
   if(r.ok) loadMcp();
-  else alert((await r.json()).detail);
+  else uiAlert(await _detail(r), {error: true});
 }
 
 async function mcpRestart(){
@@ -3573,7 +3609,7 @@ async function applyUpdate() {
   const s = window._updateStatus || {};
   const msg = t('admin.upd_confirm', { cur: s.current || '' })
             + String.fromCharCode(10, 10) + t('admin.upd_confirm_note');
-  if (!confirm(msg)) return;
+  if (!(await uiConfirm({title: t('admin.upd_now'), body: msg, okLabel: t('admin.upd_now')}))) return;
   const btn = document.getElementById('update-apply-btn');
   btn.disabled = true; btn.textContent = t('admin.upd_working');
   try {
@@ -3582,9 +3618,9 @@ async function applyUpdate() {
       body: JSON.stringify({ confirm: true, backup: true }),
     });
     const res = (await r.json()).result || {};
-    alert(_updOutcome(res) || t(res.ok ? 'admin.upd_done' : 'admin.upd_noop'));
+    uiAlert(_updOutcome(res) || t(res.ok ? 'admin.upd_done' : 'admin.upd_noop'));
   } catch (e) {
-    alert(t('admin.upd_failed') + e);
+    uiAlert(t('admin.upd_failed') + e, {error: true});
   } finally {
     btn.disabled = false; btn.textContent = t('admin.upd_now');
     checkForUpdates();
@@ -3641,14 +3677,14 @@ async function toggleSchedule(id, enable) {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled: enable }),
   });
-  if (!r.ok) { alert('Could not change it: HTTP ' + r.status); return; }
+  if (!r.ok) { uiAlert(t('admin.change_failed', {s: r.status}), {error: true}); return; }
   loadSchedules();
 }
 
 async function deleteSchedule(id) {
-  if (!confirm('Delete this scheduled run? It will stop firing immediately.')) return;
+  if (!(await uiConfirm({title: t('admin.sched_delete_q'), okLabel: t('admin.dlg_delete'), danger: true}))) return;
   const r = await _apiFetch('/api/schedules/' + encodeURIComponent(id), { method: 'DELETE' });
-  if (!r.ok) { alert('Could not delete: HTTP ' + r.status); return; }
+  if (!r.ok) { uiAlert(t('admin.delete_failed_http', {s: r.status}), {error: true}); return; }
   loadSchedules();
 }
 
@@ -3734,9 +3770,9 @@ async function saveAgent(){
 }
 
 async function deleteAgent(slug) {
-  if (!confirm(`Delete agent "${slug}"? Conversations that used it are unaffected.`)) return;
+  if (!(await uiConfirm({title: t('admin.agent_delete_q', {slug}), body: t('admin.agent_delete_body'), okLabel: t('admin.dlg_delete'), danger: true}))) return;
   const r = await _apiFetch('/api/agents/' + encodeURIComponent(slug), { method: 'DELETE' });
-  if (!r.ok) { alert('Could not delete: HTTP ' + r.status); return; }
+  if (!r.ok) { uiAlert(t('admin.delete_failed_http', {s: r.status}), {error: true}); return; }
   loadAgents();
 }
 
@@ -3784,7 +3820,7 @@ function _renderSkills(skills){
 
 async function viewSkill(slug){
   const s = await _apiFetch('/api/skills/'+encodeURIComponent(slug)).then(r=>r.json()).catch(()=>null);
-  if(!s){ alert('Skill not found'); return; }
+  if(!s){ uiAlert(t('admin.skill_not_found'), {error: true}); return; }
   el('modal-skill-title').textContent = t('admin.skills_modal_edit', {name: s.name});
   el('sk-name').value     = s.name     || '';
   el('sk-category').value = s.category || 'general';
@@ -3826,10 +3862,10 @@ async function saveSkill(){
 }
 
 async function deleteSkill(slug){
-  if(!confirm(`Delete skill "${slug}"?\nThis cannot be undone.`)) return;
+  if(!(await uiConfirm({title: t('admin.skill_delete_q', {slug}), body: t('admin.cannot_undo'), okLabel: t('admin.dlg_delete'), danger: true}))) return;
   const r = await _apiFetch('/api/skills/'+encodeURIComponent(slug), {method:'DELETE'});
   if(r.ok) loadSkills();
-  else alert((await r.json().catch(()=>({}))).detail || t('admin.delete_failed'));
+  else uiAlert((await r.json().catch(()=>({}))).detail || t('admin.delete_failed'), {error: true});
 }
 
 // ═══════════════════════════════════════════
@@ -3838,6 +3874,7 @@ async function deleteSkill(slug){
 async function loadBackups(){
   const list = await _apiFetch('/api/backup/list').then(r=>r.json()).catch(()=>[]);
   el('bk-count').textContent = '(' + list.length + ')';
+  _renderBackupAge(list);
   const tbody = el('backup-tbody');
   if(!list.length){
     tbody.innerHTML=`<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:24px">${t('admin.backup_empty')}</td></tr>`;
@@ -3846,8 +3883,8 @@ async function loadBackups(){
   tbody.innerHTML = list.map(b=>`
     <tr>
       <td style="font-family:var(--font-ui);font-size:13px">${esc(b.filename)}</td>
-      <td>${b.size_kb} KB</td>
-      <td>${new Date(b.created_at).toLocaleString()}</td>
+      <td style="font-family:var(--font-mono)">${_fmtSize(b.size_kb)}</td>
+      <td>${new Date(b.created_at).toLocaleString(_uiLocale())}</td>
       <td class="tbl-actions">
         <button class="tbl-btn" onclick="downloadBackup('${esc(b.filename)}')">${t('common.download')}</button>
         <button class="tbl-btn danger" onclick="deleteBackup('${esc(b.filename)}')">${t('common.delete')}</button>
@@ -3887,20 +3924,29 @@ async function downloadBackup(filename){
     a.href = url; a.download = filename;
     document.body.appendChild(a); a.click();
     setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 1500);
-  } catch(e){ alert('Download failed: ' + e.message); }
+  } catch(e){ uiAlert(t('admin.download_failed', {e: e.message}), {error: true}); }
 }
 
 async function deleteBackup(filename){
-  if(!confirm(`Delete backup "${filename}"?`)) return;
+  if(!(await uiConfirm({title: t('admin.backup_delete_q', {f: filename}), body: t('admin.cannot_undo'), okLabel: t('admin.dlg_delete'), danger: true}))) return;
   const r = await _apiFetch(`/api/backup/${filename}`, {method:'DELETE'});
   if(r.ok) loadBackups();
+  else uiAlert(t('admin.delete_failed_http', {s: r.status}), {error: true});
 }
 
 async function restoreBackup(){
   const file = el('restore-file').files[0];
   const msg  = el('restore-msg');
-  if(!file){ alert('Select a backup ZIP first'); return; }
-  if(!confirm(`Restore from "${file.name}"?\nThis will overwrite current data. SUNI must be restarted afterwards.`)) return;
+  if(!file){ uiAlert(t('admin.backup_pick_first')); return; }
+  // The most destructive action in the panel: same guard as erasing a
+  // person — what it does, the file it will use, and a word typed to mean it.
+  const go = await uiConfirm({
+    title: t('admin.restore_title'),
+    body: t('admin.restore_body', {file: file.name, size: _fmtSize(file.size / 1024)}),
+    typeToConfirm: t('admin.restore_word'),
+    okLabel: t('admin.restore_go'), danger: true,
+  });
+  if(!go) return;
   msg.style.display=''; msg.style.color='var(--cyan)'; msg.textContent=t('admin.backup_restoring');
   const form = new FormData();
   form.append('file', file);
@@ -3909,7 +3955,8 @@ async function restoreBackup(){
     const r = await fetch('/api/backup/restore', {method:'POST', headers, body:form});
     const d = await r.json();
     msg.style.color = d.errors?.length ? 'var(--gold)' : 'var(--green)';
-    msg.textContent = `Restored ${d.restored?.length||0} files.${d.errors?.length?' Errors: '+d.errors.join(', '):''}  Restart SUNI to apply.`;
+    msg.textContent = t('admin.restore_done', {n: d.restored?.length || 0})
+                    + (d.errors?.length ? ' ' + t('admin.restore_errors', {e: d.errors.join(', ')}) : '');
   } catch(e){ msg.style.color='var(--red)'; msg.textContent=e.message; }
 }
 
@@ -3934,9 +3981,16 @@ async function fetchLogs() {
   try {
     const params = new URLSearchParams({lines: 300, level});
     if (date) params.set('date', date);
-    const r = await fetch(`/api/logs?${params}`);
-    const d = await r.json();
+    // _apiFetch: a plain fetch() sent no token, the server answered 401, and
+    // the viewer showed that as an empty log ("0 lines") every time.
+    const r = await _apiFetch(`/api/logs?${params}`);
     const out = el('log-output');
+    if (!r.ok) {
+      out.textContent = '';
+      el('log-summary').textContent = t('admin.logs_failed', {s: r.status});
+      return;
+    }
+    const d = await r.json();
     out.innerHTML = (d.lines || []).map(line => {
       const cls = classifyLine(line);
       return `<span class="${cls}">${esc(line)}</span>`;
@@ -3970,8 +4024,9 @@ async function loadUsers(){
         <button class="tbl-btn" onclick="openEditUser(${JSON.stringify(u).replace(/"/g,'&quot;')})">${t('common.edit')}</button>
         <button class="tbl-btn" onclick="resetPassword('${u.id}','${esc(u.username)}')">${t('admin.users_reset_pw')}</button>
         <button class="tbl-btn" onclick="exportUser('${u.id}','${esc(u.username)}')">${t('admin.users_export')}</button>
-        <button class="tbl-btn danger" onclick="deleteUser('${u.id}','${esc(u.username)}')">${t('common.delete')}</button>
-        <button class="tbl-btn danger" onclick="eraseUser('${u.id}','${esc(u.username)}')">${t('admin.users_erase')}</button>
+        ${u.id === window._meId ? `<span class="tbl-self" title="${t('admin.users_self_hint')}">${t('admin.users_self')}</span>` : `
+        <button class="tbl-btn danger" onclick="deleteUser('${u.id}','${esc(u.username)}')">${t('admin.users_remove')}</button>
+        <button class="tbl-btn danger" onclick="eraseUser('${u.id}','${esc(u.username)}')">${t('admin.users_erase')}</button>`}
       </td>
     </tr>`).join('');
   // Populate audit user filter
@@ -4049,18 +4104,26 @@ async function saveUser(){
 }
 
 async function resetPassword(uid, uname){
-  const pw = prompt(`New password for ${uname} (min 8 chars):`);
+  // A real password field: the browser prompt() this replaced showed the new
+  // password in plain text on screen.
+  const pw = await uiPrompt({
+    title: t('admin.pw_title', {user: uname}),
+    input: {type: 'password', label: t('admin.pw_label')},
+    okLabel: t('admin.pw_save'),
+    validate: v => (v || '').length < 8 ? t('admin.pw_short') : '',
+  });
   if(!pw) return;
   const r = await _apiFetch(`/api/users/${uid}/reset-password`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
-  if(r.ok) alert('Password updated.');
-  else alert('Error: ' + (await r.json()).detail);
+  if(r.ok) uiAlert(t('admin.pw_done', {user: uname}));
+  else uiAlert(await _detail(r), {error: true});
 }
 
 async function deleteUser(uid, uname){
-  if(!confirm(`Delete user "${uname}"? This cannot be undone.`)) return;
+  if(!(await uiConfirm({title: t('admin.user_remove_title', {user: uname}), body: t('admin.user_remove_body'),
+                         okLabel: t('admin.users_remove'), danger: true}))) return;
   const r = await _apiFetch(`/api/users/${uid}`, {method:'DELETE'});
   if(r.ok) loadUsers();
-  else alert('Error: ' + (await r.json()).detail);
+  else uiAlert(await _detail(r), {error: true});
 }
 
 // ═══════════════════════════════════════════
@@ -4116,7 +4179,7 @@ async function loadMemoryQueue() {
 // answers "why is this fact not in memory" months later.
 async function memqDecide(id, action, visibility) {
   const asking = action === 'reject' ? 'admin.memq_why_reject' : 'admin.memq_why_approve';
-  const note = prompt(t(asking));
+  const note = await uiPrompt({title: t(asking), input: {multiline: true, label: t('admin.memq_note_label')}});
   if (note === null) return;            // cancelled
   try {
     const r = await _apiFetch(`/api/memory/candidates/${id}/${action}`, {
@@ -4125,12 +4188,12 @@ async function memqDecide(id, action, visibility) {
       body: JSON.stringify(visibility ? {note, visibility} : {note}),
     });
     if (!r.ok) {
-      alert(t('admin.memq_failed', {
-        detail: ((await r.json().catch(()=>({}))).detail || r.status)}));
+      uiAlert(t('admin.memq_failed', {
+        detail: ((await r.json().catch(()=>({}))).detail || r.status)}), {error: true});
       return;
     }
     loadMemoryQueue();
-  } catch(e) { alert(t('admin.memq_failed', {detail: e.message})); }
+  } catch(e) { uiAlert(t('admin.memq_failed', {detail: e.message}), {error: true}); }
 }
 
 // ── Subject access export (GDPR Art 15/20) ────────────────────────────
@@ -4143,7 +4206,7 @@ async function memqDecide(id, action, visibility) {
 async function exportUser(uid, uname){
   try {
     const r = await _apiFetch(`/api/users/${uid}/export`);
-    if(!r.ok){ alert('Error: ' + ((await r.json().catch(()=>({}))).detail || r.status)); return; }
+    if(!r.ok){ uiAlert(await _detail(r), {error: true}); return; }
     const blob = await r.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -4153,7 +4216,7 @@ async function exportUser(uid, uname){
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-  } catch(e){ alert('Error: ' + e.message); }
+  } catch(e){ uiAlert(e.message, {error: true}); }
 }
 
 // ── Erasure (GDPR Art 17) ─────────────────────────────────────────────
@@ -4168,9 +4231,9 @@ async function eraseUser(uid, uname){
   let p;
   try {
     const r = await _apiFetch(`/api/users/${uid}/erasure-preview`);
-    if(!r.ok){ alert('Error: ' + ((await r.json()).detail || r.status)); return; }
+    if(!r.ok){ uiAlert(await _detail(r), {error: true}); return; }
     p = await r.json();
-  } catch(e){ alert('Error: ' + e.message); return; }
+  } catch(e){ uiAlert(e.message, {error: true}); return; }
 
   const rows = Object.entries(p.erasable)
     .filter(([, v]) => typeof v === 'number' && v > 0)
@@ -4233,9 +4296,9 @@ async function eraseUser(uid, uname){
       });
       const res = await r.json();
       close();
-      alert(res.message || (r.ok ? t('admin.erase_done') : t('admin.erase_failed')));
+      uiAlert(res.message || (r.ok ? t('admin.erase_done') : t('admin.erase_failed')), {error: !r.ok});
       loadUsers();
-    } catch(e){ close(); alert('Error: ' + e.message); }
+    } catch(e){ close(); uiAlert(e.message, {error: true}); }
   };
 }
 
@@ -4314,6 +4377,7 @@ function toggleSidebar(){
 
 _checkAuth().then(()=>{
   routeFromHash();
+  checkBackupAge();
   fetchDashboard();
   fetchMetrics();
   // Once, on load. NOT on an interval like the two above: /api/update/status
@@ -4418,9 +4482,14 @@ window.addEventListener('beforeunload', e => {
 });
 
 // ── layout: the address remembers where you are ─────────────────────────────
-// #users, #config/models ... Reload and the back button keep your place.
+// #users, #config/models ... Reload, pasted links and Back keep your place.
+// Each section switch is a history entry, so Back returns to the previous
+// section like any website. While routing FROM the hash (load, Back, a pasted
+// link) nothing is pushed, or Back would bounce straight back.
+let _routing = false;
 function _setHash(h) {
-  try { history.replaceState(null, '', '#' + h); } catch (e) {}
+  if (_routing || location.hash === '#' + h) return;
+  try { history.pushState(null, '', '#' + h); } catch (e) {}
 }
 function routeFromHash() {
   const [page, sub] = (location.hash || '').replace(/^#/, '').split('/');
@@ -4429,10 +4498,136 @@ function routeFromHash() {
     .find(b => (b.getAttribute('onclick') || '').includes(`switchTab('${page}'`));
   if (!btn || btn.style.display === 'none') return;
   if (page === 'config' && sub) { try { localStorage.setItem('suni_cfg_tab', sub); } catch (e) {} }
-  switchTab(page, btn);
+  _routing = true;
+  try { switchTab(page, btn); } finally { _routing = false; }
 }
+window.addEventListener('popstate', routeFromHash);
 // a pasted link or the back button changes only the hash, not the page
 window.addEventListener('hashchange', routeFromHash);
+
+// ── dialogs: SUNI's own, in the UI language ─────────────────────────────────
+// Replaces the browser's alert/confirm/prompt, which were English whatever
+// the UI language, ignored the visual system, and (prompt) showed a new
+// password in plain text. Escape cancels, focus stays inside, and focus goes
+// back to where it was when the dialog closes.
+function uiDialog(o) {
+  return new Promise(resolve => {
+    const prev = document.activeElement;
+    const id = 'dlg' + Math.random().toString(36).slice(2, 8);
+    const ov = document.createElement('div');
+    ov.className = 'modal-overlay open';
+    const box = document.createElement('div');
+    box.className = 'modal ui-dialog' + (o.danger ? ' is-danger' : '');
+    box.setAttribute('role', o.alert ? 'alertdialog' : 'dialog');
+    box.setAttribute('aria-modal', 'true');
+    box.setAttribute('aria-labelledby', id + '-t');
+    const h = document.createElement('h3'); h.id = id + '-t'; h.textContent = o.title || '';
+    box.appendChild(h);
+    if (o.body || o.html) {
+      const b = document.createElement('div'); b.className = 'ui-dialog-body';
+      if (o.html) b.innerHTML = o.html; else b.textContent = o.body;
+      box.appendChild(b);
+    }
+    let inp = null;
+    const word = o.typeToConfirm || '';
+    if (o.input || word) {
+      const f = document.createElement('div'); f.className = 'field'; f.style.marginTop = '14px';
+      const lab = document.createElement('label'); lab.htmlFor = id + '-i';
+      lab.textContent = word ? t('admin.dlg_type_to_confirm', {word}) : (o.input.label || '');
+      inp = document.createElement(o.input && o.input.multiline ? 'textarea' : 'input');
+      inp.id = id + '-i'; inp.autocomplete = 'off';
+      if (inp.tagName === 'INPUT') inp.type = (o.input && o.input.type) || 'text';
+      f.append(lab, inp); box.appendChild(f);
+    }
+    const err = document.createElement('div'); err.className = 'ui-dialog-err'; err.setAttribute('role', 'alert');
+    box.appendChild(err);
+    const foot = document.createElement('div'); foot.className = 'modal-footer';
+    let cancel = null;
+    if (o.cancel !== false) {
+      cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'btn btn-secondary';
+      cancel.textContent = o.cancelLabel || t('common.cancel'); foot.appendChild(cancel);
+    }
+    const ok = document.createElement('button'); ok.type = 'button';
+    ok.className = 'btn btn-primary' + (o.danger ? ' btn-danger' : '');
+    ok.textContent = o.okLabel || t('admin.dlg_ok'); foot.appendChild(ok);
+    box.appendChild(foot); ov.appendChild(box); document.body.appendChild(ov);
+
+    const sync = () => { if (word) ok.disabled = (inp.value.trim() !== word); };
+    if (inp) inp.addEventListener('input', () => { err.textContent = ''; sync(); });
+    sync();
+    const done = res => {
+      ov.remove(); document.removeEventListener('keydown', onKey, true);
+      try { prev && prev.focus && prev.focus(); } catch (e) {}
+      resolve(res);
+    };
+    const accept = () => {
+      if (ok.disabled) return;
+      const v = inp ? inp.value : undefined;
+      if (o.validate) { const m = o.validate(v); if (m) { err.textContent = m; inp && inp.focus(); return; } }
+      done({ ok: true, value: v });
+    };
+    ok.onclick = accept;
+    if (cancel) cancel.onclick = () => done({ ok: false });
+    ov.addEventListener('mousedown', e => { if (e.target === ov && o.cancel !== false) done({ ok: false }); });
+    function onKey(e) {
+      if (e.key === 'Escape') { e.preventDefault(); done({ ok: false }); return; }
+      if (e.key === 'Enter' && inp && inp.tagName === 'INPUT' && document.activeElement === inp) { e.preventDefault(); accept(); return; }
+      if (e.key === 'Tab') {                       // keep focus inside the dialog
+        const f = [...box.querySelectorAll('button,input,textarea,select,a[href]')].filter(x => !x.disabled);
+        if (!f.length) return;
+        const first = f[0], last = f[f.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    }
+    document.addEventListener('keydown', onKey, true);
+    setTimeout(() => (inp || (o.danger && cancel) || ok).focus(), 0);
+  });
+}
+async function uiConfirm(o) { return (await uiDialog(o)).ok; }
+function uiAlert(text, o = {}) {
+  return uiDialog({ title: o.title || t(o.error ? 'admin.dlg_error_title' : 'admin.dlg_notice_title'),
+                    body: String(text == null ? '' : text), cancel: false, alert: !!o.error });
+}
+async function uiPrompt(o) { const r = await uiDialog(o); return r.ok ? r.value : null; }
+async function _detail(r) { try { return (await r.json()).detail || ('HTTP ' + r.status); } catch (e) { return 'HTTP ' + r.status; } }
+function _uiLocale() { try { return getLang() === 'pt' ? 'pt-PT' : 'en-GB'; } catch (e) { return undefined; } }
+function _fmtSize(kb) {
+  const n = Number(kb) || 0, loc = _uiLocale();
+  return n >= 1024 ? (n / 1024).toLocaleString(loc, { maximumFractionDigits: 1 }) + ' MB'
+                   : n.toLocaleString(loc, { maximumFractionDigits: 0 }) + ' KB';
+}
+
+// ── backups: how old is the newest one? ───────────────────────────────────────
+// A four-month-old newest backup was not flagged anywhere.
+function _backupAge(list) {
+  const ts = (list || []).map(b => Date.parse(b.created_at)).filter(n => !isNaN(n));
+  return ts.length ? Math.floor((Date.now() - Math.max(...ts)) / 86400000) : null;
+}
+function _ageText(days) {
+  return days === 0 ? t('admin.age_today') : t(days === 1 ? 'admin.age_day' : 'admin.age_days', {n: days});
+}
+function _renderBackupAge(list) {
+  const box = el('bk-age'); if (!box) return;
+  const days = _backupAge(list);
+  box.className = 'bk-age' + (days === null || days > 30 ? ' bad' : days > 7 ? ' warn' : '');
+  box.textContent = days === null ? t('admin.backup_age_none')
+                  : t('admin.backup_age', {age: _ageText(days)}) + (days > 7 ? ' ' + t('admin.backup_age_old') : '');
+}
+async function checkBackupAge() {
+  const box = el('d-backup-warn'); if (!box) return;
+  const list = await _apiFetch('/api/backup/list').then(r => r.ok ? r.json() : null).catch(() => null);
+  if (!Array.isArray(list)) return;
+  const days = _backupAge(list);
+  if (days !== null && days <= 7) { box.hidden = true; return; }
+  box.hidden = false;
+  box.textContent = '';
+  const msg = document.createElement('span');
+  msg.textContent = days === null ? t('admin.backup_age_none') : t('admin.backup_age', {age: _ageText(days)}) + ' ' + t('admin.backup_age_old');
+  const a = document.createElement('a');
+  a.href = '#backup'; a.textContent = t('admin.backup_go');
+  box.append(msg, ' ', a);
+}
 </script>
 </body>
 </html>

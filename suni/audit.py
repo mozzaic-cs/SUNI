@@ -261,22 +261,27 @@ def usage_summary(days: int = 30) -> dict:
         rows = c.execute(
             """SELECT user_id, username,
                       COUNT(*)                AS requests,
+                      SUM(COALESCE(prompt_tokens,0)>0 OR COALESCE(gen_tokens,0)>0) AS with_tokens,
                       COALESCE(SUM(prompt_tokens),0) AS prompt_tokens,
                       COALESCE(SUM(gen_tokens),0)    AS gen_tokens
                FROM audit_log
-               WHERE ts>=? AND (prompt_tokens>0 OR gen_tokens>0)
+               WHERE ts>=? AND route='chat'
                GROUP BY user_id
                ORDER BY (COALESCE(SUM(prompt_tokens),0)+COALESCE(SUM(gen_tokens),0)) DESC""",
             (cutoff,),
         ).fetchall()
-    by_user, tp, tg, tr = [], 0, 0, 0
+    # Requests are chat turns in every table, the same rows by_mode counts.
+    # Counting only rows that carried tokens made the totals disagree with
+    # by_mode (54 vs 79 on the reference box): Claude Code turns long
+    # recorded no tokens, so they dropped out of one table and not the other.
+    by_user, tp, tg, tr, tw = [], 0, 0, 0, 0
     for r in rows:
         p, g = r["prompt_tokens"], r["gen_tokens"]
-        tp += p; tg += g; tr += r["requests"]
+        tp += p; tg += g; tr += r["requests"]; tw += r["with_tokens"] or 0
         by_user.append({
             "user_id": r["user_id"], "username": r["username"],
-            "requests": r["requests"], "prompt_tokens": p, "gen_tokens": g,
-            "total_tokens": p + g,
+            "requests": r["requests"], "with_tokens": r["with_tokens"] or 0,
+            "prompt_tokens": p, "gen_tokens": g, "total_tokens": p + g,
         })
     # Breakdown by conversation mode — makes the costly "collaborate" (Mode 2 /
     # frontier) usage visible as its own line. Note: subprocess CLI models
@@ -299,8 +304,8 @@ def usage_summary(days: int = 30) -> dict:
                 "total_tokens": r["prompt_tokens"] + r["gen_tokens"]} for r in mrows]
     return {
         "window_days": days,
-        "totals": {"requests": tr, "prompt_tokens": tp, "gen_tokens": tg,
-                   "total_tokens": tp + tg},
+        "totals": {"requests": tr, "with_tokens": tw, "prompt_tokens": tp,
+                   "gen_tokens": tg, "total_tokens": tp + tg},
         "by_user": by_user,
         "by_mode": by_mode,
     }

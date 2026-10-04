@@ -282,7 +282,8 @@ def test_a_decision_asks_for_a_reason():
     html = _html()
     i = html.index("async function memqDecide")
     block = html[i:i + 900]
-    assert "prompt(" in block, "a decision fires on one click with no reason"
+    # uiPrompt since 2026-10-04: SUNI's own dialog replaced the browser prompt()
+    assert "uiPrompt(" in block or "prompt(" in block, "a decision fires on one click with no reason"
     assert "note" in block
 
 
