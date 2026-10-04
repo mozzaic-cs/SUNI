@@ -196,6 +196,8 @@ h1{font-family:'Syne',sans-serif;font-size:28px;font-weight:800;letter-spacing:.
   background:rgba(201,162,39,.1);border:1px solid rgba(201,162,39,.4);color:var(--gold);
   transition:background .2s,border-color .2s,box-shadow .2s}
 .view-toggle:hover{background:rgba(201,162,39,.2);box-shadow:0 0 16px rgba(201,162,39,.15)}
+.view-switch{position:fixed;top:18px;right:24px;z-index:20;display:flex;gap:8px;align-items:center}
+.view-switch .view-toggle{position:static;text-decoration:none;display:inline-block;line-height:1.2}
 /* In simplified mode: drop secondary lanes + all fine-grained detail,
    leaving only the main blocks (titles) and the primary request flow. */
 body.simple .simple-hide{display:none!important}
@@ -209,7 +211,10 @@ body.simple .section-gap{height:6px!important}
 </style>
 </head>
 <body>
-<button class="view-toggle" id="view-toggle" onclick="toggleView()">◱ Simplified view</button>
+<div class="view-switch">
+  <a class="view-toggle" href="/architecture/next" title="The same architecture in 3D: subsystems, then their parts, then the full text">◈ 3D view</a>
+  <button class="view-toggle" id="view-toggle" onclick="toggleView()">◱ Simplified view</button>
+</div>
 <svg id="svg-overlay"></svg>
 
 <header>
@@ -230,6 +235,7 @@ body.simple .section-gap{height:6px!important}
     <span class="badge phase">Phase 12 &middot; meeting recording &mdash; SUNI does NOT join Teams/Meet/Zoom; it records this machine's loopback + microphone alongside whoever is in the call, so it is platform-agnostic, never in a participant list, and the audio never leaves the box &middot; local CPU faster-whisper, installed by default (no GPU contention with qwen; 4.4x realtime) &middot; consent is a hard gate, not a setting &middot; 2026-09-05</span>
     <span class="badge phase">Phase 13 &middot; staffing &mdash; token ceilings beside run counts (the CLI reported no tokens at all until its usage was booked) &middot; a profile's pinned model now decides the PATH, not just the tier &middot; fan-out: ask several specialists, answer as the head &middot; assignments that outlive the request, with interrupted work failed at startup &middot; goal ancestry into delegated and scheduled runs &middot; bounded schedule recovery (one retry, then disabled with the reason) &middot; real streaming on both paths &middot; embedding stopped building an HTTP client per call: 873&thinsp;ms &rarr; 63&thinsp;ms &middot; 2026-09-26</span>
     <span class="badge phase">Phase 14 &middot; the field behind her head &mdash; everything SUNI can reach as one navigable 3D graph (machine, models, tools, skills, agents, channels, LAN neighbours, indexed drives), drawn in raw WebGL on the Face's own GL context &middot; she can move it herself and answer from what is in it &middot; opening a file from it has its own door: role, index membership by real path, audit row &middot; ChatGPT joins Claude Code as a no-key subscription CLI tier &middot; 2026-09-27</span>
+    <span class="badge phase">Phase 15 &middot; coding in real projects &mdash; Claude Code edits a named project folder with edit rights it cannot widen (measured: a bare Write rule wrote outside the project) &middot; approved by a signed-in person every run, never by a token &middot; mirrored live as a terminal on the Face's stage &middot; stop kills the whole process tree &middot; a readable admin: calm console, the truth stated, SUNI's own dialogs &middot; 2026-10-04</span>
   </div>
 </header>
 
