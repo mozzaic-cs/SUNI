@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SUNI — Control</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:ital,wght@0,300;0,400;1,300&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&family=DM+Mono:wght@300;400&display=swap">
 <script src="/i18n.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <style>
@@ -21,14 +21,18 @@
   --green:    #00e396;
   --text:     #d8d4c8;
   --label:    rgba(255,255,255,.72);
-  --muted:    #555566;
+  --muted:    #8a8d9e;   /* was #555566: 2.4-2.7:1 everywhere; now >=5.2:1 */
+  --hint:     #a3a6b6;   /* field hints: secondary, but long and read in full */
   --border:   rgba(0,212,255,.07);
   --border-g: rgba(201,162,39,.12);
   --card-bg:  rgba(255,255,255,.04);
   --radius:   6px;
+  --font-ui:      'DM Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono:    'DM Mono', ui-monospace, 'Cascadia Mono', monospace;
+  --font-display: 'Syne', sans-serif;
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM Mono',monospace;font-size:13px;line-height:1.6;overflow-x:hidden}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font-ui);font-size:14px;line-height:1.55;overflow-x:hidden}
 
 /* ── BACKGROUND ── */
 body::before{
@@ -61,7 +65,7 @@ header{
   font-size:16px;letter-spacing:.35em;color:var(--gold);
   text-transform:uppercase;white-space:nowrap;flex:0 0 auto;
 }
-.logo span{color:var(--muted);font-weight:400;font-size:10px;letter-spacing:.2em;margin-left:10px;vertical-align:middle}
+.logo span{color:var(--muted);font-weight:400;font-size:13px;letter-spacing:.2em;margin-left:10px;vertical-align:middle}
 .header-status{display:flex;flex-direction:row;align-items:center;gap:10px;margin-left:auto}
 .hs-line{display:flex;align-items:center;gap:8px}
 
@@ -76,8 +80,8 @@ header{
 .sidebar.collapsed{transform:translateX(-100%)}
 nav{display:flex;flex-direction:column;gap:2px}
 .tab{
-  padding:9px 20px;font-family:'DM Mono',monospace;font-size:11px;
-  letter-spacing:.12em;text-transform:uppercase;color:var(--muted);
+  padding:9px 20px;font-family:var(--font-ui);font-size:13px;
+  color:var(--muted);
   background:transparent;border:none;cursor:pointer;
   border-left:2px solid transparent;transition:color .2s,border-color .2s,background .2s;
   text-align:left;width:100%;white-space:nowrap;
@@ -91,8 +95,9 @@ nav{display:flex;flex-direction:column;gap:2px}
 }
 .dot.offline{background:var(--red);box-shadow:0 0 8px var(--red);animation:none}
 @keyframes pulse-dot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(.8)}}
-.status-txt{font-size:10px;letter-spacing:.1em;color:var(--label);text-transform:uppercase}
-.uptime-txt{font-size:10px;color:var(--label);font-style:italic}
+@media (prefers-reduced-motion: reduce){.dot{animation:none}}
+.status-txt{font-size:13px;color:var(--label);}
+.uptime-txt{font-size:13px;color:var(--label);}
 
 /* ── LAYOUT ── */
 main{position:relative;z-index:1;padding:24px 32px;max-width:100%;margin-top:52px;margin-left:200px;transition:margin-left .18s ease}
@@ -109,8 +114,8 @@ main.nav-collapsed{margin-left:0}
   backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
 }
 .card-title{
-  font-family:'Syne',sans-serif;font-size:9px;font-weight:600;
-  letter-spacing:.25em;text-transform:uppercase;color:var(--label);
+  font-family:'Syne',sans-serif;font-size:12px;font-weight:600;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--label);
   margin-bottom:14px;display:flex;align-items:center;gap:8px;
 }
 .card-title::after{content:'';flex:1;height:1px;background:var(--border)}
@@ -136,16 +141,16 @@ main.nav-collapsed{margin-left:0}
 .metric-val.cyan{color:var(--cyan)}
 .metric-val.green{color:var(--green)}
 .metric-val.red{color:var(--red)}
-.metric-sub{font-size:10px;color:var(--label);letter-spacing:.05em}
+.metric-sub{font-size:13px;color:var(--label);}
 
 /* ── GPU BAR ── */
 .gpu-bar-wrap{margin-top:10px}
-.gpu-label{display:flex;justify-content:space-between;margin-bottom:4px;font-size:10px;color:var(--label)}
+.gpu-label{display:flex;justify-content:space-between;margin-bottom:4px;font-size:13px;color:var(--label)}
 .bar-track{height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden}
 .bar-fill{height:100%;border-radius:2px;transition:width .6s ease;background:var(--cyan)}
 .bar-fill.warn{background:var(--gold)}
 .bar-fill.crit{background:var(--red)}
-.gpu-name{font-size:10px;color:var(--label);margin-top:6px;letter-spacing:.05em}
+.gpu-name{font-size:13px;color:var(--label);margin-top:6px;}
 
 /* ── ACTIVITY LOG ── */
 .activity-list{display:flex;flex-direction:column;gap:8px;max-height:340px;overflow-y:auto}
@@ -159,18 +164,18 @@ main.nav-collapsed{margin-left:0}
   transition:background .15s;
 }
 .act-row:hover{background:rgba(0,212,255,.03)}
-.act-time{font-size:10px;color:var(--label);white-space:nowrap;padding-top:1px}
-.act-query{font-size:12px;color:var(--text);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.act-time{font-size:13px;color:var(--label);white-space:nowrap;padding-top:1px}
+.act-query{font-size:13px;color:var(--text);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .act-meta{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
-.act-dur{font-size:10px;color:var(--gold);white-space:nowrap}
-.act-route{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--label)}
+.act-dur{font-size:13px;color:var(--gold);white-space:nowrap}
+.act-route{font-size:12px;color:var(--label)}
 .act-tools{display:flex;gap:3px;flex-wrap:wrap;justify-content:flex-end;margin-top:3px}
 .tool-chip{
-  font-size:8.5px;letter-spacing:.06em;padding:1px 5px;border-radius:2px;
+  font-size:12px;padding:1px 5px;border-radius:2px;
   background:rgba(0,212,255,.08);border:1px solid rgba(0,212,255,.15);color:var(--cyan);
 }
 .tool-chip.recent{background:rgba(201,162,39,.1);border-color:rgba(201,162,39,.25);color:var(--gold)}
-.act-empty{color:var(--muted);font-size:12px;font-style:italic;padding:16px 0;text-align:center}
+.act-empty{color:var(--muted);font-size:13px;padding:16px 0;text-align:center}
 
 /* ── TOOL LIST ── */
 .tool-grid{display:flex;flex-direction:column;gap:4px;max-height:340px;overflow-y:auto}
@@ -179,7 +184,7 @@ main.nav-collapsed{margin-left:0}
 .tool-item{
   display:flex;align-items:center;gap:8px;
   padding:5px 8px;border-radius:3px;
-  font-size:11px;color:var(--text);
+  font-size:13px;color:var(--text);
   border-left:2px solid transparent;
   transition:background .15s,border-color .15s;
 }
@@ -197,10 +202,10 @@ main.nav-collapsed{margin-left:0}
   border:1px solid var(--border);background:rgba(255,255,255,.02);
   margin-bottom:6px;
 }
-.mcp-name{font-size:12px;color:var(--text)}
+.mcp-name{font-size:13px;color:var(--text)}
 .badge{
-  font-size:9px;letter-spacing:.1em;padding:2px 7px;border-radius:2px;
-  text-transform:uppercase;
+  font-size:12px;padding:2px 7px;border-radius:2px;
+  
 }
 .badge.ok{background:rgba(0,227,150,.1);color:var(--green);border:1px solid rgba(0,227,150,.2)}
 .badge.err{background:rgba(255,69,96,.1);color:var(--red);border:1px solid rgba(255,69,96,.2)}
@@ -210,8 +215,8 @@ main.nav-collapsed{margin-left:0}
 .model-name{font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:var(--cyan);margin-bottom:6px}
 .kv-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;margin-top:10px}
 .kv{display:flex;flex-direction:column;gap:2px}
-.kv-k{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--label)}
-.kv-v{font-size:12px;color:var(--text)}
+.kv-k{font-size:12px;color:var(--label)}
+.kv-v{font-size:13px;color:var(--text)}
 
 /* ── CONFIG ── */
 .cfg-sections{display:grid;grid-template-columns:1fr 1fr;gap:28px}
@@ -221,13 +226,13 @@ main.nav-collapsed{margin-left:0}
 @media(max-width:1100px){.cfg-sections{grid-template-columns:1fr}}
 .cfg-section{display:flex;flex-direction:column;gap:14px}
 .field{display:flex;flex-direction:column;gap:5px}
-.field label{font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:var(--label)}
+.field label{font-size:12px;color:var(--label)}
 .field input,.field select,.field textarea{
   background:rgba(255,255,255,.04);
   border:1px solid var(--border);
   color:var(--text);
   padding:8px 11px;border-radius:4px;
-  font-family:'DM Mono',monospace;font-size:12px;
+  font-family:var(--font-ui);font-size:13px;
   outline:none;transition:border-color .2s;width:100%;
 }
 /* Checkboxes/radios must NOT inherit the full-width text-input styling above,
@@ -244,15 +249,15 @@ main.nav-collapsed{margin-left:0}
 select,select option,select optgroup{background:var(--bg2);color:var(--text)}
 .range-wrap{display:flex;align-items:center;gap:12px}
 .field input[type=range]{padding:0;cursor:pointer;accent-color:var(--gold)}
-.range-val{font-size:12px;color:var(--gold);white-space:nowrap;min-width:50px;text-align:right}
-.field-hint{font-size:10px;color:rgba(255,255,255,.45);font-style:italic}
+.range-val{font-size:13px;color:var(--gold);white-space:nowrap;min-width:50px;text-align:right}
+.field-hint{font-size:13px;color:rgba(255,255,255,.45);}
 /* a setting another setting currently overrides: still editable, visibly not in use */
 .field.is-overridden select,.field.is-overridden input{opacity:.5}
-.field-overridden{margin-top:6px;font-size:12px;color:#e0b84a}
+.field-overridden{margin-top:6px;font-size:13px;color:#e0b84a}
 .cfg-footer{margin-top:24px;display:flex;align-items:center;gap:14px;padding-top:18px;border-top:1px solid var(--border)}
 .btn{
-  font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.12em;
-  text-transform:uppercase;padding:9px 22px;border-radius:4px;cursor:pointer;
+  font-family:var(--font-ui);font-size:13px;
+  padding:9px 22px;border-radius:4px;cursor:pointer;
   border:none;transition:all .2s;
 }
 .btn-primary{background:var(--gold);color:#07071a;font-weight:600}
@@ -266,51 +271,51 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
 .bm-summary{display:flex;gap:20px;flex-wrap:wrap;align-items:center}
 .bm-stat{display:flex;flex-direction:column;gap:2px}
 .bm-stat b{font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:var(--gold);line-height:1}
-.bm-stat span{font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--label)}
-.bm-sel{font-family:'DM Mono',monospace;font-size:11px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:6px 10px}
+.bm-stat span{font-size:12px;color:var(--label)}
+.bm-sel{font-family:var(--font-ui);font-size:13px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:6px 10px}
 .bm-progress{margin-top:14px}
 .bm-prog-track{height:5px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden}
 .bm-prog-fill{height:100%;background:var(--cyan);width:0;transition:width .4s ease}
-.bm-prog-label{font-size:10px;color:var(--label);margin-top:5px;letter-spacing:.05em}
+.bm-prog-label{font-size:13px;color:var(--label);margin-top:5px;}
 .bm-cat{margin-bottom:22px}
-.bm-cat-title{font-family:'Syne',sans-serif;font-size:10px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;color:var(--label);margin-bottom:11px;display:flex;align-items:center;gap:8px}
+.bm-cat-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--label);margin-bottom:11px;display:flex;align-items:center;gap:8px}
 .bm-cat-title::after{content:'';flex:1;height:1px;background:var(--border)}
 .bm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(228px,1fr));gap:12px}
 .bm-tile{background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);padding:13px 15px;display:flex;flex-direction:column;gap:7px;transition:border-color .2s}
 .bm-tile:hover{border-color:rgba(0,212,255,.25)}
 .bm-tile-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
-.bm-name{font-size:11px;color:var(--text);line-height:1.3;cursor:help}
+.bm-name{font-size:13px;color:var(--text);line-height:1.3;cursor:help}
 .bm-val{font-family:'Syne',sans-serif;font-size:24px;font-weight:700;line-height:1;color:var(--text)}
-.bm-val .u{font-size:11px;color:var(--label);font-weight:400;margin-left:3px}
+.bm-val .u{font-size:13px;color:var(--label);font-weight:400;margin-left:3px}
 .bm-val.live{color:var(--green)}
 .bm-val.measured{color:var(--cyan)}
 .bm-val.estimated{color:var(--gold)}
 .bm-val.awaiting,.bm-val.na{font-size:14px;color:var(--muted)}
-.bm-detail{font-size:9.5px;color:var(--muted);line-height:1.45;font-style:italic}
-.bm-badge{font-size:8px;letter-spacing:.1em;text-transform:uppercase;padding:2px 6px;border-radius:3px;white-space:nowrap;flex-shrink:0;height:fit-content}
+.bm-detail{font-size:12px;color:var(--muted);line-height:1.45;}
+.bm-badge{font-size:12px;padding:2px 6px;border-radius:3px;white-space:nowrap;flex-shrink:0;height:fit-content}
 .bm-badge.live{background:rgba(0,227,150,.12);color:var(--green);border:1px solid rgba(0,227,150,.25)}
 .bm-badge.measured{background:rgba(0,212,255,.1);color:var(--cyan);border:1px solid rgba(0,212,255,.22)}
 .bm-badge.estimated{background:rgba(201,162,39,.12);color:var(--gold);border:1px solid rgba(201,162,39,.25)}
 .bm-badge.awaiting{background:rgba(255,255,255,.04);color:var(--muted);border:1px solid var(--border)}
 .bm-badge.na{background:rgba(255,69,96,.08);color:#ff8095;border:1px solid rgba(255,69,96,.2)}
-.bm-ts{font-size:8.5px;color:var(--muted);letter-spacing:.05em}
-.save-msg{font-size:11px;color:var(--green);opacity:0;transition:opacity .4s}
+.bm-ts{font-size:12px;color:var(--muted);}
+.save-msg{font-size:13px;color:var(--green);opacity:0;transition:opacity .4s}
 .save-msg.show{opacity:1}
-.restart-note{font-size:10px;color:var(--gold);font-style:italic;margin-left:auto}
+.restart-note{font-size:13px;color:var(--gold);margin-left:auto}
 
 /* ── USERS & AUDIT TABLES ── */
-.data-table{width:100%;border-collapse:collapse;font-size:11px}
-.data-table th{font-family:'Syne',sans-serif;font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:var(--label);padding:8px 12px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap}
+.data-table{width:100%;border-collapse:collapse;font-size:13px}
+.data-table th{font-family:'Syne',sans-serif;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--label);padding:8px 12px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap}
 .data-table td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:middle}
 .data-table tr:last-child td{border-bottom:none}
 .data-table tr:hover td{background:rgba(255,255,255,.02)}
-.role-badge{display:inline-block;font-size:8.5px;letter-spacing:.08em;padding:2px 7px;border-radius:2px;text-transform:uppercase}
+.role-badge{display:inline-block;font-size:12px;padding:2px 7px;border-radius:2px;}
 .role-admin   {background:rgba(201,162,39,.12);color:var(--gold);border:1px solid rgba(201,162,39,.25)}
 .role-power   {background:rgba(0,227,150,.08);color:var(--green);border:1px solid rgba(0,227,150,.2)}
 .role-standard{background:rgba(0,212,255,.08);color:var(--cyan);border:1px solid rgba(0,212,255,.2)}
 .role-readonly {background:rgba(255,255,255,.05);color:var(--muted);border:1px solid var(--border)}
 .tbl-actions{display:flex;gap:6px}
-.tbl-btn{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.06em;padding:3px 9px;border-radius:3px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--muted);transition:all .15s}
+.tbl-btn{font-family:var(--font-ui);font-size:12px;padding:3px 9px;border-radius:3px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--muted);transition:all .15s}
 .tbl-btn:hover{border-color:var(--cyan);color:var(--cyan)}
 .tbl-btn.danger:hover{border-color:var(--red);color:var(--red)}
 .tbl-btn.primary{background:var(--gold);color:#080808;border-color:var(--gold);font-weight:600}
@@ -331,8 +336,8 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
 .modal-x:hover{color:var(--text)}
 
 /* ── PAGINATION ── */
-.pagination{display:flex;align-items:center;gap:10px;margin-top:14px;font-size:11px;color:var(--muted)}
-.page-btn{font-family:'DM Mono',monospace;font-size:10px;padding:4px 10px;border-radius:3px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--muted);transition:all .15s}
+.pagination{display:flex;align-items:center;gap:10px;margin-top:14px;font-size:13px;color:var(--muted)}
+.page-btn{font-family:var(--font-ui);font-size:13px;padding:4px 10px;border-radius:3px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--muted);transition:all .15s}
 .page-btn:hover:not(:disabled){border-color:var(--cyan);color:var(--cyan)}
 .page-btn:disabled{opacity:.3;cursor:default}
 
@@ -374,7 +379,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
   header{padding:0 12px;height:auto;min-height:48px;flex-wrap:wrap;gap:0;row-gap:0}
   .logo{font-size:13px;letter-spacing:.2em;margin-right:10px;padding:10px 0}
   .logo span{display:none}
-  .tab{padding:4px 10px;font-size:10px;letter-spacing:.04em;height:44px}
+  .tab{padding:4px 10px;height:44px}
   .header-status{padding:8px 0}
   .uptime-txt{display:none}
   /* Layout */
@@ -398,14 +403,14 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
   .cfg-footer{flex-wrap:wrap;gap:10px}
   .restart-note{margin-left:0;flex-basis:100%}
   /* Log */
-  #log-output{font-size:10px;max-height:60vh}
+  #log-output{max-height:60vh}
 }
 
 /* ── Small mobile: ≤ 480px ── */
 @media(max-width:480px){
   header{padding:0 10px}
-  .logo{font-size:12px;letter-spacing:.15em}
-  .tab{padding:4px 8px;font-size:9px;letter-spacing:.02em}
+  .logo{font-size:13px;letter-spacing:.15em}
+  .tab{padding:4px 8px;}
   main{padding:10px 8px}
   .card{padding:12px}
   .dash-top{grid-template-columns:1fr}
@@ -420,10 +425,87 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
 
 /* ── SECTION DIVIDER ── */
 .section-head{
-  font-family:'Syne',sans-serif;font-size:11px;font-weight:700;
-  letter-spacing:.2em;text-transform:uppercase;color:var(--gold);
+  font-family:'Syne',sans-serif;font-size:13px;font-weight:700;
+  color:var(--gold);
   padding:0 0 10px;border-bottom:1px solid var(--border-g);margin-bottom:16px;
 }
+
+/* ══ TYPE SYSTEM (calm console) ═══════════════════════════════════════════
+   Readability first: SUNI's character lives on /face; here the type has to
+   be read all day. DM Sans for the interface, DM Mono only for data, Syne
+   for titles. Floor 12px, labels/buttons/hints 13, body/inputs 14. */
+.tab{font-size:14px;padding:9px 20px}
+.field{gap:6px}
+.field label{font-size:13px;font-weight:500;color:var(--label)}
+.field input,.field select,.field textarea{font-size:14px}
+.field-hint{font-size:13px;line-height:1.5;max-width:70ch}
+.section-head{font-size:16px;font-weight:700;letter-spacing:.01em}
+.card-title{font-size:12px;letter-spacing:.12em}
+.data-table{font-size:14px}
+.data-table th{font-size:12px;letter-spacing:.08em}
+.btn{font-size:13px;font-weight:600;padding:10px 20px;min-height:38px}
+.tbl-btn{font-size:13px;padding:6px 12px;min-height:30px}
+.page-btn{font-size:13px;padding:6px 12px;min-height:30px}
+.badge,.role-badge,.bm-badge{font-size:12px;letter-spacing:.02em}
+.kv-k{font-size:12px}
+.kv-v{font-size:14px}
+.modal h3{font-size:17px}
+.modal-close,.modal-x{min-width:32px;min-height:32px;display:inline-flex;align-items:center;justify-content:center}
+code,pre,kbd,samp,#log-output,.mono{font-family:var(--font-mono)}
+/* data, not prose: tool and server names, values, times, durations */
+.tool-item,.tool-chip,.kv-v,.act-time,.act-dur,.range-val,.mcp-name{font-family:var(--font-mono)}
+#log-output{font-size:13px}
+
+/* ══ STRUCTURE ════════════════════════════════════════════════════════════ */
+.nav-group{margin:14px 20px 4px;font-family:var(--font-display);font-size:12px;font-weight:600;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+/* the update notice is news, not chrome: it belongs on the Dashboard */
+main:not(.on-dashboard) #update-banner{display:none!important}
+/* long hints: two lines, the rest on request */
+.field-hint.clamped{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.hint-more{align-self:flex-start;margin:-2px 0 6px;padding:2px 0;background:none;border:none;cursor:pointer;
+  font:inherit;font-size:13px;color:var(--cyan);text-decoration:underline;text-underline-offset:3px}
+.who-answers{display:flex;flex-direction:column;gap:6px;padding:14px 16px;margin-bottom:6px;border-radius:var(--radius);
+  border:1px solid rgba(0,212,255,.28);background:rgba(0,212,255,.05)}
+.who-k{font-size:13px;font-weight:600;color:var(--label)}
+.who-v{font-size:15px;color:var(--text);line-height:1.45}
+.who-v b{color:var(--cyan);font-weight:600}
+.who-links{display:flex;gap:16px;flex-wrap:wrap;font-size:13px}
+.who-links a{color:var(--cyan);text-underline-offset:3px}
+.jump-flash{animation:jump-flash 1.4s ease-out}
+@keyframes jump-flash{0%{box-shadow:0 0 0 3px rgba(0,212,255,.55)}100%{box-shadow:0 0 0 3px rgba(0,212,255,0)}}
+@media (prefers-reduced-motion: reduce){.jump-flash{animation:none}}
+
+/* ══ LAYOUT ═══════════════════════════════════════════════════════════════ */
+/* one readable column of settings; hints already cap at 70ch */
+.cfg-sections{grid-template-columns:1fr!important;max-width:860px;gap:28px}
+#panel-config .card[data-cfg-card]{max-width:860px}
+/* the save bar stays reachable from anywhere in a long tab */
+.cfg-footer{position:sticky;bottom:0;z-index:20;max-width:860px;margin-top:24px;padding:12px 16px;
+  background:rgba(10,10,22,.94);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 -8px 24px rgba(0,0,0,.45)}
+.cfg-dirty{font-size:13px;color:var(--gold-b)}
+@media(max-width:768px){
+  .cfg-footer{padding:8px 10px;gap:8px;flex-wrap:wrap}
+  .cfg-footer .btn{padding:8px 14px;min-height:36px}
+}
+.cfg-dirty:empty{display:none}
+
+/* ══ COLOUR ROLES ═════════════════════════════════════════════════════════ */
+.field-hint{color:var(--hint)}
+.tab.active{font-weight:600}
+.btn-secondary,.tbl-btn,.page-btn{color:var(--label)}
+.act-dur{color:var(--muted)}
+/* destructive actions read as destructive before they are hovered */
+.tbl-btn.danger{color:#ff6b80;border-color:rgba(255,69,96,.35)}
+.tbl-btn.danger:hover{background:rgba(255,69,96,.1)}
+/* focus: designed, not the browser default; >=3:1 against every surface */
+:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.tab:focus-visible{outline-offset:-2px}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--cyan);box-shadow:0 0 0 1px rgba(0,212,255,.45)}
+input,textarea{caret-color:var(--cyan)}
+::selection{background:rgba(201,162,39,.38);color:#fff}
+*{scrollbar-color:rgba(201,162,39,.35) transparent}
 </style>
 </head>
 <body>
@@ -437,38 +519,42 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
       <span class="status-txt" id="hdr-state">Online</span>
       <span class="uptime-txt" id="hdr-uptime"></span>
     </div>
-    <span id="hdr-user" style="font-size:10px;color:var(--gold);font-style:italic"></span>
-    <button onclick="logout()" data-i18n="admin.sign_out" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:9px;letter-spacing:.1em;padding:3px 8px;border-radius:3px;cursor:pointer;font-family:'DM Mono',monospace">Sign out</button>
+    <span id="hdr-user" style="font-size:13px;color:var(--gold);"></span>
+    <button onclick="logout()" data-i18n="admin.sign_out" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:12px;padding:3px 8px;border-radius:3px;cursor:pointer;font-family:var(--font-ui)">Sign out</button>
   </div>
 </header>
 
 <aside class="sidebar" id="sidebar">
   <nav>
-    <button class="tab active" onclick="switchTab('dashboard',this)" data-i18n="admin.nav_dashboard">Dashboard</button>
+    <button class="tab active" aria-current="page" onclick="switchTab('dashboard',this)" data-i18n="admin.nav_dashboard">Dashboard</button>
+    <div class="nav-group" data-i18n="admin.navgrp_people">People</div>
     <button class="tab" onclick="switchTab('users',this)"     data-i18n="admin.nav_users">Users</button>
+    <button class="tab" onclick="switchTab('roles',this)"     data-i18n="admin.nav_roles">Roles</button>
     <button class="tab" onclick="switchTab('audit',this)"     data-i18n="admin.nav_audit">Audit</button>
     <button class="tab" onclick="switchTab('usage',this)" data-i18n="admin.btn_usage">Usage</button>
-    <button class="tab" onclick="switchTab('roles',this)"     data-i18n="admin.nav_roles">Roles</button>
-    <button class="tab" onclick="switchTab('mcp',this)"       data-i18n="admin.nav_mcp">MCP</button>
-    <button class="tab" onclick="switchTab('skills',this)"    data-i18n="admin.nav_skills">Skills</button>
+    <div class="nav-group" data-i18n="admin.navgrp_intel">Intelligence</div>
     <button class="tab" onclick="switchTab('agents',this)" data-i18n="admin.nav_agents">Agents</button>
+    <button class="tab" onclick="switchTab('skills',this)"    data-i18n="admin.nav_skills">Skills</button>
+    <button class="tab" onclick="switchTab('mcp',this)"       data-i18n="admin.nav_mcp">MCP</button>
     <button class="tab" onclick="switchTab('schedules',this)" data-i18n="admin.nav_schedules">Schedules</button>
+    <div class="nav-group" data-i18n="admin.navgrp_data">Data</div>
     <button class="tab" onclick="switchTab('memory',this)"    data-i18n="admin.nav_memory">Memory</button>
     <button class="tab" onclick="switchTab('backup',this)"    data-i18n="admin.nav_backup">Backup</button>
+    <div class="nav-group" data-i18n="admin.navgrp_system">System</div>
     <button class="tab" onclick="switchTab('config',this)"    data-i18n="admin.nav_config">Configuration</button>
-    <button class="tab" onclick="switchTab('benchmarks',this)" data-i18n="admin.btn_benchmarks">Benchmarks</button>
     <button class="tab" onclick="switchTab('logs',this)"      data-i18n="admin.nav_logs">Logs</button>
+    <button class="tab" onclick="switchTab('benchmarks',this)" data-i18n="admin.btn_benchmarks">Benchmarks</button>
     <a href="/architecture" target="_blank" class="tab" data-i18n="admin.nav_arch" style="text-decoration:none;display:block">Architecture ↗</a>
   </nav>
 </aside>
 
-<main>
+<main class="on-dashboard">
 <!-- Update notice. Hidden unless there is something to say, and it says the
      BLOCKING REASON as loudly as the good news — "3 updates available" that
      hides "you have local changes stopping them" is worse than no banner. -->
 <div id="update-banner" style="display:none;margin:0 0 14px;padding:11px 14px;
      border:1px solid var(--border);border-radius:8px;background:var(--card);
-     font-size:12px;line-height:1.55">
+     font-size:13px;line-height:1.55">
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
     <span id="update-headline" style="font-weight:600"></span>
     <span id="update-detail" style="color:var(--muted)"></span>
@@ -479,7 +565,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
               data-i18n="admin.upd_now" style="display:none">Update now</button>
     </span>
   </div>
-  <pre id="update-log" style="display:none;margin:10px 0 0;padding:9px;font-size:11px;
+  <pre id="update-log" style="display:none;margin:10px 0 0;padding:9px;font-size:13px;
        max-height:190px;overflow:auto;background:rgba(120,140,200,.06);border-radius:5px;
        white-space:pre-wrap"></pre>
 </div>
@@ -520,7 +606,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
     <div class="card">
       <div class="card-title" data-i18n="admin.dash_gpu">GPU</div>
       <div id="gpu-container">
-        <div style="color:var(--muted);font-size:11px;font-style:italic">Loading…</div>
+        <div style="color:var(--muted);font-size:13px;">Loading…</div>
       </div>
     </div>
 
@@ -559,7 +645,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
     <div class="card">
       <div class="card-title" data-i18n="admin.dash_mcp">MCP Servers</div>
       <div id="mcp-list">
-        <div style="color:var(--muted);font-style:italic;font-size:11px" data-i18n="common.loading">Loading…</div>
+        <div style="color:var(--muted);font-size:13px" data-i18n="common.loading">Loading…</div>
       </div>
     </div>
 
@@ -577,7 +663,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
 
   <!-- System Profile -->
   <div class="card" style="margin-top:16px">
-    <div class="card-title"><span data-i18n="admin.dash_sys_profile">System Profile</span> <span style="color:var(--muted);font-weight:400;font-size:9px;margin-left:4px" data-i18n="admin.dash_sys_sub">auto-derived from hardware</span></div>
+    <div class="card-title"><span data-i18n="admin.dash_sys_profile">System Profile</span> <span style="color:var(--muted);font-weight:400;font-size:12px;margin-left:4px" data-i18n="admin.dash_sys_sub">auto-derived from hardware</span></div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px" id="sys-profile">
       <div class="kv"><div class="kv-k">RAM</div><div class="kv-v" id="sp-ram">—</div></div>
       <div class="kv"><div class="kv-k">VRAM</div><div class="kv-v" id="sp-vram">—</div></div>
@@ -600,30 +686,30 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
       <div class="kv"><div class="kv-k" data-i18n="admin.dash_last_scan">Last scan</div><div class="kv-v" id="kb-last-scan">—</div></div>
       <div class="kv"><div class="kv-k" data-i18n="common.status">Status</div><div class="kv-v" id="kb-status"><span class="badge info" data-i18n="admin.dash_idle">Idle</span></div></div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <div id="kb-by-type" style="font-size:10px;color:var(--label);line-height:1.8"></div>
-        <button class="btn btn-secondary" onclick="scanNow()" data-i18n="admin.dash_scan_now" style="padding:5px 14px;font-size:10px;margin-left:auto">Scan now</button>
+        <div id="kb-by-type" style="font-size:13px;color:var(--label);line-height:1.8"></div>
+        <button class="btn btn-secondary" onclick="scanNow()" data-i18n="admin.dash_scan_now" style="padding:5px 14px;font-size:13px;margin-left:auto">Scan now</button>
       </div>
     </div>
-    <div id="kb-paths" style="margin-top:10px;font-size:10px;color:var(--muted);font-family:'DM Mono',monospace"></div>
+    <div id="kb-paths" style="margin-top:10px;font-size:13px;color:var(--muted);font-family:var(--font-ui)"></div>
   </div>
 
   <!-- GPU Metrics graphs -->
   <div class="card" style="margin-top:16px">
     <div class="card-title">
       <span data-i18n="admin.dash_gpu_chart">GPU Metrics over Time</span>
-      <span id="graph-range" style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;margin-left:4px"></span>
+      <span id="graph-range" style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:13px;margin-left:4px"></span>
     </div>
     <div class="charts-grid">
       <div>
-        <div style="font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--label);margin-bottom:8px" data-i18n="admin.chart_vram">VRAM Usage (MB)</div>
+        <div style="font-size:12px;color:var(--label);margin-bottom:8px" data-i18n="admin.chart_vram">VRAM Usage (MB)</div>
         <canvas id="chart-vram" height="120"></canvas>
       </div>
       <div>
-        <div style="font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--label);margin-bottom:8px" data-i18n="admin.chart_gpu">GPU Utilisation (%)</div>
+        <div style="font-size:12px;color:var(--label);margin-bottom:8px" data-i18n="admin.chart_gpu">GPU Utilisation (%)</div>
         <canvas id="chart-util" height="120"></canvas>
       </div>
       <div>
-        <div style="font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--label);margin-bottom:8px" data-i18n="admin.chart_temp">Temperature (°C)</div>
+        <div style="font-size:12px;color:var(--label);margin-bottom:8px" data-i18n="admin.chart_temp">Temperature (°C)</div>
         <canvas id="chart-temp" height="120"></canvas>
       </div>
     </div>
@@ -646,8 +732,8 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
          data-i18n-placeholder="admin.cfg_find" placeholder="Find a setting…"
          style="margin-left:auto;min-width:190px;background:rgba(255,255,255,.05);
                 border:1px solid var(--border);color:var(--text);padding:6px 10px;
-                border-radius:3px;font-family:'DM Mono',monospace;font-size:11px">
-  <span id="cfg-filter-count" style="font-size:10px;color:var(--muted)"></span>
+                border-radius:3px;font-family:var(--font-ui);font-size:13px">
+  <span id="cfg-filter-count" style="font-size:13px;color:var(--muted)"></span>
 </div>
     <div class="cfg-sections">
 
@@ -664,6 +750,15 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
           <input type="text" name="tagline" data-i18n-placeholder="admin.ph_tagline" placeholder="The world, as seen by SUNI.">
         </div>
 
+        <div data-cfg-group="models" data-cfg-card class="who-answers" id="who-answers" role="status">
+          <div class="who-k" data-i18n="admin.who_title">Who answers right now</div>
+          <div class="who-v" id="who-answers-text">—</div>
+          <div class="who-links">
+            <a href="#" data-jump="force_claude_code" data-i18n="admin.who_go_force">Force Claude Code</a>
+            <a href="#" data-jump="model_chain_routing" data-i18n="admin.who_go_chain">Model preference list</a>
+            <a href="#" data-jump="cfg-model" data-i18n="admin.who_go_model">Local model</a>
+          </div>
+        </div>
         <div data-cfg-group="models" class="section-head" style="margin-top:8px" data-i18n="admin.cfg_model">Model</div>
         <div class="field">
           <label data-i18n="admin.cfg_ollama_model">Ollama model</label>
@@ -682,18 +777,18 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
 
         <div data-cfg-group="models" class="section-head" style="margin-top:8px" data-i18n="admin.cfg_hw">This machine</div>
         <div class="field">
-          <div id="hw-rows" style="font-size:11px;color:var(--muted)" data-i18n="common.loading">Loading…</div>
+          <div id="hw-rows" style="font-size:13px;color:var(--muted)" data-i18n="common.loading">Loading…</div>
           <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
             <button type="button" class="tbl-btn" onclick="measureHardware(this)"
                     data-i18n="admin.hw_measure">Measure this machine</button>
-            <span id="hw-measure-note" style="font-size:10px;color:var(--muted)"></span>
+            <span id="hw-measure-note" style="font-size:13px;color:var(--muted)"></span>
           </div>
           <div class="field-hint" data-i18n="admin.hw_hint">Measuring times the CPU and every graphics card on the same sample, and takes a minute or two. It is never run on its own — SUNI has twice chosen hardware that a specification said was faster and a stopwatch said was slower.</div>
         </div>
 
         <div data-cfg-group="models" class="section-head" style="margin-top:8px" data-i18n="admin.cfg_tiers">Model Tiers</div>
         <div class="field">
-          <div id="tier-inventory-wrap" style="font-size:11px;color:var(--muted)">
+          <div id="tier-inventory-wrap" style="font-size:13px;color:var(--muted)">
             <div id="tier-inventory-rows" data-i18n="common.loading">Loading…</div>
           </div>
           <div style="margin-top:8px;display:flex;gap:8px">
@@ -706,8 +801,8 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
             <input type="checkbox" id="force_claude_code" name="force_claude_code"
               style="accent-color:var(--gold);width:15px;height:15px;flex-shrink:0">
             <div>
-              <div style="font-size:12px;font-weight:600;color:var(--gold)" data-i18n="admin.cfg_force_cc">Force Claude Code (bypass all local models)</div>
-              <div style="font-size:10px;color:var(--muted);margin-top:2px" data-i18n="admin.cfg_force_cc_hint">Every request goes directly to T5 — no local model is used. Useful for testing and demanding tasks.</div>
+              <div style="font-size:13px;font-weight:600;color:var(--gold)" data-i18n="admin.cfg_force_cc">Force Claude Code (bypass all local models)</div>
+              <div style="font-size:13px;color:var(--muted);margin-top:2px" data-i18n="admin.cfg_force_cc_hint">Every request goes directly to T5 — no local model is used. Useful for testing and demanding tasks.</div>
             </div>
           </label>
           <div style="margin-top:12px">
@@ -723,7 +818,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
           </div>
         </div>
 
-        <div data-cfg-group="models" class="section-head" style="margin-top:8px" data-i18n-html="admin.sec_model_prefs">Model Preferences <span style="font-weight:400;color:var(--muted);font-size:10px">· pluggable</span></div>
+        <div data-cfg-group="models" class="section-head" style="margin-top:8px" data-i18n-html="admin.sec_model_prefs">Model Preferences <span style="font-weight:400;color:var(--muted);font-size:13px">· pluggable</span></div>
         <div class="field">
           <div class="field-hint" style="margin-bottom:8px" data-i18n-html="admin.hint_tier_ladder">Pre-loaded with your current <b>tier ladder</b> (T1–T5) — reorder by dragging, edit a model, or add more (local or external: Ollama, vLLM, OpenAI, Anthropic&nbsp;/&nbsp;Claude, Gemini, Claude&nbsp;Code). Top = first choice. Keys are stored masked (leave blank to keep the saved one). <b>Stored only for now</b> — this list is <b>not yet wired into request routing</b> (SUNI still uses the automatic tier ladder); wiring it in is the next step.</div>
           <label style="display:flex;align-items:center;gap:9px;cursor:pointer;margin:2px 0 12px;
@@ -731,8 +826,8 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
             <input type="checkbox" id="model_chain_routing" name="model_chain_routing"
               style="accent-color:var(--cyan);width:15px;height:15px;flex-shrink:0">
             <div>
-              <div style="font-size:12px;font-weight:600;color:var(--cyan)" data-i18n="admin.chain_routing">Use this list for routing</div>
-              <div style="font-size:10px;color:var(--muted);margin-top:2px" data-i18n-html="admin.chain_routing_note">When on, the <b>top enabled entry</b> becomes SUNI's primary model (escalation to Claude Code unchanged). Off = automatic tier ladder. Requires <b>Force Claude Code = OFF</b> to take effect.</div>
+              <div style="font-size:13px;font-weight:600;color:var(--cyan)" data-i18n="admin.chain_routing">Use this list for routing</div>
+              <div style="font-size:13px;color:var(--muted);margin-top:2px" data-i18n-html="admin.chain_routing_note">When on, the <b>top enabled entry</b> becomes SUNI's primary model (escalation to Claude Code unchanged). Off = automatic tier ladder. Requires <b>Force Claude Code = OFF</b> to take effect.</div>
             </div>
           </label>
           <div id="model-chain-list"></div>
@@ -752,7 +847,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
             <input type="checkbox" id="collaborate_skip_critique" name="collaborate_skip_critique" style="accent-color:var(--gold)">
             <span data-i18n="admin.chk_fastmode">Fast mode — skip the cross-critique round (~40% fewer calls, less thorough)</span>
           </label>
-          <div style="font-size:11px;color:var(--muted);margin:10px 0 4px" data-i18n="admin.collab_pool">Collaboration pool (empty = default Claude Code + Codex). First entry synthesizes.</div>
+          <div style="font-size:13px;color:var(--muted);margin:10px 0 4px" data-i18n="admin.collab_pool">Collaboration pool (empty = default Claude Code + Codex). First entry synthesizes.</div>
           <div id="collab-pool-list"></div>
           <div style="margin-top:8px;display:flex;gap:8px">
             <button type="button" class="tbl-btn" onclick="_addCollabPool()" data-i18n="admin.btn_add_model">+ Add model</button>
@@ -1099,14 +1194,6 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
       </div>
     </div>
 
-    <div class="cfg-footer">
-      <button type="submit" class="btn btn-primary" data-i18n="admin.cfg_save">Save configuration</button>
-      <button type="button" class="btn btn-secondary" onclick="loadConfig()" data-i18n="admin.cfg_revert">Revert</button>
-      <span class="save-msg" id="save-msg" data-i18n="admin.cfg_saved">Saved.</span>
-      <span class="restart-note" id="restart-note" style="display:none" data-i18n="admin.cfg_restart_note">
-        Some changes take effect on next restart.
-      </span>
-    </div>
       <div class="card" data-cfg-group="advanced" data-cfg-card="1" style="margin-top:16px">
       <div class="card-title" data-i18n="admin.ship_title">Remote log shipping</div>
       <div class="field-hint" style="margin-bottom:12px;line-height:1.55">
@@ -1199,10 +1286,19 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
       <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
         <button type="button" class="tbl-btn" onclick="testLogShip()" id="logship-test-btn"
                 data-i18n="admin.ship_test">Send a test line</button>
-        <span id="logship-test-result" style="font-size:11px"></span>
+        <span id="logship-test-result" style="font-size:13px"></span>
       </div>
     </div>
 
+    <div class="cfg-footer">
+      <button type="submit" class="btn btn-primary" data-i18n="admin.cfg_save">Save configuration</button>
+      <button type="button" class="btn btn-secondary" onclick="loadConfig()" data-i18n="admin.cfg_revert">Revert</button>
+      <span class="cfg-dirty" id="cfg-dirty" aria-live="polite"></span>
+      <span class="save-msg" id="save-msg" data-i18n="admin.cfg_saved">Saved.</span>
+      <span class="restart-note" id="restart-note" style="display:none" data-i18n="admin.cfg_restart_note">
+        Some changes take effect on next restart.
+      </span>
+    </div>
 </form>
 </div><!-- /config -->
 
@@ -1211,7 +1307,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
   <div class="card" style="margin-bottom:16px">
     <div style="display:flex;align-items:center;gap:12px">
       <div class="card-title" style="margin:0;border:none" data-i18n="admin.users_title">User accounts</div>
-      <span id="user-count" style="font-size:10px;color:var(--muted)"></span>
+      <span id="user-count" style="font-size:13px;color:var(--muted)"></span>
       <button class="tbl-btn primary" onclick="openCreateUser()" data-i18n="admin.users_new" style="margin-left:auto">+ New user</button>
     </div>
   </div>
@@ -1231,12 +1327,12 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
   <div class="card" style="margin-bottom:16px">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <div class="card-title" style="margin:0;border:none" data-i18n="admin.audit_title">Audit trail</div>
-      <span id="audit-total" style="font-size:10px;color:var(--muted)"></span>
-      <select id="audit-filter-user" onchange="loadAudit()" style="background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);padding:4px 9px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px">
+      <span id="audit-total" style="font-size:13px;color:var(--muted)"></span>
+      <select id="audit-filter-user" onchange="loadAudit()" style="background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);padding:4px 9px;border-radius:3px;font-family:var(--font-ui);font-size:13px">
         <option value="" data-i18n="admin.audit_all_users">All users</option>
       </select>
-      <input type="date" id="audit-from" onchange="loadAudit()" style="background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);padding:4px 9px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;color-scheme:dark">
-      <input type="date" id="audit-to"   onchange="loadAudit()" style="background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);padding:4px 9px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;color-scheme:dark">
+      <input type="date" id="audit-from" onchange="loadAudit()" style="background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);padding:4px 9px;border-radius:3px;font-family:var(--font-ui);font-size:13px;color-scheme:dark">
+      <input type="date" id="audit-to"   onchange="loadAudit()" style="background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);padding:4px 9px;border-radius:3px;font-family:var(--font-ui);font-size:13px;color-scheme:dark">
       <a id="audit-export" href="/api/audit/export" style="margin-left:auto">
         <button class="tbl-btn" data-i18n="admin.audit_export">Export CSV</button>
       </a>
@@ -1288,7 +1384,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
       </div>
       <div class="field-hint" data-i18n="admin.users_api_key_hint">Leave blank to use the global Claude Code account (claude auth login). Set to use this user's own Anthropic quota.</div>
     </div>
-    <div id="modal-err" style="color:var(--red);font-size:11px;margin-top:8px;display:none"></div>
+    <div id="modal-err" style="color:var(--red);font-size:13px;margin-top:8px;display:none"></div>
     <div class="modal-footer">
       <button class="tbl-btn" onclick="closeModal('modal-user')" data-i18n="common.cancel">Cancel</button>
       <button class="tbl-btn primary" onclick="saveUser()" data-i18n="common.save">Save</button>
@@ -1331,12 +1427,12 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
   <div class="card" style="margin-bottom:16px">
     <div style="display:flex;align-items:center;gap:12px">
       <div class="card-title" style="margin:0;border:none" data-i18n="admin.roles_title">Role permissions</div>
-      <span style="font-size:10px;color:var(--muted)" data-i18n="admin.roles_hint">Changes apply immediately on next request</span>
+      <span style="font-size:13px;color:var(--muted)" data-i18n="admin.roles_hint">Changes apply immediately on next request</span>
       <button class="tbl-btn primary" onclick="saveRoles()" data-i18n="admin.roles_save" style="margin-left:auto">Save changes</button>
     </div>
   </div>
   <div id="roles-container"></div>
-  <div id="roles-save-msg" style="font-size:11px;color:var(--green);margin-top:10px;display:none" data-i18n="common.saved">Saved.</div>
+  <div id="roles-save-msg" style="font-size:13px;color:var(--green);margin-top:10px;display:none" data-i18n="common.saved">Saved.</div>
 </div>
 
 <!-- ════════════════════ MCP ════════════════════ -->
@@ -1344,7 +1440,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
   <div class="card" style="margin-bottom:16px">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <div class="card-title" style="margin:0;border:none" data-i18n="admin.mcp_title">MCP Servers</div>
-      <span id="mcp-count" style="font-size:10px;color:var(--muted)"></span>
+      <span id="mcp-count" style="font-size:13px;color:var(--muted)"></span>
       <button class="tbl-btn" onclick="mcpRestart()" data-i18n="admin.mcp_restart" style="margin-left:auto">↺ Restart bridge</button>
       <button class="tbl-btn" onclick="openCatalog()" data-i18n="admin.mcp_catalog">⊞ Browse catalog</button>
       <button class="tbl-btn primary" onclick="openAddMcp()" data-i18n="admin.mcp_add">+ Add server</button>
@@ -1358,7 +1454,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
       <tbody id="mcp-tbody"><tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px" data-i18n="common.loading">Loading…</td></tr></tbody>
     </table>
   </div>
-  <div id="mcp-restart-msg" style="margin-top:10px;font-size:11px;color:var(--cyan);display:none" data-i18n="admin.mcp_restarting">Bridge restarting — tools will update in a few seconds.</div>
+  <div id="mcp-restart-msg" style="margin-top:10px;font-size:13px;color:var(--cyan);display:none" data-i18n="admin.mcp_restarting">Bridge restarting — tools will update in a few seconds.</div>
 </div>
 
 <!-- ════════════════════ MCP CATALOG MODAL ════════════════════ -->
@@ -1368,16 +1464,16 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
       <span data-i18n="admin.mcp_catalog_title">MCP Server Catalog</span>
       <button class="modal-x" onclick="closeModal('modal-catalog')">✕</button>
     </div>
-    <div style="font-size:10px;color:var(--muted);margin-bottom:12px" data-i18n-html="admin.mcp_catalog_info">
+    <div style="font-size:13px;color:var(--muted);margin-bottom:12px" data-i18n-html="admin.mcp_catalog_info">
       Click <strong>Add to SUNI</strong> to configure a server. You will be able to edit its settings (paths, API keys) before saving.
       Servers from <span style="color:var(--cyan)">Claude Desktop</span> are read-only.
     </div>
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
       <select id="cat-filter" style="background:rgba(255,255,255,.05);border:1px solid var(--border);
-        color:var(--text);padding:5px 8px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;">
+        color:var(--text);padding:5px 8px;border-radius:3px;font-family:var(--font-ui);font-size:13px;">
         <option value="" data-i18n="admin.mcp_catalog_all">All categories</option>
       </select>
-      <label style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--dim);cursor:pointer">
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--dim);cursor:pointer">
         <input type="checkbox" id="cat-free-only" style="accent-color:var(--cyan)">
         <span data-i18n="admin.mcp_catalog_free">Free only (no API key)</span>
       </label>
@@ -1394,9 +1490,9 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
   <div class="card" style="margin-bottom:16px">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <div class="card-title" style="margin:0;border:none" data-i18n="admin.card_sched">Scheduled runs</div>
-      <span id="sched-count" style="font-size:10px;color:var(--muted)"></span>
+      <span id="sched-count" style="font-size:13px;color:var(--muted)"></span>
     </div>
-    <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5" data-i18n-html="admin.sched_intro">
+    <div style="font-size:13px;color:var(--muted);margin-top:8px;line-height:1.5" data-i18n-html="admin.sched_intro">
       Each entry replays a prompt on a cadence, as its owner, with that owner's
       permissions <em>as they are at the time it fires</em> — not as they were when
       it was created. Ask SUNI for something recurring to add one; delivery goes
@@ -1411,7 +1507,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
       </tr></thead>
       <tbody id="sched-tbody"></tbody>
     </table>
-    <div id="sched-empty" style="display:none;padding:24px;text-align:center;color:var(--muted);font-size:12px" data-i18n="admin.sched_empty">
+    <div id="sched-empty" style="display:none;padding:24px;text-align:center;color:var(--muted);font-size:13px" data-i18n="admin.sched_empty">
       Nothing scheduled.
     </div>
   </div>
@@ -1421,13 +1517,13 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
   <div class="card" style="margin-bottom:16px">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <div class="card-title" style="margin:0;border:none" data-i18n="admin.card_memq">Memory review queue</div>
-      <span id="memq-count" style="font-size:10px;color:var(--muted)"></span>
-      <label style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer">
+      <span id="memq-count" style="font-size:13px;color:var(--muted)"></span>
+      <label style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer">
         <input type="checkbox" id="memq-show-rejected" onchange="loadMemoryQueue()" style="width:auto;margin:0">
         <span data-i18n="admin.memq_show_rejected">Show rejected</span>
       </label>
     </div>
-    <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5" data-i18n-html="admin.memq_intro">
+    <div style="font-size:13px;color:var(--muted);margin-top:8px;line-height:1.5" data-i18n-html="admin.memq_intro">
       Facts staged instead of published. Anything containing personal data, a
       credential, or text shaped like a prompt injection is held here rather than
       entering shared memory — <b>a staged entry is unreadable to everyone,
@@ -1446,7 +1542,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
       </tr></thead>
       <tbody id="memq-tbody"></tbody>
     </table>
-    <div id="memq-empty" style="display:none;padding:24px;text-align:center;color:var(--muted);font-size:12px" data-i18n="admin.memq_empty">
+    <div id="memq-empty" style="display:none;padding:24px;text-align:center;color:var(--muted);font-size:13px" data-i18n="admin.memq_empty">
       Nothing waiting for review.
     </div>
   </div>
@@ -1456,10 +1552,10 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
   <div class="card" style="margin-bottom:16px">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <div class="card-title" style="margin:0;border:none" data-i18n="admin.card_agents">Agents</div>
-      <span id="agents-count" style="font-size:10px;color:var(--muted)"></span>
+      <span id="agents-count" style="font-size:13px;color:var(--muted)"></span>
       <button class="tbl-btn primary" onclick="openNewAgent()" style="margin-left:auto" data-i18n="admin.btn_new_agent">+ New agent</button>
     </div>
-    <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5" data-i18n-html="admin.agents_intro">
+    <div style="font-size:13px;color:var(--muted);margin-top:8px;line-height:1.5" data-i18n-html="admin.agents_intro">
       A named prompt, an optional model, and an optional narrowing of the tools an
       agent may use. An agent can only ever <strong>reduce</strong> what the person
       running it could already do — the grants shown below are the effective ones
@@ -1474,7 +1570,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
       </tr></thead>
       <tbody id="agents-tbody"></tbody>
     </table>
-    <div id="agents-empty" style="display:none;padding:24px;text-align:center;color:var(--muted);font-size:12px" data-i18n="admin.agents_empty">
+    <div id="agents-empty" style="display:none;padding:24px;text-align:center;color:var(--muted);font-size:13px" data-i18n="admin.agents_empty">
       No agents yet. SUNI answers as itself.
     </div>
   </div>
@@ -1484,17 +1580,17 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
   <div class="card" style="margin-bottom:16px">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <div class="card-title" style="margin:0;border:none" data-i18n="admin.skills_title">Learned Skills</div>
-      <span id="skills-count" style="font-size:10px;color:var(--muted)"></span>
+      <span id="skills-count" style="font-size:13px;color:var(--muted)"></span>
       <button class="tbl-btn primary" onclick="openNewSkill()" data-i18n="admin.skills_new" style="margin-left:auto">+ New skill</button>
     </div>
     <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
       <input id="skill-search" type="text" data-i18n-placeholder="admin.skills_search" placeholder="Search skills…"
         style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);
-               padding:5px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;flex:1;min-width:160px;"
+               padding:5px 10px;border-radius:3px;font-family:var(--font-ui);font-size:13px;flex:1;min-width:160px;"
         oninput="filterSkills(this.value)">
       <select id="skill-cat-filter" onchange="filterSkills()"
         style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);
-               padding:5px 8px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;">
+               padding:5px 8px;border-radius:3px;font-family:var(--font-ui);font-size:13px;">
         <option value="" data-i18n="admin.skills_all_cats">All categories</option>
       </select>
     </div>
@@ -1521,21 +1617,21 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
       <div class="field">
         <label data-i18n="admin.lbl_name">Name</label>
-        <input type="text" id="ag-name" data-i18n-placeholder="admin.ph_agent_name" placeholder="Research Assistant" style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
+        <input type="text" id="ag-name" data-i18n-placeholder="admin.ph_agent_name" placeholder="Research Assistant" style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:var(--font-ui);font-size:13px;width:100%">
       </div>
       <div class="field">
         <label data-i18n="admin.lbl_ag_model">Model — blank uses the normal tier selection, or claude-code for the CLI</label>
-        <input type="text" id="ag-model" placeholder="qwen2.5:7b or claude-code" style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
+        <input type="text" id="ag-model" placeholder="qwen2.5:7b or claude-code" style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:var(--font-ui);font-size:13px;width:100%">
       </div>
     </div>
     <div class="field" style="margin-bottom:10px">
       <label data-i18n="admin.lbl_ag_desc">Description (one sentence — shown in the agent list)</label>
-      <input type="text" id="ag-desc" data-i18n-placeholder="admin.ph_agent_desc" placeholder="Reads and summarises; never sends anything." style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
+      <input type="text" id="ag-desc" data-i18n-placeholder="admin.ph_agent_desc" placeholder="Reads and summarises; never sends anything." style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:var(--font-ui);font-size:13px;width:100%">
     </div>
     <div class="field" style="margin-bottom:10px">
       <label data-i18n="admin.lbl_ag_tools">Allowed tools, comma-separated — blank inherits whatever the person running it may use</label>
-      <input type="text" id="ag-tools" placeholder="web_search, web_fetch" style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
-      <div style="font-size:10px;color:var(--muted);margin-top:4px" data-i18n-html="admin.agents_tools_note">
+      <input type="text" id="ag-tools" placeholder="web_search, web_fetch" style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:var(--font-ui);font-size:13px;width:100%">
+      <div style="font-size:13px;color:var(--muted);margin-top:4px" data-i18n-html="admin.agents_tools_note">
         Listing a tool here cannot grant it: the final set is this list intersected
         with the role of whoever runs the agent.
       </div>
@@ -1543,18 +1639,18 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
       <div class="field">
         <label data-i18n="admin.lbl_ag_steps">Max steps per run — blank uses the instance limit</label>
-        <input type="number" id="ag-steps" min="1" placeholder="8" style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
+        <input type="number" id="ag-steps" min="1" placeholder="8" style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:var(--font-ui);font-size:13px;width:100%">
       </div>
       <div class="field">
         <label data-i18n="admin.lbl_ag_runs">Max runs per day — blank means unlimited</label>
-        <input type="number" id="ag-runs" min="1" placeholder="unlimited" style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
+        <input type="number" id="ag-runs" min="1" placeholder="unlimited" style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:var(--font-ui);font-size:13px;width:100%">
       </div>
       <div class="field">
         <label data-i18n="admin.lbl_ag_tokens">Max tokens per day — blank means unlimited</label>
-        <input type="number" id="ag-tokens" min="1000" step="1000" placeholder="unlimited" style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
+        <input type="number" id="ag-tokens" min="1000" step="1000" placeholder="unlimited" style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:var(--font-ui);font-size:13px;width:100%">
       </div>
     </div>
-    <div style="font-size:10px;color:var(--muted);margin:-4px 0 10px" data-i18n-html="admin.agents_budget_note">
+    <div style="font-size:13px;color:var(--muted);margin:-4px 0 10px" data-i18n-html="admin.agents_budget_note">
       The instance limit bounds one turn. These bound a day of them, which is what
       an agent left on a schedule actually needs. A step budget can only tighten
       the instance limit, never raise it.
@@ -1564,7 +1660,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
         <input type="checkbox" id="ag-panel" style="width:auto;margin:0">
         <span data-i18n="admin.ag_panel_lbl">Convene a panel instead of using one model</span>
       </label>
-      <div style="font-size:10px;color:var(--muted);margin-top:4px" data-i18n-html="admin.agents_panel_note">
+      <div style="font-size:13px;color:var(--muted);margin-top:4px" data-i18n-html="admin.agents_panel_note">
         Several capable models answer independently, critique each other, and one
         merges the result — the answer is spoken as this agent. Slower and more
         thorough. <strong>These are cloud models: this sends the task off the
@@ -1574,9 +1670,9 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
     <div class="field" style="flex:1;display:flex;flex-direction:column">
       <label data-i18n="admin.lbl_ag_prompt">System prompt — how should this agent behave?</label>
       <textarea id="ag-prompt" rows="8" data-i18n-placeholder="admin.ph_agent_prompt" placeholder="You research topics and always cite your sources."
-        style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%;flex:1;resize:vertical;line-height:1.5"></textarea>
+        style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:3px;font-family:var(--font-ui);font-size:13px;width:100%;flex:1;resize:vertical;line-height:1.5"></textarea>
     </div>
-    <div id="ag-err" style="display:none;color:var(--danger);font-size:11px;margin-top:8px"></div>
+    <div id="ag-err" style="display:none;color:var(--danger);font-size:13px;margin-top:8px"></div>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
       <button class="tbl-btn" onclick="closeModal('modal-agent')" data-i18n="admin.btn_cancel">Cancel</button>
       <button class="tbl-btn primary" onclick="saveAgent()" data-i18n="admin.btn_create_agent">Create agent</button>
@@ -1595,29 +1691,29 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
         <label data-i18n="admin.skills_name">Name</label>
         <input type="text" id="sk-name" data-i18n-placeholder="admin.ph_skill_name" placeholder="Generate your organization Weekly Report"
           style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);
-                 padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
+                 padding:7px 10px;border-radius:3px;font-family:var(--font-ui);font-size:13px;width:100%">
       </div>
       <div class="field">
         <label data-i18n="admin.skills_category">Category</label>
         <input type="text" id="sk-category" placeholder="reporting"
           style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);
-                 padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
+                 padding:7px 10px;border-radius:3px;font-family:var(--font-ui);font-size:13px;width:100%">
       </div>
     </div>
     <div class="field" style="margin-bottom:10px">
       <label data-i18n="admin.skills_desc_lbl">Description (one sentence — shown in skill list)</label>
       <input type="text" id="sk-desc" data-i18n-placeholder="admin.ph_skill_desc" placeholder="Fetches your organization project status and generates a PDF report."
         style="background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);
-               padding:7px 10px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
+               padding:7px 10px;border-radius:3px;font-family:var(--font-ui);font-size:13px;width:100%">
     </div>
     <div class="field" style="flex:1;display:flex;flex-direction:column">
       <label data-i18n="admin.skills_body">Skill body (Markdown — steps, example tool calls, tips)</label>
       <textarea id="sk-body" spellcheck="false"
         style="flex:1;min-height:220px;background:rgba(0,0,0,.3);border:1px solid var(--border);
-               color:var(--text);padding:10px;border-radius:3px;font-family:'DM Mono',monospace;
-               font-size:11px;line-height:1.55;resize:vertical;width:100%"></textarea>
+               color:var(--text);padding:10px;border-radius:3px;font-family:var(--font-ui);
+               font-size:13px;line-height:1.55;resize:vertical;width:100%"></textarea>
     </div>
-    <div id="sk-err" style="color:var(--red);font-size:11px;margin-top:6px;display:none"></div>
+    <div id="sk-err" style="color:var(--red);font-size:13px;margin-top:6px;display:none"></div>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
       <button class="tbl-btn" onclick="closeModal('modal-skill')" data-i18n="common.cancel">Cancel</button>
       <button class="tbl-btn primary" onclick="saveSkill()" data-i18n="admin.skills_save">Save skill</button>
@@ -1633,25 +1729,25 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
     <div class="card">
       <div class="card-title" data-i18n="admin.backup_create">Create backup</div>
       <div style="margin-bottom:12px">
-        <label style="display:flex;align-items:flex-start;gap:8px;font-size:11px;color:var(--label);cursor:pointer;text-align:left;line-height:1.5">
+        <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--label);cursor:pointer;text-align:left;line-height:1.5">
           <input type="checkbox" style="accent-color:var(--gold);flex-shrink:0;width:auto;margin-top:2px" id="bk-faiss">
           <span data-i18n="admin.backup_faiss">Include FAISS index (large — can be rebuilt from source docs)</span>
         </label>
       </div>
       <div style="margin-bottom:12px">
-        <label style="display:flex;align-items:flex-start;gap:8px;font-size:11px;color:var(--label);cursor:pointer;text-align:left;line-height:1.5">
+        <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--label);cursor:pointer;text-align:left;line-height:1.5">
           <input type="checkbox" style="accent-color:var(--gold);flex-shrink:0;width:auto;margin-top:2px" id="bk-logs">
           <span data-i18n="admin.backup_logs">Include daily log files</span>
         </label>
       </div>
       <div style="margin-bottom:16px">
-        <label style="display:flex;align-items:flex-start;gap:8px;font-size:11px;color:var(--label);cursor:pointer;text-align:left;line-height:1.5">
+        <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--label);cursor:pointer;text-align:left;line-height:1.5">
           <input type="checkbox" style="accent-color:var(--gold);flex-shrink:0;width:auto;margin-top:2px" id="bk-uploads">
           <span data-i18n="admin.backup_uploads">Include uploaded documents (memory/uploads — can be large)</span>
         </label>
       </div>
       <button class="btn btn-primary" onclick="createBackup()" id="bk-btn" data-i18n="admin.backup_now" style="width:100%">Backup now</button>
-      <div id="bk-msg" style="margin-top:10px;font-size:11px;display:none"></div>
+      <div id="bk-msg" style="margin-top:10px;font-size:13px;display:none"></div>
     </div>
 
     <!-- Restore -->
@@ -1661,20 +1757,20 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
         <label data-i18n="admin.backup_select">Select backup ZIP file</label>
         <input type="file" id="restore-file" accept=".zip"
           style="background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);
-                 padding:8px 11px;border-radius:4px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
+                 padding:8px 11px;border-radius:4px;font-family:var(--font-ui);font-size:13px;width:100%">
       </div>
-      <div style="font-size:10px;color:var(--red);margin-bottom:14px" data-i18n="admin.backup_warning">
+      <div style="font-size:13px;color:var(--red);margin-bottom:14px" data-i18n="admin.backup_warning">
         Warning: restore overwrites current data. SUNI must be restarted after restore.
       </div>
       <button class="btn btn-secondary" onclick="restoreBackup()" data-i18n="admin.backup_restore_btn" style="width:100%">Restore</button>
-      <div id="restore-msg" style="margin-top:10px;font-size:11px;display:none"></div>
+      <div id="restore-msg" style="margin-top:10px;font-size:13px;display:none"></div>
     </div>
   </div>
 
   <!-- Backup list -->
   <div class="card" style="padding:0;overflow:hidden">
-    <div style="padding:14px 18px 10px;font-family:'Syne',sans-serif;font-size:9px;
-                font-weight:700;letter-spacing:.25em;text-transform:uppercase;
+    <div style="padding:14px 18px 10px;font-family:'Syne',sans-serif;font-size:12px;
+                font-weight:700;
                 color:var(--label);border-bottom:1px solid var(--border)">
       <span data-i18n="admin.backup_history">Backup history</span> <span id="bk-count" style="color:var(--muted);font-weight:400"></span>
     </div>
@@ -1702,13 +1798,13 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
       <textarea id="mcp-env" rows="2" placeholder="API_KEY=your_key_here"></textarea>
       <div class="field-hint" data-i18n="admin.mcp_env_hint">Values are stored in the config file. Do not use for highly sensitive credentials.</div>
     </div>
-    <div id="mcp-err" style="color:var(--red);font-size:11px;margin-top:8px;display:none"></div>
+    <div id="mcp-err" style="color:var(--red);font-size:13px;margin-top:8px;display:none"></div>
     <div class="modal-footer">
       <button class="tbl-btn" onclick="closeModal('modal-mcp')" data-i18n="common.cancel">Cancel</button>
       <button class="tbl-btn" id="mcp-test-btn" onclick="testMcpFromModal()" data-i18n="admin.mcp_test">Test connection</button>
       <button class="tbl-btn primary" onclick="saveMcp()" data-i18n="common.save">Save</button>
     </div>
-    <div id="mcp-test-result" style="margin-top:10px;font-size:11px;display:none"></div>
+    <div id="mcp-test-result" style="margin-top:10px;font-size:13px;display:none"></div>
   </div>
 </div>
 
@@ -1717,7 +1813,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
   <div class="card" style="margin-bottom:16px">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <div class="card-title" style="margin:0;border:none" data-i18n="admin.logs_title">Log viewer</div>
-      <select id="log-level" onchange="fetchLogs()" style="background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);padding:5px 10px;border-radius:4px;font-family:'DM Mono',monospace;font-size:11px">
+      <select id="log-level" onchange="fetchLogs()" style="background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);padding:5px 10px;border-radius:4px;font-family:var(--font-ui);font-size:13px">
         <option value="ALL" data-i18n="admin.logs_all">All levels</option>
         <option value="ERROR" data-i18n="admin.logs_errors">Errors only</option>
         <option value="WARNING" data-i18n="admin.logs_warnings">Warnings+</option>
@@ -1725,23 +1821,23 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
       </select>
       <input type="date" id="log-date" onchange="fetchLogs()"
         style="background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);
-               padding:5px 10px;border-radius:4px;font-family:'DM Mono',monospace;font-size:11px;
+               padding:5px 10px;border-radius:4px;font-family:var(--font-ui);font-size:13px;
                color-scheme:dark">
-      <span id="log-file" style="font-size:10px;color:var(--muted);font-style:italic"></span>
-      <button class="btn btn-secondary" onclick="fetchLogs()" data-i18n="common.refresh" style="margin-left:auto;padding:5px 14px;font-size:10px">Refresh</button>
-      <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--label);cursor:pointer">
+      <span id="log-file" style="font-size:13px;color:var(--muted);"></span>
+      <button class="btn btn-secondary" onclick="fetchLogs()" data-i18n="common.refresh" style="margin-left:auto;padding:5px 14px;font-size:13px">Refresh</button>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--label);cursor:pointer">
         <input type="checkbox" id="log-autoscroll" checked style="accent-color:var(--gold)"> <span data-i18n="admin.logs_autoscroll">Auto-scroll</span>
       </label>
     </div>
   </div>
   <div class="card" style="padding:0;overflow:hidden">
     <div id="log-output" style="
-      font-family:'DM Mono',monospace;font-size:11px;line-height:1.7;
+      font-family:var(--font-mono);font-size:13px;line-height:1.7;
       padding:16px 18px;max-height:78vh;overflow-y:auto;
       white-space:pre-wrap;word-break:break-all;
     "></div>
   </div>
-  <div style="margin-top:8px;font-size:10px;color:var(--muted);font-style:italic" id="log-summary"></div>
+  <div style="margin-top:8px;font-size:13px;color:var(--muted);" id="log-summary"></div>
 </div>
 
 <!-- ════════════════════ BENCHMARKS ════════════════════ -->
@@ -1754,7 +1850,7 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
       <select id="bm-suite-sel" class="bm-sel" title="Which suites to run">
         <option value="" data-i18n="admin.opt_all_suites">All suites</option>
       </select>
-      <label style="font-size:10px;color:var(--label);display:flex;align-items:center;gap:5px;cursor:pointer">
+      <label style="font-size:13px;color:var(--label);display:flex;align-items:center;gap:5px;cursor:pointer">
         <input type="checkbox" id="bm-quick" checked> <span data-i18n="admin.bm_quick">quick (2 items/suite)</span>
       </label>
       <button class="btn btn-primary" id="bm-run-btn" onclick="runBenchmark()" data-i18n="admin.btn_run_bench">Run benchmark</button>
@@ -1763,8 +1859,8 @@ select,select option,select optgroup{background:var(--bg2);color:var(--text)}
       <div class="bm-prog-track"><div class="bm-prog-fill" id="bm-prog-fill"></div></div>
       <div class="bm-prog-label" id="bm-prog-label"></div>
     </div>
-    <div style="font-size:10px;color:var(--muted);font-style:italic;margin-top:10px" id="bm-lastrun"></div>
-    <div style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.5" data-i18n-html="admin.bm_legend">
+    <div style="font-size:13px;color:var(--muted);margin-top:10px" id="bm-lastrun"></div>
+    <div style="font-size:13px;color:var(--muted);margin-top:6px;line-height:1.5" data-i18n-html="admin.bm_legend">
       <b style="color:var(--green)">Live</b> metrics accrue from real usage ·
       <b style="color:var(--gold)">Estimated</b> from model &amp; hardware ·
       <b style="color:var(--cyan)">Measured</b> from an on-demand run over small
@@ -1818,9 +1914,11 @@ function logout(){
 //  TAB SWITCHER
 // ═══════════════════════════════════════════
 function switchTab(name, btn) {
-  document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(tab => { tab.classList.remove('active'); tab.removeAttribute('aria-current'); });
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   btn.classList.add('active');
+  btn.setAttribute('aria-current', 'page');
+  document.querySelector('main')?.classList.toggle('on-dashboard', name === 'dashboard');
   document.getElementById('panel-' + name).classList.add('active');
   if (name === 'config') {
     loadConfig();
@@ -1831,6 +1929,8 @@ function switchTab(name, btn) {
              || document.querySelector('.cfg-tab');
     if (btn) cfgTab(btn.getAttribute('data-cfg-tab'), btn);
   }
+  requestAnimationFrame(() => clampHints());
+  if (name !== 'config') _setHash(name);
   if (name === 'memory') loadMemoryQueue();
   if (name === 'users') loadUsers();
   if (name === 'audit') { loadUsers(); loadAudit(); }
@@ -1867,7 +1967,7 @@ async function loadUsage() {
   const card = (label, val, accent) =>
     `<div style="flex:1;min-width:120px;padding:12px;border:1px solid rgba(255,255,255,.1);border-radius:6px">
        <div style="font-size:22px;font-weight:700;color:${accent||'var(--text)'}">${nf(val)}</div>
-       <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">${label}</div></div>`;
+       <div style="font-size:13px;color:var(--muted);">${label}</div></div>`;
   document.getElementById('usage-totals').innerHTML =
     card('requests', t.requests) + card('prompt tokens', t.prompt_tokens) +
     card('gen tokens', t.gen_tokens) + card('total tokens', t.total_tokens, 'var(--cyan)');
@@ -2174,7 +2274,7 @@ function renderDashboard(d) {
 
 function renderGPU(gpus) {
   const wrap = el('gpu-container');
-  if (!gpus.length) { wrap.innerHTML = `<div style="color:var(--muted);font-size:11px;font-style:italic">${t('admin.dash_no_gpu')}</div>`; return; }
+  if (!gpus.length) { wrap.innerHTML = `<div style="color:var(--muted);font-size:13px;">${t('admin.dash_no_gpu')}</div>`; return; }
   wrap.innerHTML = gpus.map(g => {
     const memPct = Math.round(g.mem_used / g.mem_total * 100);
     const utilPct = g.util_pct;
@@ -2230,7 +2330,7 @@ function renderTools(tools) {
 function renderMCP(servers) {
   const wrap = el('mcp-list');
   if (!servers.length) {
-    wrap.innerHTML = `<div style="color:var(--muted);font-size:11px;font-style:italic">${t('admin.dash_no_mcp')}</div>`;
+    wrap.innerHTML = `<div style="color:var(--muted);font-size:13px;">${t('admin.dash_no_mcp')}</div>`;
     return;
   }
   wrap.innerHTML = servers.map(s => `
@@ -2284,6 +2384,7 @@ async function loadConfig() {
     const r = await _apiFetch('/api/config');
     const cfg = await r.json();
     applyConfigToForm(cfg);
+    setTimeout(cfgBaseline, 0);   // what was loaded is the baseline, not a change
   } catch(e) {}
 
   // Load model inventory (non-blocking)
@@ -2362,6 +2463,7 @@ function applyConfigToForm(cfg) {
   _syncOverride();
   const mcr = document.getElementById('model_chain_routing');
   if (mcr) { mcr.checked = !!cfg.model_chain_routing; }
+  setTimeout(updateWhoAnswers, 0);
   const orgx = document.getElementById('memory_org_extraction');
   if (orgx) { orgx.checked = !!cfg.memory_org_extraction; }
   // Collaboration (Mode 2): toggles + pool
@@ -2461,7 +2563,7 @@ function _renderModelChain(){
   const wrap = document.getElementById('model-chain-list');
   if (!wrap) return;
   if (!_modelChain.length){
-    wrap.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:8px 0">No models yet — click “+ Add model”.</div>';
+    wrap.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:8px 0">No models yet — click “+ Add model”.</div>';
     return;
   }
   wrap.innerHTML = _modelChain.map((e,i) => `
@@ -2469,7 +2571,7 @@ function _renderModelChain(){
       style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px;margin-bottom:6px;
              border:1px solid rgba(255,255,255,.12);border-radius:5px;background:rgba(255,255,255,.02)">
       <span title="${t('admin.drag_reorder')}" style="cursor:grab;color:var(--muted);font-size:15px;padding:0 3px">≡</span>
-      <span style="font-size:10px;color:var(--muted);width:14px;text-align:right">${i+1}</span>
+      <span style="font-size:13px;color:var(--muted);width:14px;text-align:right">${i+1}</span>
       <input class="mc-label" placeholder="Label" value="${esc(e.label||'')}" style="flex:1;min-width:84px">
       <select class="mc-provider" style="min-width:104px">
         ${_MC_PROVIDERS.map(p=>`<option value="${p}"${p===e.provider?' selected':''}>${p}</option>`).join('')}
@@ -2477,7 +2579,7 @@ function _renderModelChain(){
       <input class="mc-model" placeholder="${t('admin.ph_model_id')}" value="${esc(e.model||'')}" style="flex:1;min-width:108px">
       <input class="mc-base" placeholder="${t('admin.ph_base_url')}" value="${esc(e.base_url||'')}" style="flex:1;min-width:118px">
       <input class="mc-key" type="password" autocomplete="off" placeholder="${e.has_key?'•••• configured':'API key (opt.)'}" style="min-width:118px">
-      <label style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted);cursor:pointer">
+      <label style="display:flex;align-items:center;gap:4px;font-size:13px;color:var(--muted);cursor:pointer">
         <input class="mc-enabled" type="checkbox"${e.enabled!==false?' checked':''} style="accent-color:var(--gold)"> on
       </label>
       <button type="button" class="tbl-btn" title="Remove" onclick="_removeModelChain('${esc(e.id)}')">×</button>
@@ -2541,18 +2643,18 @@ function _renderCollabPool(){
   const wrap = document.getElementById('collab-pool-list');
   if (!wrap) return;
   if (!_collabPool.length){
-    wrap.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:6px 0">Using default: <b>claude-code + codex</b>.</div>';
+    wrap.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:6px 0">Using default: <b>claude-code + codex</b>.</div>';
     return;
   }
   wrap.innerHTML = _collabPool.map((e,i) => `
     <div class="cp-row" data-id="${esc(e.id)}" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px;margin-bottom:6px;border:1px solid rgba(255,255,255,.12);border-radius:5px;background:rgba(255,255,255,.02)">
-      <span style="font-size:10px;color:var(--muted);width:14px;text-align:right">${i+1}</span>
+      <span style="font-size:13px;color:var(--muted);width:14px;text-align:right">${i+1}</span>
       <select class="cp-provider" style="min-width:104px">
         ${_CP_PROVIDERS.map(p=>`<option value="${p}"${p===e.provider?' selected':''}>${p}</option>`).join('')}
       </select>
       <input class="cp-model" placeholder="model id (opt.)" value="${esc(e.model||'')}" style="flex:1;min-width:108px">
       <input class="cp-key" type="password" autocomplete="off" placeholder="${e.has_key?'•••• configured':'API key (opt.)'}" style="min-width:118px">
-      <label style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted);cursor:pointer">
+      <label style="display:flex;align-items:center;gap:4px;font-size:13px;color:var(--muted);cursor:pointer">
         <input class="cp-enabled" type="checkbox"${e.enabled!==false?' checked':''} style="accent-color:var(--gold)"> on
       </label>
       <button type="button" class="tbl-btn" title="Remove" onclick="_removeCollabPool('${esc(e.id)}')">×</button>
@@ -2705,6 +2807,7 @@ document.getElementById('cfg-form').addEventListener('submit', async e => {
     const res = await r.json();
     if (res.ok) {
       const msg = el('save-msg');
+      cfgBaseline();
       msg.classList.add('show');
       el('restart-note').style.display = '';
       setTimeout(() => msg.classList.remove('show'), 3000);
@@ -2737,9 +2840,9 @@ async function loadInventory(refresh) {
       const active = tier_map[t];
       const rows = byTier[t].map(m => {
         const star = m.name === active ? ' ★' : '';
-        return `<span style="margin-right:12px;${m.name===active?'color:#00d4ff':'opacity:.7'}">${esc(m.name)}${star} (${m.params_b}B)</span>`;
+        return `<span style="margin-right:12px;font-family:var(--font-mono);${m.name===active?'color:var(--cyan)':'color:var(--muted)'}">${esc(m.name)}${star} (${m.params_b}B)</span>`;
       }).join('');
-      return `<div style="margin-bottom:4px"><span style="opacity:.5;min-width:72px;display:inline-block">${_TIER_LABELS[t]||'T'+t}:</span>${rows}</div>`;
+      return `<div style="margin-bottom:4px"><span style="color:var(--label);font-weight:500;min-width:72px;display:inline-block">${_TIER_LABELS[t]||'T'+t}:</span>${rows}</div>`;
     }).join('');
   } catch(e) {
     if (el('tier-inventory-rows')) el('tier-inventory-rows').textContent = t('admin.cfg_inv_failed');
@@ -2820,8 +2923,8 @@ const _chartDefaults = {
     bodyFont:  { family: "'DM Mono', monospace", size: 10 },
   }},
   scales: {
-    x: { grid: { color: 'rgba(255,255,255,.04)' }, ticks: { color: '#555566', font: { family: "'DM Mono',monospace", size: 9 }, maxRotation: 0, maxTicksLimit: 8 } },
-    y: { grid: { color: 'rgba(255,255,255,.04)' }, ticks: { color: '#555566', font: { family: "'DM Mono',monospace", size: 9 } }, beginAtZero: true },
+    x: { grid: { color: 'rgba(255,255,255,.04)' }, ticks: { color: '#8a8d9e', font: { family: "'DM Mono',monospace", size: 12 }, maxRotation: 0, maxTicksLimit: 8 } },
+    y: { grid: { color: 'rgba(255,255,255,.04)' }, ticks: { color: '#8a8d9e', font: { family: "'DM Mono',monospace", size: 12 } }, beginAtZero: true },
   },
 };
 
@@ -2957,7 +3060,7 @@ function renderRoles(){
 
     const toolRows = _allToolNames.map(t => {
       const isAllowed = allowed === null ? !blocked.includes(t) : allowed.includes(t);
-      return `<label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;padding:3px 0">
+      return `<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:3px 0">
         <input type="checkbox" data-role="${role}" data-tool="${t}" ${isAllowed?'checked':''}
                style="accent-color:var(--gold)" onchange="roleToolChanged('${role}','${t}',this.checked)">
         <span style="color:var(--text)">${esc(t)}</span>
@@ -2965,7 +3068,7 @@ function renderRoles(){
     }).join('');
 
     const modeChecks = MODES.map(m =>
-      `<label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer">
+      `<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
         <input type="checkbox" data-role="${role}" data-mode="${m}" ${allowedModes.includes(m)?'checked':''}
                style="accent-color:var(--cyan)" onchange="roleModeChanged('${role}','${m}',this.checked)">
         <span>${m}</span>
@@ -2978,15 +3081,15 @@ function renderRoles(){
       <div class="card-title"><span class="role-badge ${_ROLE_CSS[role]||''}">${esc(role)}</span></div>
       <div style="display:grid;grid-template-columns:1fr 200px;gap:24px">
         <div>
-          <div style="font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--label);margin-bottom:8px">${t('admin.roles_tool_access')}</div>
+          <div style="font-size:12px;color:var(--label);margin-bottom:8px">${t('admin.roles_tool_access')}</div>
           <div style="columns:2;gap:12px">${toolRows}</div>
         </div>
         <div>
-          <div style="font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--label);margin-bottom:8px">${t('admin.roles_allowed_modes')}</div>
+          <div style="font-size:12px;color:var(--label);margin-bottom:8px">${t('admin.roles_allowed_modes')}</div>
           <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">${modeChecks}</div>
-          <div style="font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--label);margin-bottom:6px">${t('admin.roles_default_mode')}</div>
+          <div style="font-size:12px;color:var(--label);margin-bottom:6px">${t('admin.roles_default_mode')}</div>
           <select data-role="${role}" data-key="default_mode" onchange="roleKeyChanged('${role}','default_mode',this.value)"
-            style="background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:3px;font-family:'DM Mono',monospace;font-size:11px;width:100%">
+            style="background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:3px;font-family:var(--font-ui);font-size:13px;width:100%">
             ${defOptions}
           </select>
         </div>
@@ -3043,18 +3146,18 @@ async function loadMcp(){
   tbody.innerHTML = servers.map(s=>{
     const isSuni = s.source === 'suni';
     const srcBadge = isSuni
-      ? `<span style="font-size:9px;color:var(--gold);border:1px solid rgba(201,162,39,.3);padding:1px 5px;border-radius:2px">SUNI</span>`
-      : `<span style="font-size:9px;color:var(--cyan);border:1px solid rgba(0,212,255,.3);padding:1px 5px;border-radius:2px">Claude Desktop</span>`;
+      ? `<span style="font-size:12px;color:var(--gold);border:1px solid rgba(201,162,39,.3);padding:1px 5px;border-radius:2px">SUNI</span>`
+      : `<span style="font-size:12px;color:var(--cyan);border:1px solid rgba(0,212,255,.3);padding:1px 5px;border-radius:2px">Claude Desktop</span>`;
     return `<tr>
       <td><strong>${esc(s.name)}</strong></td>
-      <td><span class="status-dot ${s.connected?'on':'off'}"></span>${s.connected?t('admin.mcp_connected'):t('admin.mcp_offline')}${s.connected?'':' <span style="font-size:9px;color:var(--muted)">(restart)</span>'}</td>
+      <td><span class="status-dot ${s.connected?'on':'off'}"></span>${s.connected?t('admin.mcp_connected'):t('admin.mcp_offline')}${s.connected?'':' <span style="font-size:12px;color:var(--muted)">(restart)</span>'}</td>
       <td>${srcBadge}</td>
-      <td style="font-size:10px;color:var(--muted)">${esc(s.command)} ${(s.args||[]).slice(0,2).map(esc).join(' ')}</td>
+      <td style="font-size:13px;color:var(--muted)">${esc(s.command)} ${(s.args||[]).slice(0,2).map(esc).join(' ')}</td>
       <td style="color:var(--cyan)">${s.tool_count}</td>
       <td class="tbl-actions">
         ${isSuni ? `<button class="tbl-btn" onclick="openEditMcp(${JSON.stringify(s).replace(/"/g,'&quot;')})">${t('common.edit')}</button>
         <button class="tbl-btn danger" onclick="deleteMcp('${esc(s.name)}')">${t('common.delete')}</button>`
-        : `<span style="font-size:9px;color:var(--muted)">${t('admin.mcp_readonly')}</span>`}
+        : `<span style="font-size:12px;color:var(--muted)">${t('admin.mcp_readonly')}</span>`}
       </td>
     </tr>`;
   }).join('');
@@ -3166,19 +3269,19 @@ function _renderCatalog(){
   if(!items.length){ grid.innerHTML=`<div style="color:var(--muted);padding:24px;text-align:center;grid-column:1/-1">${t('admin.mcp_catalog_no_match')}</div>`; return; }
   grid.innerHTML = items.map(s => {
     const apiKey = s.requires_api_key
-      ? `<span style="font-size:9px;color:var(--gold);border:1px solid rgba(201,162,39,.3);padding:1px 4px;border-radius:2px">API key</span>`
-      : `<span style="font-size:9px;color:var(--green);border:1px solid rgba(0,227,150,.3);padding:1px 4px;border-radius:2px">Free</span>`;
+      ? `<span style="font-size:12px;color:var(--gold);border:1px solid rgba(201,162,39,.3);padding:1px 4px;border-radius:2px">API key</span>`
+      : `<span style="font-size:12px;color:var(--green);border:1px solid rgba(0,227,150,.3);padding:1px 4px;border-radius:2px">Free</span>`;
     const official = s.official
-      ? `<span style="font-size:9px;color:var(--cyan);border:1px solid rgba(0,212,255,.3);padding:1px 4px;border-radius:2px">Official</span>`
+      ? `<span style="font-size:12px;color:var(--cyan);border:1px solid rgba(0,212,255,.3);padding:1px 4px;border-radius:2px">Official</span>`
       : '';
     return `<div style="background:var(--card-bg);border:1px solid var(--border);border-radius:4px;padding:14px;display:flex;flex-direction:column;gap:8px">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px">
-        <strong style="font-size:12px;color:var(--text)">${esc(s.name)}</strong>
-        <span style="font-size:9px;color:var(--muted);flex-shrink:0">${esc(s.category)}</span>
+        <strong style="font-size:13px;color:var(--text)">${esc(s.name)}</strong>
+        <span style="font-size:12px;color:var(--muted);flex-shrink:0">${esc(s.category)}</span>
       </div>
-      <div style="font-size:10px;color:var(--muted);line-height:1.5">${esc(s.description)}</div>
+      <div style="font-size:13px;color:var(--muted);line-height:1.5">${esc(s.description)}</div>
       <div style="display:flex;gap:4px;flex-wrap:wrap">${apiKey} ${official}</div>
-      ${s.notes ? `<div style="font-size:9px;color:rgba(201,162,39,.7);line-height:1.4">${esc(s.notes)}</div>` : ''}
+      ${s.notes ? `<div style="font-size:12px;color:rgba(201,162,39,.7);line-height:1.4">${esc(s.notes)}</div>` : ''}
       <button class="tbl-btn primary" onclick="addFromCatalog(${JSON.stringify(s).replace(/"/g,'&quot;')})"
         style="margin-top:auto;width:100%;justify-content:center">${t('admin.mcp_catalog_add')}</button>
     </div>`;
@@ -3270,6 +3373,8 @@ function cfgTab(name, btn) {
   _cfgSections().forEach(s =>
     s.nodes.forEach(n => { n.style.display = (s.group === name) ? '' : 'none'; }));
   try { localStorage.setItem('suni_cfg_tab', name); } catch (e) {}
+  _setHash('config/' + name);
+  requestAnimationFrame(() => { clampHints(); updateWhoAnswers(); });
 }
 
 function cfgFilter(term) {
@@ -3512,7 +3617,7 @@ async function loadSchedules() {
       if (!s.enabled) tr.style.opacity = '.5';
       tr.innerHTML =
         `<td><strong>${esc(s.name)}</strong>` +
-        `<div style="font-size:10px;color:var(--muted)">${esc((s.prompt||'').slice(0,70))}</div></td>` +
+        `<div style="font-size:13px;color:var(--muted)">${esc((s.prompt||'').slice(0,70))}</div></td>` +
         `<td>${esc(s.cadence)}</td>` +
         `<td>${s.agent_slug ? esc(s.agent_slug) : '—'}</td>` +
         `<td>${to}</td>` +
@@ -3568,7 +3673,7 @@ async function loadAgents() {
       const e = a.effective || {};
       const tr = document.createElement('tr');
       tr.innerHTML =
-        `<td><strong>${esc(a.name)}</strong><div style="font-size:10px;color:var(--muted)">${esc(a.slug)}</div></td>` +
+        `<td><strong>${esc(a.name)}</strong><div style="font-size:13px;color:var(--muted)">${esc(a.slug)}</div></td>` +
         `<td style="max-width:280px">${esc(a.description || '')}</td>` +
         `<td>${esc(e.model || 'default')}</td>` +
         `<td>${e.mode === 'collaborate' ? '<strong>panel</strong>' : esc(e.mode || '')}</td>` +
@@ -3666,8 +3771,8 @@ function _renderSkills(skills){
   tbody.innerHTML = skills.map(s=>`
     <tr>
       <td><strong style="color:var(--text)">${esc(s.name)}</strong></td>
-      <td><span style="font-size:9px;color:var(--cyan);border:1px solid rgba(0,212,255,.3);padding:1px 5px;border-radius:2px">${esc(s.category)}</span></td>
-      <td style="font-size:10px;color:var(--muted);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.description||'')}</td>
+      <td><span style="font-size:12px;color:var(--cyan);border:1px solid rgba(0,212,255,.3);padding:1px 5px;border-radius:2px">${esc(s.category)}</span></td>
+      <td style="font-size:13px;color:var(--muted);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.description||'')}</td>
       <td style="color:var(--muted)">v${s.version||1}</td>
       <td style="color:var(--cyan)">${s.used_count||0}×</td>
       <td class="tbl-actions">
@@ -3740,7 +3845,7 @@ async function loadBackups(){
   }
   tbody.innerHTML = list.map(b=>`
     <tr>
-      <td style="font-family:'DM Mono',monospace;font-size:11px">${esc(b.filename)}</td>
+      <td style="font-family:var(--font-ui);font-size:13px">${esc(b.filename)}</td>
       <td>${b.size_kb} KB</td>
       <td>${new Date(b.created_at).toLocaleString()}</td>
       <td class="tbl-actions">
@@ -3989,8 +4094,8 @@ async function loadMemoryQueue() {
       <tr${rejected ? ' style="opacity:.55"' : ''}>
         <td style="max-width:420px">${esc(c.content)}</td>
         <td><span class="role-badge ${_SENS_CSS[c.sensitivity] || ''}">${esc(t('admin.sens_' + c.sensitivity))}</span></td>
-        <td style="font-size:10px;color:var(--muted)">${reasons.map(esc).join(', ') || '—'}</td>
-        <td style="font-size:10px;color:var(--muted)">${c.timestamp ? new Date(c.timestamp).toLocaleDateString() : '—'}</td>
+        <td style="font-size:13px;color:var(--muted)">${reasons.map(esc).join(', ') || '—'}</td>
+        <td style="font-size:13px;color:var(--muted)">${c.timestamp ? new Date(c.timestamp).toLocaleDateString() : '—'}</td>
         <td class="tbl-actions">${rejected ? `
           <button class="tbl-btn" onclick="memqDecide('${c.id}','approve')">${t('admin.memq_approve')}</button>`
           : `
@@ -4081,19 +4186,19 @@ async function eraseUser(uid, uname){
   ov.innerHTML = `
     <div class="modal" style="width:min(680px,96vw);max-height:85vh;overflow:auto">
       <div class="modal-title"><span>${t('admin.erase_title', {user: esc(uname)})}</span></div>
-      <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:10px">
+      <div style="font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:10px">
         ${t('admin.erase_intro')}
       </div>
-      ${rows ? `<table style="font-size:11px;margin-bottom:10px">${rows}</table>`
-             : `<div style="font-size:11px;color:var(--muted);margin-bottom:10px">${t('admin.erase_nothing')}</div>`}
-      <div style="font-size:11px;color:var(--gold);line-height:1.5;margin-bottom:10px">
+      ${rows ? `<table style="font-size:13px;margin-bottom:10px">${rows}</table>`
+             : `<div style="font-size:13px;color:var(--muted);margin-bottom:10px">${t('admin.erase_nothing')}</div>`}
+      <div style="font-size:13px;color:var(--gold);line-height:1.5;margin-bottom:10px">
         ${t('admin.erase_audit_note', {n: p.pseudonymised.audit_rows})}
       </div>
-      <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:6px">
+      <div style="font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:6px">
         <b>${t('admin.erase_not_covered')}</b>
       </div>
-      <ul style="font-size:10px;color:var(--muted);line-height:1.5;margin:0 0 10px 16px">${kept}</ul>
-      ${p.backups.length ? `<div style="font-size:10px;color:var(--muted);margin-bottom:10px">
+      <ul style="font-size:13px;color:var(--muted);line-height:1.5;margin:0 0 10px 16px">${kept}</ul>
+      ${p.backups.length ? `<div style="font-size:13px;color:var(--muted);margin-bottom:10px">
         ${t('admin.erase_backups', {n: p.backups.length})}</div>` : ''}
       <div class="field">
         <label>${t('admin.erase_confirm_label', {user: esc(uname)})}</label>
@@ -4169,13 +4274,13 @@ async function _fetchAudit(){
   if(!d.rows.length){ tbody.innerHTML=`<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">${t('admin.audit_none')}</td></tr>`; return; }
   tbody.innerHTML = d.rows.map(r=>`
     <tr>
-      <td style="white-space:nowrap;font-size:10px">${new Date(r.ts).toLocaleString()}</td>
+      <td style="white-space:nowrap;font-size:13px">${new Date(r.ts).toLocaleString()}</td>
       <td><strong>${esc(r.username)}</strong></td>
-      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)">${esc(r.query_preview||'—')}</td>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)">${esc(r.query_preview||'—')}</td>
       <td><span class="tool-chip">${esc(r.route||'—')}</span></td>
       <td style="color:var(--muted)">${esc(r.mode||'assistant')}</td>
-      <td style="color:var(--cyan);font-size:10px">${esc(r.tools_called||'—')}</td>
-      <td style="color:var(--gold)">${r.duration_s ? r.duration_s+'s' : '—'}</td>
+      <td style="color:var(--cyan);font-size:13px">${esc(r.tools_called||'—')}</td>
+      <td style="color:var(--muted);font-family:var(--font-mono)">${r.duration_s ? r.duration_s+'s' : '—'}</td>
     </tr>`).join('');
 }
 
@@ -4198,9 +4303,17 @@ function toggleSidebar(){
 (function _initSidebar(){
   let saved; try { saved = localStorage.getItem('suni_sidebar'); } catch(e){}
   if (saved === 'collapsed') _setSidebar(true);
+  // On a phone the open sidebar covers half the screen. Start collapsed
+  // there unless the person chose to keep it open (the toggle still works).
+  else if (saved !== 'expanded' && window.matchMedia('(max-width: 768px)').matches) {
+    // applied, not saved: a narrow window must not collapse it on desktop too
+    document.getElementById('sidebar').classList.add('collapsed');
+    document.querySelector('main').classList.add('nav-collapsed');
+  }
 })();
 
 _checkAuth().then(()=>{
+  routeFromHash();
   fetchDashboard();
   fetchMetrics();
   // Once, on load. NOT on an interval like the two above: /api/update/status
@@ -4211,6 +4324,115 @@ _checkAuth().then(()=>{
   setInterval(fetchDashboard, 8000);
   setInterval(fetchMetrics, 30000);
 });
+
+// ── distill: long hints show two lines and a "More" button ───────────────────
+// Display-time only: the hint copy (and both translations) stay whole. The
+// button sits beside the hint because translation replaces the hint's text.
+function clampHints(root) {
+  (root || document).querySelectorAll('.field-hint').forEach(h => {
+    if (h.offsetParent === null) return;              // hidden: measure later
+    let btn = h.nextElementSibling && h.nextElementSibling.classList.contains('hint-more')
+              ? h.nextElementSibling : null;
+    if (h.dataset.expanded === '1') return;
+    h.classList.add('clamped');
+    const overflow = h.scrollHeight > h.clientHeight + 2;
+    if (!overflow) { h.classList.remove('clamped'); if (btn) btn.remove(); return; }
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'hint-more';
+      btn.setAttribute('aria-expanded', 'false');
+      btn.onclick = () => {
+        const open = h.dataset.expanded !== '1';
+        h.dataset.expanded = open ? '1' : '';
+        h.classList.toggle('clamped', !open);
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        btn.textContent = t(open ? 'admin.hint_less' : 'admin.hint_more');
+      };
+      h.after(btn);
+    }
+    btn.textContent = t('admin.hint_more');
+  });
+}
+// a hint whose text changes (language switch, re-render) is measured again
+const _hintObs = new MutationObserver(muts => {
+  if (muts.some(m => m.target.closest && m.target.closest('.field-hint'))) clampHints();
+});
+_hintObs.observe(document.body, { childList: true, characterData: true, subtree: true });
+
+// ── distill: who answers right now ───────────────────────────────────────────
+// Three settings decide it and one silently overrides the others; say the
+// outcome in one sentence instead of making the admin work it out.
+function updateWhoAnswers() {
+  const out = document.getElementById('who-answers-text');
+  if (!out) return;
+  const forced = !!document.getElementById('force_claude_code')?.checked;
+  const chain  = !!document.getElementById('model_chain_routing')?.checked;
+  const local  = document.getElementById('cfg-model')?.value || t('admin.who_auto');
+  const b = s => '<b>' + esc(s) + '</b>';
+  out.innerHTML = forced ? t('admin.who_forced')
+                : chain  ? t('admin.who_chain')
+                : t('admin.who_ladder').replace('{m}', b(local));
+}
+['force_claude_code', 'model_chain_routing', 'cfg-model'].forEach(id =>
+  document.getElementById(id)?.addEventListener('change', updateWhoAnswers));
+document.addEventListener('click', e => {
+  const a = e.target.closest && e.target.closest('#who-answers [data-jump]');
+  if (!a) return;
+  e.preventDefault();
+  const target = document.getElementById(a.getAttribute('data-jump'));
+  const box = target && (target.closest('label') || target.closest('.field') || target);
+  if (!box) return;
+  box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  box.classList.remove('jump-flash'); void box.offsetWidth; box.classList.add('jump-flash');
+  setTimeout(() => target.focus({ preventScroll: true }), 300);
+});
+
+// ── layout: unsaved-changes count on the sticky save bar ─────────────────────
+let _cfgBase = null;
+function _cfgSnapshot() {
+  const f = document.getElementById('cfg-form');
+  const out = {};
+  if (!f) return out;
+  [...f.elements].forEach(e => {
+    const k = e.name || e.id;
+    if (!k || e.type === 'submit' || e.type === 'button' || e.type === 'file') return;
+    out[k] = (e.type === 'checkbox' || e.type === 'radio') ? e.checked : e.value;
+  });
+  return out;
+}
+function cfgBaseline() { _cfgBase = _cfgSnapshot(); cfgDirtyUpdate(); }
+function cfgDirtyCount() {
+  if (!_cfgBase) return 0;
+  const now = _cfgSnapshot();
+  return Object.keys(now).filter(k => k in _cfgBase && now[k] !== _cfgBase[k]).length;
+}
+function cfgDirtyUpdate() {
+  const n = cfgDirtyCount();
+  const out = document.getElementById('cfg-dirty');
+  if (out) out.textContent = n ? (n === 1 ? t('admin.cfg_dirty_one') : t('admin.cfg_dirty_many').replace('{n}', n)) : '';
+}
+['input', 'change'].forEach(ev =>
+  document.getElementById('cfg-form')?.addEventListener(ev, cfgDirtyUpdate));
+window.addEventListener('beforeunload', e => {
+  if (cfgDirtyCount()) { e.preventDefault(); e.returnValue = ''; }
+});
+
+// ── layout: the address remembers where you are ─────────────────────────────
+// #users, #config/models ... Reload and the back button keep your place.
+function _setHash(h) {
+  try { history.replaceState(null, '', '#' + h); } catch (e) {}
+}
+function routeFromHash() {
+  const [page, sub] = (location.hash || '').replace(/^#/, '').split('/');
+  if (!page) return;
+  const btn = [...document.querySelectorAll('.tab[onclick]')]
+    .find(b => (b.getAttribute('onclick') || '').includes(`switchTab('${page}'`));
+  if (!btn || btn.style.display === 'none') return;
+  if (page === 'config' && sub) { try { localStorage.setItem('suni_cfg_tab', sub); } catch (e) {} }
+  switchTab(page, btn);
+}
+// a pasted link or the back button changes only the hash, not the page
+window.addEventListener('hashchange', routeFromHash);
 </script>
 </body>
 </html>
