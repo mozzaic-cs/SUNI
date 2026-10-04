@@ -39,9 +39,14 @@ _SECRET_RULES: list[tuple] = [
     ("slack-token",     re.compile(r"\bxox[baprs]-[0-9A-Za-z-]{10,}\b")),
     ("stripe-key",      re.compile(r"\bsk_live_[0-9A-Za-z]{16,}\b")),
     ("jwt",             re.compile(r"\beyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\b")),
-    # generic  key/secret/token/password = <value>  assignments
+    ("anthropic-key",   re.compile(r"\bsk-ant-[A-Za-z0-9_\-]{20,}")),
+    ("openai-key",      re.compile(r"\bsk-(?:proj-|svcacct-)?[A-Za-z0-9_\-]{32,}")),
+    # generic  key/secret/token/password = <value>  assignments. The name may
+    # carry an env-style prefix: ANTHROPIC_API_KEY=, DB_PASSWORD= — `\b` alone
+    # never matched those, because `_` is a word character, so a `cat .env`
+    # went through unredacted.
     ("credential", re.compile(
-        r"(?i)\b(?:api[_-]?key|secret|token|password|passwd|pwd|access[_-]?key)\b\s*[=:]\s*['\"]?(?P<v>[A-Za-z0-9_\-./+]{12,})['\"]?")),
+        r"(?i)(?:\b|_)(?:api[_-]?key|secret|token|password|passwd|pwd|access[_-]?key)\b\s*[=:]\s*['\"]?(?P<v>[A-Za-z0-9_\-./+]{12,})['\"]?")),
 ]
 
 # ── Injection markers → annotated, not removed ────────────────────────────────
