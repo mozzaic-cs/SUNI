@@ -554,6 +554,44 @@ main:not(.on-dashboard) #update-banner{display:none!important}
 .rm-tag.every{color:var(--gold-b);border:1px solid rgba(201,162,39,.45);background:rgba(201,162,39,.1)}
 .rm-empty{color:var(--muted);text-align:center;padding:20px}
 
+
+/* ══ PHONE (adapt) ═══════════════════════════════════════════════════════ */
+@media (max-width: 768px){
+  /* one fixed row, whatever the language */
+  header{height:52px!important;min-height:0!important;flex-wrap:nowrap!important;padding:0 12px!important;gap:10px!important}
+  .logo{padding:0!important;margin:0!important;font-size:14px}
+  .logo span,.uptime-txt,.status-txt,#hdr-user{display:none!important}
+  .header-status{padding:0!important;gap:8px}
+  main{margin-top:52px!important;margin-left:0!important;padding:14px 12px!important}
+  /* the sidebar is a drawer over the content, not a column pushing it */
+  .sidebar{width:min(290px,86vw);background:#0a0a1c;box-shadow:12px 0 40px rgba(0,0,0,.6);z-index:130}
+  .nav-scrim{position:fixed;inset:52px 0 0 0;background:rgba(0,0,0,.55);z-index:125}
+  .tab{padding:12px 20px!important;font-size:15px!important;height:auto!important}
+  /* tables: one card per row, each value with its column name */
+  .data-table thead,.tbl thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  .data-table tbody tr,.tbl tbody tr{display:block;margin:0 0 10px;padding:10px 12px;border:1px solid var(--border);
+    border-radius:var(--radius);background:rgba(255,255,255,.02)}
+  .data-table td,.tbl td{display:flex;justify-content:space-between;gap:12px;padding:5px 0!important;border:none!important;
+    max-width:none!important;white-space:normal!important;text-align:right}
+  .data-table td,.tbl td{justify-content:flex-end;align-items:center}
+  .data-table td::before,.tbl td::before{content:attr(data-label);color:var(--muted);font-size:12px;text-align:left;flex:none;margin-right:auto}
+  .data-table td.tbl-actions,.tbl td.tbl-actions{flex-wrap:wrap;justify-content:flex-start;padding-top:8px!important}
+  .data-table td.tbl-actions::before,.tbl td.tbl-actions::before{flex-basis:100%}
+  .data-table td[colspan],.tbl td[colspan]{justify-content:center}
+  .data-table td[colspan]::before,.tbl td[colspan]::before{content:none}
+  /* the role matrix is genuinely a grid: scroll it, keep the tool column */
+  .rm-table .rm-tool{position:sticky;left:0;background:#0d0d14;z-index:1;min-width:170px}
+  .rm-grouprow .rm-tool{background:#16140b}
+  .rm-role,.rm-cell{width:84px}
+  .rm-legend{margin-left:0}
+  .cfg-tabs,.cfg-tab-row{flex-wrap:wrap}
+}
+/* touch: 44px targets on coarse pointers whatever the width */
+@media (pointer: coarse){
+  .btn,.tbl-btn,.page-btn,.cfg-tab{min-height:44px}
+  .hint-more,.who-links a{min-height:44px;display:inline-flex;align-items:center}
+}
+
 /* ══ COLOUR ROLES ═════════════════════════════════════════════════════════ */
 .field-hint{color:var(--hint)}
 .tab.active{font-weight:600}
@@ -587,6 +625,7 @@ input,textarea{caret-color:var(--cyan)}
   </div>
 </header>
 
+<div class="nav-scrim" id="nav-scrim" onclick="_setSidebar(true)" hidden></div>
 <aside class="sidebar" id="sidebar">
   <nav>
     <button class="tab active" aria-current="page" onclick="switchTab('dashboard',this)" data-i18n="admin.nav_dashboard">Dashboard</button>
@@ -1987,6 +2026,11 @@ function switchTab(name, btn) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   btn.classList.add('active');
   btn.setAttribute('aria-current', 'page');
+  // on a phone the menu is a drawer over the page: picking a section closes it
+  if (typeof _isPhone === 'function' && _isPhone() && !document.getElementById('sidebar').classList.contains('collapsed')) {
+    document.getElementById('sidebar').classList.add('collapsed');
+    const sc = document.getElementById('nav-scrim'); if (sc) sc.hidden = true;
+  }
   document.querySelector('main')?.classList.toggle('on-dashboard', name === 'dashboard');
   document.getElementById('panel-' + name).classList.add('active');
   if (name === 'config') {
@@ -4476,8 +4520,11 @@ async function _fetchAudit(){
 // ═══════════════════════════════════════════
 //  SIDEBAR — collapse (fully hide, state persisted)
 // ═══════════════════════════════════════════
+function _isPhone(){ return window.matchMedia('(max-width: 768px)').matches; }
 function _setSidebar(collapsed){
   document.getElementById('sidebar').classList.toggle('collapsed', collapsed);
+  const scrim = document.getElementById('nav-scrim');
+  if (scrim) scrim.hidden = collapsed || !_isPhone();
   document.querySelector('main').classList.toggle('nav-collapsed', collapsed);
   const btn = document.querySelector('.nav-toggle');
   if (btn) btn.title = t(collapsed ? 'admin.menu_show' : 'admin.menu_hide');
@@ -4804,8 +4851,19 @@ document.addEventListener('keydown', e => {
   if (open && open.id) { e.preventDefault(); closeModal(open.id); }
 });
 let _a11yT = null;
-new MutationObserver(() => { clearTimeout(_a11yT); _a11yT = setTimeout(() => a11yPass(), 120); })
+new MutationObserver(() => { clearTimeout(_a11yT); _a11yT = setTimeout(() => { a11yPass(); labelTableCells(); }, 120); })
   .observe(document.body, { childList: true, subtree: true });
+
+// ── phone: each table cell knows its column name (card layout reads it) ─────
+function labelTableCells(root) {
+  (root || document).querySelectorAll('table.data-table, table.tbl').forEach(tb => {
+    const heads = [...tb.querySelectorAll('thead th')].map(th => th.textContent.trim());
+    if (!heads.length) return;
+    tb.querySelectorAll('tbody tr').forEach(tr => {
+      [...tr.children].forEach((td, i) => { if (!td.dataset.label && heads[i]) td.dataset.label = heads[i]; });
+    });
+  });
+}
 </script>
 </body>
 </html>
