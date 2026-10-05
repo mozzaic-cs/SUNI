@@ -89,7 +89,27 @@ def client(app):
 # Auth header helpers
 # ---------------------------------------------------------------------------
 
+def _reset_rate_limits() -> None:
+    """The login limit (10/minute) counts per client address, and every
+    TestClient request comes from the same one, so the whole run shared one
+    budget: whichever test logged in eleventh within a minute failed with 429,
+    and tests that accept 429 as "also a refusal" passed without testing what
+    they say. Only touches the limiter if the server is already imported."""
+    import sys
+    srv = sys.modules.get("suni.web.server")
+    if srv is not None:
+        srv._limiter.reset()
+
+
+@pytest.fixture(autouse=True)
+def _fresh_rate_limits():
+    _reset_rate_limits()
+    yield
+
+
 def _get_token(client, username: str, password: str) -> dict:
+    # session-scoped login fixtures are set up before the per-test reset runs
+    _reset_rate_limits()
     r = client.post("/api/auth/login",
                     data={"username": username, "password": password})
     assert r.status_code == 200, f"Login failed for {username}: {r.text}"

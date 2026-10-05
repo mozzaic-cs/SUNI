@@ -44,9 +44,12 @@ def test_grants_reach_the_tool_registry(src):
     """The registry call decides what the model can actually invoke."""
     i = src.index("self.registry.get_ollama_tools(")
     call = src[i:src.index(")", src.index("blocked_tools=", i))]
-    assert "grants[" in call, \
-        "get_ollama_tools() still reads RBAC directly — agent grants are ignored"
-    assert "allowed_tools" in call and "blocked_tools" in call
+    # The lists are computed just above the call (read-only mode intersects
+    # them first), so check where the names the call passes are first set.
+    assert "allowed_tools=_allowed" in call and "blocked_tools=_blocked" in call, call
+    for key in ("allowed_tools", "blocked_tools"):
+        assert f'grants["{key}"] if grants else _rbac.{key}(user_role)' in _lists_before(src, i), \
+            f"{key} is not taken from the agent's grants — they would be ignored"
 
 
 def test_mcp_prefixes_come_from_grants(src):
@@ -66,9 +69,14 @@ def test_grants_are_resolved_through_effective_grants(src):
 def test_no_profile_keeps_plain_role_behaviour(src):
     """The feature must be inert when unused."""
     i = src.index("self.registry.get_ollama_tools(")
-    call = src[i:src.index(")", src.index("blocked_tools=", i))]
-    assert "_rbac.allowed_tools(user_role)" in call, \
+    assert "else _rbac.allowed_tools(user_role)" in _lists_before(src, i), \
         "the plain-role path was removed; requests without a profile lose their grants"
+
+
+def _lists_before(src, call_at):
+    """The stretch where the tool lists for the registry call are first set."""
+    start = src.rindex("_allowed = (grants", 0, call_at)
+    return src[start:call_at]
 
 
 def test_prompt_is_added_not_substituted(src):

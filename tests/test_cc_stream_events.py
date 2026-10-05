@@ -79,8 +79,17 @@ def test_result_line_is_authoritative_and_session_is_kept(monkeypatch):
     assert state["session_id"] == "sess-2", "--resume depends on this"
 
 
-def test_no_result_line_falls_back_to_buffered_parsing(monkeypatch):
-    # A crashed run has no result line: _stream_run returns {} so the caller
-    # parses stdout the old way instead of reporting an empty answer.
+def test_no_result_line_keeps_what_was_said(monkeypatch):
+    # A stopped or crashed run has no result line. It used to return {}, and an
+    # empty dict sent the raw stream-json to the screen as SUNI's reply
+    # (796f1bf). What she said before it stopped is kept instead.
     _, state = _run(monkeypatch, lines=LINES[:-1])
+    assert state.get("result") == ""
+    assert state["said"] == "Encontrei dois clientes."
+
+
+def test_a_stream_with_nothing_understood_still_returns_empty(monkeypatch):
+    # Only when nothing at all was understood does the caller fall back to
+    # parsing stdout.
+    _, state = _run(monkeypatch, lines=LINES[:2])
     assert state == {}
