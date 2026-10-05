@@ -486,15 +486,25 @@ header{
     display:inline-flex;align-items:center;justify-content:center}
   #tts-pause.idle{display:none}
   #send-btn{margin-left:auto;height:44px;padding:0 20px;font-size:12px}
-  /* one header row: the model/memory chips go, the buttons become glyphs */
-  header{padding:0 10px;height:54px}
-  .wordmark{font-size:14px;letter-spacing:.24em}
+  /* Header: row 1 is the wordmark and the buttons (as glyphs); the mode and
+     agent pickers get a row of their own on the left, where the tagline was,
+     instead of being cut to "assister" beside the buttons. The model/memory
+     chips and the tagline go. .h-right dissolves so its children can wrap. */
+  header{height:auto;min-height:54px;padding:8px 10px 6px;flex-wrap:wrap;
+    justify-content:flex-start;align-items:center;gap:6px 5px}
+  .wordmark{font-size:14px;letter-spacing:.24em;margin-right:auto;order:0}
+  .wordmark sub{display:none}
   #header-meta{display:none}
-  .h-right{gap:5px;min-width:0}
+  .h-right{display:contents}
+  header .hnav,header .live-dot{order:1}
+  header::after{content:'';order:2;flex-basis:100%;height:0}
+  #mode-select,#mode-help,#agent-select{order:3}
   header .hnav{font-size:0!important;width:38px;height:38px;padding:0!important;
     display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box}
   header .hnav::before{content:attr(data-icon);font-size:16px;line-height:1}
-  #mode-select,#agent-select{max-width:96px;height:38px}
+  #mode-select,#agent-select{height:34px;font-size:11px!important;max-width:46vw}
+  #mode-help{width:30px!important;height:30px!important;font-size:13px!important}
+  #mode-help-panel{top:96px;left:8px;right:8px;width:auto}
   #net-side{bottom:calc(var(--dock-top,118px) + 12px)}
   #net-trail{bottom:calc(var(--dock-top,118px) + 12px)}
 }
