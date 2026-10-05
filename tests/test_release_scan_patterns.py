@@ -87,10 +87,10 @@ def test_reserved_domains_are_not_flagged(scan, line):
 
 # ── the two documented blind spots ───────────────────────────────────────────
 @pytest.mark.parametrize("line", [
-    'SUNI_SMTP_PASS = "hunter2xyz"',      # underscore prefix — the \b bug
-    'password = "hunter2xyz"',            # bare identifier-shaped value
-    'PWD=hunter2xyz;Server=x',            # connection string
-    'postgres://admin:hunter2xyz@db:5432/x',
+    'SUNI_SMTP_PASS = "hunter2xyz"',      # underscore prefix — the \b bug; allowlist-secret: fake credential, a test fixture
+    'password = "hunter2xyz"',            # bare identifier-shaped value; allowlist-secret: fake credential, a test fixture
+    'PWD=hunter2xyz;Server=x',            # connection string; allowlist-secret: fake credential, a test fixture
+    'postgres://admin:hunter2xyz@db:5432/x',  # allowlist-secret: fake credential, a test fixture
 ])
 def test_the_credential_patterns_still_fire(scan, line):
     found = False

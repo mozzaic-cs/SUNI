@@ -47,7 +47,7 @@ def test_a_slow_turn_is_called_slow_not_broken():
 
 # ── it must never hand back a credential ────────────────────────────────────
 @pytest.mark.parametrize("secret_line", [
-    "connecting to postgres://admin:hunter2@127.0.0.1:5432/x",
+    "connecting to postgres://admin:hunter2@127.0.0.1:5432/x",  # allowlist-secret: fake credential, a test fixture
     "Authorization: Bearer 8869766917:AAEWezqZblWaljUDH0NyR1KNB6r4ok2fe",
     "telegram_bot_token=8869766917:AAEWezqZblWaljUDH0NyR1K",
     "api_key: sk-proj-abcdefghijklmnop",
@@ -63,7 +63,7 @@ def test_no_evidence_line_carries_a_credential(secret_line):
 
 def test_evidence_from_a_log_line_is_scrubbed_before_it_leaves():
     lines = ["2026-09-28 10:00:00 | ERROR | connect failed for "
-             "postgres://admin:hunter2@127.0.0.1/x"]
+             "postgres://admin:hunter2@127.0.0.1/x"]  # allowlist-secret: fake credential, a test fixture
     fs = D._check_errors(lines)
     assert fs and "hunter2" not in fs[0].evidence
 
@@ -171,8 +171,8 @@ def test_the_model_is_told_not_to_invent_a_cause():
     ("the token is 8869766917:AAEWezqZblWaljUDH0NyR1KNB6r4ok2fe", "AAEWezqZ"),
     ("api_key: sk-proj-abcdefghijklmnopqrs", "sk-proj-abcdef"),
     ("X-Api-Key: abc123def456ghi789", "abc123def456"),
-    ("password=hunter2", "hunter2"),
-    ("postgres://admin:hunter2@127.0.0.1/x", "hunter2"),
+    ("password=hunter2", "hunter2"),  # allowlist-secret: fake credential, a test fixture
+    ("postgres://admin:hunter2@127.0.0.1/x", "hunter2"),  # allowlist-secret: fake credential, a test fixture
 ])
 def test_log_shipping_scrubber_holds_against_real_shapes(line, leak):
     """These are the shapes that got through, not invented ones.

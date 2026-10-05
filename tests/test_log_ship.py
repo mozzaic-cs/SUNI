@@ -9,7 +9,7 @@ body shape; SFTP/FTP covers estates that collect by file drop.
 The tests that matter most are not about delivery. They are:
 
   the credential never reaches a log line — a handler that reports
-  "cannot connect to sftp://user:hunter2@host" writes the password into the
+  "cannot connect to sftp://user:<password>@host" writes the password into the
   file it is about to upload;
 
   nothing here can block or raise — a logging call that blocks hangs the event
@@ -31,7 +31,7 @@ from suni import log_ship as ship
 
 # ── the credential must never appear in anything we log ──────────────────────
 def test_a_password_is_scrubbed_from_an_error():
-    msg = "Authentication failed for sftp://bob:hunter2@logs.example.com:22"
+    msg = "Authentication failed for sftp://bob:hunter2@logs.example.com:22"  # allowlist-secret: fake credential, a test fixture
     out = ship._safe(msg, "hunter2")
     assert "hunter2" not in out
     assert "logs.example.com" in out, "scrubbing destroyed the useful part too"
@@ -45,15 +45,15 @@ def test_a_token_is_scrubbed_even_when_the_pattern_does_not_match():
 
 
 def test_url_credentials_are_masked_without_the_secret_being_known():
-    out = ship.redact_url("ftp://svc:s3cr3t@files.corp.local/logs")
+    out = ship.redact_url("ftp://svc:s3cr3t@files.corp.local/logs")  # allowlist-secret: fake credential, a test fixture
     assert "s3cr3t" not in out and "svc" in out and "files.corp.local" in out
 
 
 def test_describe_never_includes_a_credential():
     for cfg in (
-        {"type": "sftp", "username": "bob", "password": "hunter2",
+        {"type": "sftp", "username": "bob", "password": "hunter2",  # allowlist-secret: fake credential, a test fixture
          "host": "h", "port": 22, "remote_dir": "/drop"},
-        {"type": "http", "url": "https://x/y", "token": "abc123XYZ"},
+        {"type": "http", "url": "https://x/y", "token": "abc123XYZ"},  # allowlist-secret: fake credential, a test fixture
         {"type": "syslog", "host": "h", "port": 514, "protocol": "tls"},
     ):
         d = ship.describe(cfg)
@@ -64,7 +64,7 @@ def test_a_failing_target_reports_without_leaking(caplog):
     """The end-to-end version of the rule: make delivery fail and read the log."""
     class Boom:
         def emit(self, record):
-            raise RuntimeError("login failed for sftp://bob:hunter2@h:22")
+            raise RuntimeError("login failed for sftp://bob:hunter2@h:22")  # allowlist-secret: fake credential, a test fixture
         def close(self):
             pass
 

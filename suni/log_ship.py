@@ -21,7 +21,7 @@ background thread does the network. A blocking socket inside a log call would
 hang the event loop, which is a failure this project has already seen.
 
 **The credential must never reach a log line.** A handler that reports its own
-failure as "cannot connect to sftp://user:hunter2@host" writes the password into
+failure as "cannot connect to sftp://user:<password>@host" writes the password into
 the file it then uploads. Every error path here goes through _safe(), and there
 is a test that misconfigures a target on purpose and greps for the secret.
 """

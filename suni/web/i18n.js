@@ -230,7 +230,7 @@
     "admin.ph_agent_prompt": "You research topics and always cite your sources.",
     "admin.ph_app_password": "app password",
     "admin.ph_botfather": "from @BotFather",
-    "admin.ph_discord_token": "Developer Portal → Bot → Token",
+    "admin.ph_discord_token": "Developer Portal → Bot → Token",  // allowlist-secret: placeholder label, not a credential
     "admin.ph_key_apikey": "only if server started with --api-key",
     "admin.ph_key_ifreq": "only if the server requires it",
     "admin.ph_key_optional": "only for endpoints that require a key",
@@ -1082,9 +1082,9 @@
     "admin.ph_agent_desc": "Lê e resume; nunca envia nada.",
     "admin.ph_agent_name": "Assistente de Investigação",
     "admin.ph_agent_prompt": "Investiga temas e cita sempre as suas fontes.",
-    "admin.ph_app_password": "palavra-passe de aplicação",
+    "admin.ph_app_password": "palavra-passe de aplicação",  // allowlist-secret: placeholder label, not a credential
     "admin.ph_botfather": "obtido do @BotFather",
-    "admin.ph_discord_token": "Portal do Programador → Bot → Token",
+    "admin.ph_discord_token": "Portal do Programador → Bot → Token",  // allowlist-secret: placeholder label, not a credential
     "admin.ph_key_apikey": "apenas se o servidor arrancou com --api-key",
     "admin.ph_key_ifreq": "apenas se o servidor o exigir",
     "admin.ph_key_optional": "apenas para endpoints que exijam uma chave",
