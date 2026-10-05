@@ -23,6 +23,7 @@
   --label:    rgba(255,255,255,.72);
   --muted:    #8a8d9e;   /* was #555566: 2.4-2.7:1 everywhere; now >=5.2:1 */
   --hint:     #a3a6b6;   /* field hints: secondary, but long and read in full */
+  --field-border: #676a78; /* >=3:1 against the field and the card (WCAG 1.4.11); was ~1.1:1 */
   --border:   rgba(0,212,255,.07);
   --border-g: rgba(201,162,39,.12);
   --card-bg:  rgba(255,255,255,.04);
@@ -511,6 +512,21 @@ main:not(.on-dashboard) #update-banner{display:none!important}
   border:1px solid rgba(201,162,39,.35);background:rgba(201,162,39,.07)}
 .dash-warn a{color:var(--cyan);text-underline-offset:3px}
 
+
+/* ══ QUICK FIXES (second critique) ════════════════════════════════════════ */
+/* [hidden] must win over a component's own display (kv-grid is a grid) */
+[hidden]{display:none!important}
+.act-row{grid-template-columns:auto 1fr auto}
+.field input:not([type=checkbox]):not([type=radio]):not([type=range]),.field select,.field textarea,
+.bm-sel,#cfg-filter,.mc-row input,.mc-row select{border-color:var(--field-border)}
+::placeholder{color:var(--muted);opacity:1}
+/* targets: 15px checkboxes and 20px links were the smallest things to hit */
+.field input[type=checkbox],.field input[type=radio],input.mc-enabled{width:18px;height:18px}
+.field input[type=range]{height:24px}
+.who-links a{display:inline-block;padding:3px 0;min-height:24px}
+/* long card titles read better in sentence case; short labels stay caps */
+.card-title.is-long{text-transform:none;letter-spacing:.02em;font-size:13px}
+
 /* ══ COLOUR ROLES ═════════════════════════════════════════════════════════ */
 .field-hint{color:var(--hint)}
 .tab.active{font-weight:600}
@@ -572,23 +588,7 @@ input,textarea{caret-color:var(--cyan)}
 <!-- Update notice. Hidden unless there is something to say, and it says the
      BLOCKING REASON as loudly as the good news — "3 updates available" that
      hides "you have local changes stopping them" is worse than no banner. -->
-<div id="update-banner" style="display:none;margin:0 0 14px;padding:11px 14px;
-     border:1px solid var(--border);border-radius:8px;background:var(--card);
-     font-size:13px;line-height:1.55">
-  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-    <span id="update-headline" style="font-weight:600"></span>
-    <span id="update-detail" style="color:var(--muted)"></span>
-    <span style="margin-left:auto;display:flex;gap:8px">
-      <button class="tbl-btn" onclick="toggleUpdateLog()" id="update-log-btn"
-              data-i18n="admin.upd_what" style="display:none">What changed</button>
-      <button class="tbl-btn primary" onclick="applyUpdate()" id="update-apply-btn"
-              data-i18n="admin.upd_now" style="display:none">Update now</button>
-    </span>
-  </div>
-  <pre id="update-log" style="display:none;margin:10px 0 0;padding:9px;font-size:13px;
-       max-height:190px;overflow:auto;background:rgba(120,140,200,.06);border-radius:5px;
-       white-space:pre-wrap"></pre>
-</div>
+
 
 <!-- ════════════════════ DASHBOARD ════════════════════ -->
 <div class="panel active" id="panel-dashboard">
@@ -627,7 +627,7 @@ input,textarea{caret-color:var(--cyan)}
     <div class="card">
       <div class="card-title" data-i18n="admin.dash_gpu">GPU</div>
       <div id="gpu-container">
-        <div style="color:var(--muted);font-size:13px;">Loading…</div>
+        <div style="color:var(--muted);font-size:13px;" data-i18n="common.loading">Loading…</div>
       </div>
     </div>
 
@@ -644,6 +644,24 @@ input,textarea{caret-color:var(--cyan)}
       </div>
     </div>
   </div>
+  <!-- update notice: below the first row, so its late arrival doesn't move the cards -->
+  <div id="update-banner" style="display:none;margin:0 0 14px;padding:11px 14px;
+     border:1px solid var(--border);border-radius:8px;background:var(--card);
+     font-size:13px;line-height:1.55">
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span id="update-headline" style="font-weight:600"></span>
+    <span id="update-detail" style="color:var(--muted)"></span>
+    <span style="margin-left:auto;display:flex;gap:8px">
+      <button class="tbl-btn" onclick="toggleUpdateLog()" id="update-log-btn"
+              data-i18n="admin.upd_what" style="display:none">What changed</button>
+      <button class="tbl-btn primary" onclick="applyUpdate()" id="update-apply-btn"
+              data-i18n="admin.upd_now" style="display:none">Update now</button>
+    </span>
+  </div>
+  <pre id="update-log" style="display:none;margin:10px 0 0;padding:9px;font-size:13px;
+       max-height:190px;overflow:auto;background:rgba(120,140,200,.06);border-radius:5px;
+       white-space:pre-wrap"></pre>
+</div>
 
   <div class="dash-mid">
     <!-- Activity -->
@@ -2242,6 +2260,10 @@ function renderDashboard(d) {
   const all = d.ollama_ps || [];
   const ps = all.filter(x => !isEmbed(x.name));
   const pick = ps.find(x => want && (x.name === want || x.name.split(':')[0] === want.split(':')[0])) || ps[0];
+  // Context / VRAM / tok/s / expiry describe a local model; with Claude Code
+  // forced none of them applies, and four dashes read as "broken".
+  const kvGrid = el('d-ctx')?.closest('.kv-grid');
+  if (kvGrid) kvGrid.hidden = !!cfg.force_claude_code;
   if (cfg.force_claude_code) {
     set('d-model-name', t('admin.dash_forced_cc'));
     set('d-ctx', '—'); set('d-vram', pick ? pick.size_vram_mb + ' MB' : '—'); set('d-exp', '—');
@@ -2607,7 +2629,7 @@ function _renderModelChain(){
       <span title="${t('admin.drag_reorder')}" style="cursor:grab;color:var(--muted);font-size:15px;padding:0 3px">≡</span>
       <span style="font-size:13px;color:var(--muted);width:14px;text-align:right">${i+1}</span>
       <input class="mc-label" placeholder="Label" value="${esc(e.label||'')}" style="flex:1;min-width:84px">
-      <select class="mc-provider" style="min-width:104px">
+      <select class="mc-provider" style="min-width:104px" aria-label="${t('admin.mc_provider')}">
         ${(_MC_PROVIDERS.includes(e.provider) || !e.provider ? _MC_PROVIDERS : _MC_PROVIDERS.concat([e.provider]))
           .map(p=>`<option value="${esc(p)}"${p===e.provider?' selected':''}>${esc(p)}</option>`).join('')}
       </select>
@@ -3007,7 +3029,7 @@ function _updateCharts(history) {
 
   const span = history.length * 30;
   const h = Math.floor(span / 3600), m = Math.floor((span % 3600) / 60);
-  el('graph-range').textContent = h ? `last ${h}h ${m}m` : `last ${m}m`;
+  el('graph-range').textContent = h ? t('admin.graph_last_hm', {h, m}) : t('admin.graph_last_m', {m});
 }
 
 async function fetchKnowledge() {
@@ -4377,6 +4399,7 @@ function toggleSidebar(){
 })();
 
 _checkAuth().then(()=>{
+  a11yPass();
   routeFromHash();
   checkBackupAge();
   fetchDashboard();
@@ -4629,6 +4652,60 @@ async function checkBackupAge() {
   a.href = '#backup'; a.textContent = t('admin.backup_go');
   box.append(msg, ' ', a);
 }
+
+// ── accessibility pass: labels, dialogs, long titles ─────────────────────────
+// 130 controls had no programmatic label: the <label> sat beside its input
+// in a .field without for=. Link them (and name placeholder-only inputs),
+// make the older modals real dialogs, and keep long card titles readable.
+let _a11yId = 0;
+function a11yPass(root) {
+  (root || document).querySelectorAll('.field').forEach(f => {
+    const lab = f.querySelector(':scope > label');
+    if (!lab || lab.htmlFor || lab.querySelector('input,select,textarea')) return;
+    const ctl = f.querySelector(':scope > input, :scope > select, :scope > textarea, :scope > .range-wrap > input');
+    if (!ctl) return;
+    if (!ctl.id) ctl.id = 'f' + (++_a11yId);
+    lab.htmlFor = ctl.id;
+  });
+  // a label directly followed by its control, outside a .field wrapper
+  (root || document).querySelectorAll('label:not([for])').forEach(lab => {
+    const ctl = lab.nextElementSibling;
+    if (!ctl || !/^(INPUT|SELECT|TEXTAREA)$/.test(ctl.tagName) || lab.querySelector('input,select,textarea')) return;
+    if (!ctl.id) ctl.id = 'f' + (++_a11yId);
+    lab.htmlFor = ctl.id;
+  });
+  (root || document).querySelectorAll('input[placeholder]:not([aria-label]), textarea[placeholder]:not([aria-label])').forEach(c => {
+    if (c.id && document.querySelector(`label[for="${c.id}"]`)) return;
+    if (c.closest('label')) return;
+    c.setAttribute('aria-label', c.placeholder);
+  });
+  // filters that stand alone, with no visible label of their own
+  const FILTER_NAMES = {'audit-filter-user':'admin.lbl_f_user', 'audit-from':'admin.lbl_f_from',
+    'audit-to':'admin.lbl_f_to', 'cat-filter':'admin.lbl_f_category', 'skill-cat-filter':'admin.lbl_f_category',
+    'log-level':'admin.lbl_f_level', 'log-date':'admin.lbl_f_date', 'bm-suite-sel':'admin.lbl_f_suite'};
+  Object.entries(FILTER_NAMES).forEach(([id, key]) => {
+    const c = document.getElementById(id);
+    if (c && !c.labels?.length) c.setAttribute('aria-label', t(key));
+  });
+  document.querySelectorAll('.modal-overlay > .modal:not([role])').forEach(m => {
+    m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true');
+    const h = m.querySelector('h3, .modal-title span, .modal-title');
+    if (h) { if (!h.id) h.id = 'mt' + (++_a11yId); m.setAttribute('aria-labelledby', h.id); }
+  });
+  document.querySelectorAll('.card-title').forEach(c => {
+    const txt = (c.firstChild && c.firstChild.textContent || c.textContent || '').trim();
+    c.classList.toggle('is-long', txt.length > 26);
+  });
+}
+// Escape closes the topmost of the older modals, as it does the new dialogs
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape' || document.querySelector('.ui-dialog')) return;
+  const open = [...document.querySelectorAll('.modal-overlay.open')].pop();
+  if (open && open.id) { e.preventDefault(); closeModal(open.id); }
+});
+let _a11yT = null;
+new MutationObserver(() => { clearTimeout(_a11yT); _a11yT = setTimeout(() => a11yPass(), 120); })
+  .observe(document.body, { childList: true, subtree: true });
 </script>
 </body>
 </html>
