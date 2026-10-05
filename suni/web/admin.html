@@ -462,8 +462,9 @@ code,pre,kbd,samp,#log-output,.mono{font-family:var(--font-mono)}
   letter-spacing:.1em;text-transform:uppercase;color:var(--gold)}
 /* the update notice is news, not chrome: it belongs on the Dashboard */
 main:not(.on-dashboard) #update-banner{display:none!important}
-/* long hints: two lines, the rest on request */
-.field-hint.clamped{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+/* long hints: the first sentence, the rest on request */
+.field-hint > .hint-rest{display:none}
+.field-hint.open > .hint-rest{display:inline}
 .hint-more{align-self:flex-start;margin:-2px 0 6px;padding:2px 0;background:none;border:none;cursor:pointer;
   font:inherit;font-size:13px;color:var(--cyan);text-decoration:underline;text-underline-offset:3px}
 .who-answers{display:flex;flex-direction:column;gap:6px;padding:14px 16px;margin-bottom:6px;border-radius:var(--radius);
@@ -592,6 +593,44 @@ main:not(.on-dashboard) #update-banner{display:none!important}
   .hint-more,.who-links a{min-height:44px;display:inline-flex;align-items:center}
 }
 
+
+/* ══ PERFIS THAT SCALES + LEFTOVERS (third critique) ═════════════════════ */
+.skip-link{position:absolute;left:12px;top:-60px;z-index:300;padding:10px 14px;border-radius:4px;
+  background:var(--gold);color:#080808;font-weight:600;text-decoration:none}
+.skip-link:focus{top:8px}
+main:focus{outline:none}
+/* fields that kept the old near-invisible border; boxes smaller than 18px */
+input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),select,textarea{border-color:var(--field-border)!important}
+input[type=checkbox],input[type=radio]{min-width:18px;min-height:18px}
+/* text fields: a real outline when focused, not a 1px tint */
+.field input:focus-visible,.field select:focus-visible,.field textarea:focus-visible,
+input:not([type=checkbox]):not([type=radio]):focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--cyan);outline-offset:1px}
+/* the role columns stay in view while the page scrolls (desktop) */
+@media (min-width: 769px){
+  .rm-wrap{overflow:visible}
+  .rm-table thead th{top:52px}
+}
+.rm-table th[scope=row]{font-weight:400;text-align:left}
+.rm-savebar{max-width:none}
+.rm-toggle{display:inline-flex;align-items:center;gap:8px;background:none;border:none;padding:4px 0;cursor:pointer;
+  font:inherit;color:inherit;min-height:32px}
+.rm-caret{display:inline-block;transition:transform .15s;color:var(--gold)}
+tbody.is-open .rm-caret{transform:rotate(90deg)}
+tbody:not(.is-open) .rm-row{display:none}
+.rm-gcount{display:block;font-family:var(--font-mono);font-size:12px;color:var(--muted);margin-top:2px}
+.rm-never{font-size:12px;color:var(--gold-b);margin-top:3px}
+.rm-showrole{display:none;align-items:center;gap:8px;font-size:13px;color:var(--label);margin-bottom:10px}
+@media (max-width: 768px){
+  .rm-showrole{display:flex}
+  /* one role at a time on a phone */
+  .rm-table .rm-c{display:none}
+  .rm-table[data-show="read-only"] .rm-c-read-only,.rm-table[data-show="standard"] .rm-c-standard,
+  .rm-table[data-show="power-user"] .rm-c-power-user,.rm-table[data-show="admin"] .rm-c-admin{display:table-cell}
+  .rm-table .rm-tool{position:static;min-width:0}
+  .rm-wrap{overflow:visible}
+}
+@media (prefers-reduced-motion: reduce){.rm-caret{transition:none}}
+
 /* ══ COLOUR ROLES ═════════════════════════════════════════════════════════ */
 .field-hint{color:var(--hint)}
 .tab.active{font-weight:600}
@@ -610,6 +649,7 @@ input,textarea{caret-color:var(--cyan)}
 </style>
 </head>
 <body>
+<a class="skip-link" href="#main" data-i18n="admin.skip_to_content">Skip to content</a>
 
 <header>
   <button class="nav-toggle" onclick="toggleSidebar()" aria-label="Toggle menu" title="Collapse menu" data-i18n-title="admin.menu_hide">☰</button>
@@ -650,7 +690,7 @@ input,textarea{caret-color:var(--cyan)}
   </nav>
 </aside>
 
-<main class="on-dashboard">
+<main class="on-dashboard" id="main" tabindex="-1">
 <!-- Update notice. Hidden unless there is something to say, and it says the
      BLOCKING REASON as loudly as the good news — "3 updates available" that
      hides "you have local changes stopping them" is worse than no banner. -->
@@ -705,8 +745,8 @@ input,textarea{caret-color:var(--cyan)}
         <div class="metric-sub" data-i18n="admin.dash_vec_mem">vector memories</div>
       </div>
       <div class="kv-grid" style="margin-top:12px">
-        <div class="kv"><div class="kv-k" data-i18n="admin.dash_embed">Embed model</div><div class="kv-v">MiniLM-L6</div></div>
-        <div class="kv"><div class="kv-k" data-i18n="admin.dash_dims">Dimensions</div><div class="kv-v">384</div></div>
+        <div class="kv"><div class="kv-k" data-i18n="admin.dash_embed_mem">Memory model</div><div class="kv-v" id="d-embed-mem">—</div></div>
+        <div class="kv"><div class="kv-k" data-i18n="admin.dash_embed_docs">Document index</div><div class="kv-v" title="memory/manager.py · all-MiniLM-L6-v2, fixed at 384 dimensions">MiniLM-L6 · 384</div></div>
       </div>
     </div>
   </div>
@@ -1534,11 +1574,15 @@ input,textarea{caret-color:var(--cyan)}
     <div style="display:flex;align-items:center;gap:12px">
       <div class="card-title" style="margin:0;border:none" data-i18n="admin.roles_title">Role permissions</div>
       <span style="font-size:13px;color:var(--muted)" data-i18n="admin.roles_hint">Changes apply immediately on next request</span>
-      <span id="roles-save-msg" style="font-size:13px;color:var(--green);margin-left:auto;display:none" data-i18n="common.saved">Saved.</span>
-      <button class="tbl-btn primary" onclick="saveRoles()" data-i18n="admin.roles_save" style="margin-left:12px">Save changes</button>
     </div>
   </div>
   <div id="roles-container"></div>
+  <div class="cfg-footer rm-savebar">
+    <button type="button" class="btn btn-primary" onclick="saveRoles()" data-i18n="admin.roles_save">Save changes</button>
+    <button type="button" class="btn btn-secondary" onclick="loadRoles()" data-i18n="admin.cfg_revert">Revert</button>
+    <span class="cfg-dirty" id="roles-dirty" aria-live="polite"></span>
+    <span id="roles-save-msg" style="font-size:13px;color:var(--green);display:none" data-i18n="common.saved">Saved.</span>
+  </div>
 </div>
 
 <!-- ════════════════════ MCP ════════════════════ -->
@@ -2326,6 +2370,7 @@ function renderDashboard(d) {
   // the embedding model is usually resident too, and was shown here.
   const cfg = d.config || {};
   const embed = String(cfg.embed_model || 'nomic-embed-text').split(':')[0];
+  set('d-embed-mem', embed);
   const isEmbed = n => /embed/i.test(n || '') || String(n || '').split(':')[0] === embed;
   const want = String(cfg.model || '');
   const all = d.ollama_ps || [];
@@ -3176,11 +3221,13 @@ async function loadRoles(){
   _allToolNames = (dash.tools?.all || []).filter(t => !_mcpPre.some(p => t.startsWith(p)));
   const cat = await _apiFetch('/api/tools/catalog').then(r => r.ok ? r.json() : []).catch(() => []);
   _toolInfo = Object.fromEntries((cat || []).map(x => [x.name, x]));
+  _rolesBase = JSON.parse(JSON.stringify(_rolesData));
   renderRoles();
+  rolesDirtyUpdate();
 }
 
 let _toolInfo = {};
-let _rolesFilter = '', _rolesRiskOnly = false;
+let _rolesFilter = '', _rolesRiskOnly = false, _rolesOpen = new Set(), _rolesShow = 'standard';
 const _ROLE_ORDER = ['read-only', 'standard', 'power-user', 'admin'];
 // Grouped by what a tool does. First matching rule wins; anything new lands
 // in "other" rather than disappearing.
@@ -3216,17 +3263,19 @@ function renderRoles(){
   tools.forEach(n => (groups[_toolGroup(n)] = groups[_toolGroup(n)] || []).push(n));
   const groupOrder = _TOOL_GROUPS.map(g => g[0]).concat('other').filter(g => groups[g]);
 
-  const head = `<tr><th class="rm-tool">${t('admin.roles_col_tool')}</th>${_ROLE_ORDER.map(r =>
-    `<th class="rm-role"><span class="role-badge ${_ROLE_CSS[r]||''}">${esc(r)}</span></th>`).join('')}</tr>`;
+  const head = `<tr><th class="rm-tool" scope="col">${t('admin.roles_col_tool')}</th>${_ROLE_ORDER.map(r =>
+    `<th class="rm-role rm-c rm-c-${r}" scope="col"><span class="role-badge ${_ROLE_CSS[r]||''}">${esc(r)}</span></th>`).join('')}</tr>`;
+  // searching or filtering opens every group; otherwise they open on request
+  const expandAll = !!q || _rolesRiskOnly;
 
   const body = groupOrder.map(g => {
     const names = groups[g];
     const groupCells = _ROLE_ORDER.map(r => {
       const editable = names.filter(n => !((_toolInfo[n] || {}).never_roles || []).includes(r));
       const on = editable.filter(n => _roleHas(r, n)).length;
-      return `<td class="rm-cell"><input type="checkbox" class="rm-group" data-role="${r}" data-group="${g}"
+      return `<td class="rm-cell rm-c rm-c-${r}"><input type="checkbox" class="rm-group" data-role="${r}" data-group="${g}"
         aria-label="${esc(t('admin.roles_group_toggle', {group: t('admin.toolgrp_' + g), role: r}))}"
-        ${editable.length && on === editable.length ? 'checked' : ''} data-mixed="${on > 0 && on < editable.length ? 1 : 0}"></td>`;
+        ${editable.length && on === editable.length ? 'checked' : ''} data-mixed="${on > 0 && on < editable.length ? 1 : 0}"><span class="rm-gcount">${on}/${editable.length}</span></td>`;
     }).join('');
     const rows = names.map(n => {
       const info = _toolInfo[n] || {};
@@ -3236,25 +3285,29 @@ function renderRoles(){
       // the role file says (a file saved before code_task existed lists it
       // as allowed for "standard", which was untrue).
       const cells = _ROLE_ORDER.map(r => (info.never_roles || []).includes(r)
-        ? `<td class="rm-cell"><input type="checkbox" disabled title="${esc(t('admin.roles_never'))}"
+        ? `<td class="rm-cell rm-c rm-c-${r}"><input type="checkbox" disabled title="${esc(t('admin.roles_never'))}"
              aria-label="${esc(n)} — ${esc(r)}: ${esc(t('admin.roles_never'))}"></td>`
-        : `<td class="rm-cell"><input type="checkbox" data-role="${r}" data-tool="${esc(n)}" ${_roleHas(r, n) ? 'checked' : ''}
+        : `<td class="rm-cell rm-c rm-c-${r}"><input type="checkbox" data-role="${r}" data-tool="${esc(n)}" ${_roleHas(r, n) ? 'checked' : ''}
           aria-label="${esc(n)} — ${esc(r)}" onchange="roleToolChanged('${r}','${esc(n)}',this.checked);_rolesSyncGroups()"></td>`).join('');
-      return `<tr class="rm-row"><td class="rm-tool"><div class="rm-name">${esc(n)}${tag}</div>${
-        info.description ? `<div class="rm-desc">${esc(info.description)}</div>` : ''}</td>${cells}</tr>`;
+      const never = (info.never_roles || []).length
+        ? `<div class="rm-never">${esc(t('admin.roles_never_note', {roles: info.never_roles.join(', ')}))}</div>` : '';
+      return `<tr class="rm-row"><th class="rm-tool" scope="row"><div class="rm-name">${esc(n)}${tag}</div>${
+        info.description ? `<div class="rm-desc">${esc(info.description)}</div>` : ''}${never}</th>${cells}</tr>`;
     }).join('');
-    return `<tbody><tr class="rm-grouprow"><th class="rm-tool" scope="rowgroup">${t('admin.toolgrp_' + g)}
-      <span class="rm-count">${names.length}</span></th>${groupCells}</tr>${rows}</tbody>`;
+    const open = expandAll || _rolesOpen.has(g);
+    return `<tbody class="${open ? 'is-open' : ''}" data-group="${g}"><tr class="rm-grouprow"><th class="rm-tool" scope="rowgroup">
+      <button type="button" class="rm-toggle" aria-expanded="${open}" data-group="${g}"><span class="rm-caret" aria-hidden="true">▸</span>
+      ${t('admin.toolgrp_' + g)}<span class="rm-count">${names.length}</span></button></th>${groupCells}</tr>${rows}</tbody>`;
   }).join('');
 
-  const modeRows = MODES.map(m => `<tr><td class="rm-tool"><div class="rm-name">${esc(m)}</div></td>${_ROLE_ORDER.map(r => {
+  const modeRows = MODES.map(m => `<tr><th class="rm-tool" scope="row"><div class="rm-name">${esc(m)}</div></th>${_ROLE_ORDER.map(r => {
       const modes = (_rolesData[r] || {}).modes || ['assistant'];
-      return `<td class="rm-cell"><input type="checkbox" data-role="${r}" data-mode="${m}" ${modes.includes(m) ? 'checked' : ''}
+      return `<td class="rm-cell rm-c rm-c-${r}"><input type="checkbox" data-role="${r}" data-mode="${m}" ${modes.includes(m) ? 'checked' : ''}
         aria-label="${esc(m)} — ${esc(r)}" onchange="roleModeChanged('${r}','${m}',this.checked)"></td>`;
     }).join('')}</tr>`).join('');
-  const defRow = `<tr><td class="rm-tool"><div class="rm-name">${t('admin.roles_default_mode')}</div></td>${_ROLE_ORDER.map(r => {
+  const defRow = `<tr><th class="rm-tool" scope="row"><div class="rm-name">${t('admin.roles_default_mode')}</div></th>${_ROLE_ORDER.map(r => {
       const d = (_rolesData[r] || {}).default_mode || 'assistant';
-      return `<td class="rm-cell"><select class="bm-sel" aria-label="${esc(t('admin.roles_default_mode'))} — ${esc(r)}"
+      return `<td class="rm-cell rm-c rm-c-${r}"><select class="bm-sel" aria-label="${esc(t('admin.roles_default_mode'))} — ${esc(r)}"
         onchange="roleKeyChanged('${r}','default_mode',this.value)">${MODES.map(m =>
         `<option value="${m}" ${d === m ? 'selected' : ''}>${m}</option>`).join('')}</select></td>`;
     }).join('')}</tr>`;
@@ -3269,19 +3322,27 @@ function renderRoles(){
         <span class="rm-legend"><span class="rm-tag risk">${t('admin.roles_tag_risk')}</span> ${t('admin.roles_tag_risk_hint')}
           &nbsp; <span class="rm-tag every">${t('admin.roles_tag_every')}</span> ${t('admin.roles_tag_every_hint')}</span>
       </div>
-      <div class="rm-wrap"><table class="rm-table">
+      <label class="rm-showrole">${t('admin.roles_show_role')}
+        <select id="roles-show" class="bm-sel">${_ROLE_ORDER.map(r => `<option value="${r}" ${r === _rolesShow ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select></label>
+      <div class="rm-wrap"><table class="rm-table" data-show="${_rolesShow}">
         <caption class="rm-cap">${t('admin.roles_tool_access')}</caption>
         <thead>${head}</thead>${body || `<tbody><tr><td colspan="5" class="rm-empty">${t('admin.roles_no_match')}</td></tr></tbody>`}
       </table></div>
     </div>
     <div class="card rm-card">
       <div class="card-title">${t('admin.roles_allowed_modes')}</div>
-      <div class="rm-wrap"><table class="rm-table"><thead>${head}</thead><tbody>${modeRows}${defRow}</tbody></table></div>
+      <div class="rm-wrap"><table class="rm-table" data-show="${_rolesShow}"><thead>${head}</thead><tbody>${modeRows}${defRow}</tbody></table></div>
     </div>`;
 
   const f = el('roles-filter');
   f.oninput = () => { _rolesFilter = f.value; const pos = f.selectionStart; renderRoles(); const g = el('roles-filter'); g.focus(); g.setSelectionRange(pos, pos); };
   el('roles-riskonly').onchange = e => { _rolesRiskOnly = e.target.checked; renderRoles(); };
+  el('roles-show').onchange = e => { _rolesShow = e.target.value; c.querySelectorAll('.rm-table').forEach(tb => tb.dataset.show = _rolesShow); };
+  c.querySelectorAll('.rm-toggle').forEach(b => b.onclick = () => {
+    const tb = b.closest('tbody'), g = b.dataset.group, open = !tb.classList.contains('is-open');
+    tb.classList.toggle('is-open', open); b.setAttribute('aria-expanded', open);
+    if (open) _rolesOpen.add(g); else _rolesOpen.delete(g);
+  });
   c.querySelectorAll('.rm-group').forEach(cb => {
     cb.indeterminate = cb.dataset.mixed === '1';
     cb.onchange = () => {
@@ -3289,6 +3350,7 @@ function renderRoles(){
       (groups[g] || []).filter(n => !((_toolInfo[n] || {}).never_roles || []).includes(role)).forEach(n => { roleToolChanged(role, n, cb.checked);
         const box = c.querySelector(`input[data-role="${role}"][data-tool="${CSS.escape(n)}"]`); if (box) box.checked = cb.checked; });
       cb.indeterminate = false;
+      _rolesSyncGroups();
     };
   });
 }
@@ -3298,6 +3360,7 @@ function _rolesSyncGroups() {
     const boxes = [...cb.closest('tbody').querySelectorAll(`input[data-role="${cb.dataset.role}"][data-tool]`)];
     const on = boxes.filter(b => b.checked).length;
     cb.checked = on === boxes.length; cb.indeterminate = on > 0 && on < boxes.length;
+    const cnt = cb.parentElement.querySelector('.rm-gcount'); if (cnt) cnt.textContent = on + '/' + boxes.length;
   });
 }
 
@@ -3313,6 +3376,7 @@ function roleToolChanged(role, tool, checked){
     if(checked){ if(!cfg.allowed.includes(tool)) cfg.allowed.push(tool); }
     else cfg.allowed = cfg.allowed.filter(t=>t!==tool);
   }
+  rolesDirtyUpdate();
 }
 
 function roleModeChanged(role, mode, checked){
@@ -3321,18 +3385,40 @@ function roleModeChanged(role, mode, checked){
   cfg.modes = cfg.modes || ['assistant'];
   if(checked){ if(!cfg.modes.includes(mode)) cfg.modes.push(mode); }
   else cfg.modes = cfg.modes.filter(m=>m!==mode);
+  rolesDirtyUpdate();
 }
 
 function roleKeyChanged(role, key, value){
   if(!_rolesData[role]) _rolesData[role] = {};
   _rolesData[role][key] = value;
+  rolesDirtyUpdate();
 }
 
 async function saveRoles(){
   const r = await _apiFetch('/api/roles', {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(_rolesData)});
   const msg = el('roles-save-msg');
   msg.style.display = r.ok ? '' : 'none';
-  if(r.ok) setTimeout(()=>{ msg.style.display='none'; }, 3000);
+  if(r.ok){ _rolesBase = JSON.parse(JSON.stringify(_rolesData)); rolesDirtyUpdate(); setTimeout(()=>{ msg.style.display='none'; }, 3000); }
+  else uiAlert(await _detail(r), {error: true});
+}
+// what differs from what was loaded: tool cells, modes, default modes
+let _rolesBase = null;
+function rolesDirtyCount(){
+  if (!_rolesBase) return 0;
+  let n = 0;
+  const has = (cfg, tool) => (cfg.allowed == null ? !(cfg.blocked || []).includes(tool) : (cfg.allowed || []).includes(tool));
+  _ROLE_ORDER.forEach(r => {
+    const a = _rolesData[r] || {}, b = _rolesBase[r] || {};
+    _allToolNames.forEach(tl => { if (has(a, tl) !== has(b, tl)) n++; });
+    const am = new Set(a.modes || ['assistant']), bm = new Set(b.modes || ['assistant']);
+    [...new Set([...am, ...bm])].forEach(m => { if (am.has(m) !== bm.has(m)) n++; });
+    if ((a.default_mode || 'assistant') !== (b.default_mode || 'assistant')) n++;
+  });
+  return n;
+}
+function rolesDirtyUpdate(){
+  const n = rolesDirtyCount(), out = el('roles-dirty');
+  if (out) out.textContent = n ? (n === 1 ? t('admin.cfg_dirty_one') : t('admin.cfg_dirty_many').replace('{n}', n)) : '';
 }
 
 // ═══════════════════════════════════════════
@@ -4521,6 +4607,18 @@ async function _fetchAudit(){
 //  SIDEBAR — collapse (fully hide, state persisted)
 // ═══════════════════════════════════════════
 function _isPhone(){ return window.matchMedia('(max-width: 768px)').matches; }
+window.matchMedia('(max-width: 768px)').addEventListener('change', e => {
+  const sb = document.getElementById('sidebar'), mn = document.querySelector('main');
+  const sc = document.getElementById('nav-scrim');
+  if (e.matches) {                         // into phone: a closed drawer
+    sb.classList.add('collapsed'); if (sc) sc.hidden = true;
+  } else {                                 // back to desktop: what the person chose there
+    let saved; try { saved = localStorage.getItem('suni_sidebar'); } catch (err) {}
+    const collapsed = saved === 'collapsed';
+    sb.classList.toggle('collapsed', collapsed); mn.classList.toggle('nav-collapsed', collapsed);
+    if (sc) sc.hidden = true;
+  }
+});
 function _setSidebar(collapsed){
   document.getElementById('sidebar').classList.toggle('collapsed', collapsed);
   const scrim = document.getElementById('nav-scrim');
@@ -4560,32 +4658,71 @@ _checkAuth().then(()=>{
   setInterval(fetchMetrics, 30000);
 });
 
-// ── distill: long hints show two lines and a "More" button ───────────────────
-// Display-time only: the hint copy (and both translations) stay whole. The
-// button sits beside the hint because translation replaces the hint's text.
+// ── distill: long hints show their first sentence and a "More" button ───────
+// The split is made in the DOM: everything after the first sentence moves into
+// a span.hint-rest, hidden until "More". No measuring, so hints on hidden tabs
+// are split too, and the visible part is always a whole sentence, never a
+// line cut mid-word. Translation replaces the hint's content, which drops the
+// span; the observer below then splits the new text.
+const _HINT_ABBR = /(^|[\s(])(e\.g|i\.e|etc|vs|Art|art|cf|n\.º)$/;
+function _hintCut(text) {
+  const re = /[.!?](?=\s+["“«(]?[A-ZÀ-ÖØ-Þ])/g;
+  let m;
+  while ((m = re.exec(text))) {
+    if (m.index < 24) continue;                       // a stub like "Note."
+    if (_HINT_ABBR.test(text.slice(Math.max(0, m.index - 5), m.index))) continue;
+    return m.index + 1;
+  }
+  return -1;
+}
+function _hintSplit(h) {
+  const text = h.textContent;
+  if (text.trim().length < 160) return false;          // two lines at most: show it all
+  const cut = _hintCut(text);
+  if (cut < 0 || text.slice(cut).trim().length < 50) return false;   // short tail: show it all
+  const walk = document.createTreeWalker(h, NodeFilter.SHOW_TEXT);
+  let pos = 0, node;
+  while ((node = walk.nextNode())) {
+    if (pos + node.length >= cut) break;
+    pos += node.length;
+  }
+  if (!node) return false;
+  const r = document.createRange();
+  r.setStart(node, cut - pos);
+  r.setEnd(h, h.childNodes.length);
+  const rest = r.extractContents();
+  // a split element leaves an empty clone behind; a clone that still carries
+  // a translation key would be filled twice on the next language switch
+  rest.querySelectorAll('*').forEach(e => { if (!e.textContent.trim() && !e.children.length) e.remove(); });
+  const span = document.createElement('span');
+  span.className = 'hint-rest';
+  span.appendChild(rest);
+  h.appendChild(span);
+  return true;
+}
 function clampHints(root) {
   (root || document).querySelectorAll('.field-hint').forEach(h => {
-    if (h.offsetParent === null) return;              // hidden: measure later
     let btn = h.nextElementSibling && h.nextElementSibling.classList.contains('hint-more')
               ? h.nextElementSibling : null;
-    if (h.dataset.expanded === '1') return;
-    h.classList.add('clamped');
-    const overflow = h.scrollHeight > h.clientHeight + 2;
-    if (!overflow) { h.classList.remove('clamped'); if (btn) btn.remove(); return; }
+    if (!h.querySelector(':scope > .hint-rest') && !_hintSplit(h)) {
+      h.classList.remove('open'); if (btn) btn.remove(); return;
+    }
+    const open = h.dataset.expanded === '1';
+    h.classList.toggle('open', open);
     if (!btn) {
       btn = document.createElement('button');
       btn.type = 'button'; btn.className = 'hint-more';
-      btn.setAttribute('aria-expanded', 'false');
       btn.onclick = () => {
-        const open = h.dataset.expanded !== '1';
-        h.dataset.expanded = open ? '1' : '';
-        h.classList.toggle('clamped', !open);
-        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-        btn.textContent = t(open ? 'admin.hint_less' : 'admin.hint_more');
+        const o = h.dataset.expanded !== '1';
+        h.dataset.expanded = o ? '1' : '';
+        h.classList.toggle('open', o);
+        btn.setAttribute('aria-expanded', o ? 'true' : 'false');
+        btn.textContent = t(o ? 'admin.hint_less' : 'admin.hint_more');
       };
       h.after(btn);
     }
-    btn.textContent = t('admin.hint_more');
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    btn.textContent = t(open ? 'admin.hint_less' : 'admin.hint_more');
   });
 }
 // a hint whose text changes (language switch, re-render) is measured again
@@ -4649,7 +4786,7 @@ function cfgDirtyUpdate() {
 ['input', 'change'].forEach(ev =>
   document.getElementById('cfg-form')?.addEventListener(ev, cfgDirtyUpdate));
 window.addEventListener('beforeunload', e => {
-  if (cfgDirtyCount()) { e.preventDefault(); e.returnValue = ''; }
+  if (cfgDirtyCount() || (typeof rolesDirtyCount === 'function' && rolesDirtyCount())) { e.preventDefault(); e.returnValue = ''; }
 });
 
 // ── layout: the address remembers where you are ─────────────────────────────
