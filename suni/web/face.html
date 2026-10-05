@@ -41,7 +41,7 @@ function _applyBranding(cfg) {
 /* Dropdown option list — dark theme (browser default is white/unreadable) */
 select option,select optgroup{background:#111;color:var(--text)}
 html,body{height:100%;overflow:hidden;background:var(--bg)}
-#app{position:relative;width:100vw;height:100vh;overflow:hidden}
+#app{position:relative;width:100vw;height:100vh;height:100dvh;overflow:hidden}
 
 /* ── CANVAS (fullscreen, behind everything) ── */
 #suni-canvas{
@@ -474,10 +474,29 @@ header{
 @keyframes mic-pulse{0%,100%{box-shadow:0 0 8px rgba(231,76,60,.3)}50%{box-shadow:0 0 18px rgba(231,76,60,.65)}}
 
 @media(max-width:768px){
-  #subtitle{bottom:118px;font-size:13px}
-  #chat-overlay{bottom:12px;width:96vw;padding-bottom:env(safe-area-inset-bottom,0px)}
-  #input-area{border-radius:0 0 6px 6px}
-  #messages{max-height:150px}
+  /* --dock-top: how far the dock's top edge is from the bottom of the screen,
+     measured (see _dockMeasure), so whatever sits above it moves with it */
+  #subtitle{bottom:calc(var(--dock-top,118px) + 12px);font-size:13px}
+  #chat-overlay{bottom:max(8px,env(safe-area-inset-bottom,0px));width:calc(100vw - 16px)}
+  #input-area{border-radius:0 0 6px 6px;flex-wrap:wrap;gap:8px;padding:8px}
+  #messages{max-height:min(150px,28dvh)}
+  /* the text field gets its own row; 16px or iOS zooms the page on focus */
+  #user-input{order:-1;flex:1 1 100%;font-size:16px;padding:10px 12px}
+  #attach-btn,#snap-btn,#mic-btn,#tts-btn,#tts-pause{width:44px;height:44px;padding:0;
+    display:inline-flex;align-items:center;justify-content:center}
+  #tts-pause.idle{display:none}
+  #send-btn{margin-left:auto;height:44px;padding:0 20px;font-size:12px}
+  /* one header row: the model/memory chips go, the buttons become glyphs */
+  header{padding:0 10px;height:54px}
+  .wordmark{font-size:14px;letter-spacing:.24em}
+  #header-meta{display:none}
+  .h-right{gap:5px;min-width:0}
+  header .hnav{font-size:0!important;width:38px;height:38px;padding:0!important;
+    display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box}
+  header .hnav::before{content:attr(data-icon);font-size:16px;line-height:1}
+  #mode-select,#agent-select{max-width:96px;height:38px}
+  #net-side{bottom:calc(var(--dock-top,118px) + 12px)}
+  #net-trail{bottom:calc(var(--dock-top,118px) + 12px)}
 }
 @media(max-height:520px){
   #messages{max-height:104px}
@@ -661,6 +680,14 @@ header{
   color:rgba(228,236,255,.45);font-size:9px;line-height:1.5}
 #net-trail{position:absolute;left:3.5%;bottom:132px;z-index:7;opacity:0;transition:opacity .3s ease;
   font-family:'DM Mono',monospace;font-size:12px;color:rgba(228,236,255,.6);pointer-events:none}
+/* Phone: the legend as a column was half the screen. Wrap it across the
+   width instead; the mouse instructions (wheel, click) say nothing on glass. */
+@media(max-width:768px){
+  #net-side{left:8px;right:8px}
+  #net-legend{align-self:stretch;flex-direction:row;flex-wrap:wrap;gap:2px 12px;padding:8px 10px;font-size:11px}
+  #net-legend .row{margin:0;padding:4px 4px}
+  #net-legend .hint{display:none}
+}
 #net-trail.on{opacity:1;pointer-events:auto}
 #net-trail span{cursor:pointer;padding:2px 5px;border-radius:3px}
 #net-trail span:hover{color:#00d4ff;background:rgba(0,212,255,.08)}
@@ -675,6 +702,16 @@ header{
   opacity:0;transform:translateY(10px);pointer-events:none;
   transition:opacity .5s ease,transform .5s ease;display:flex;flex-direction:column}
 #content-stage.on{opacity:1;transform:none;pointer-events:auto}
+/* Phone, portrait: she shrinks into the top-right corner (see _phoneStage in
+   the render loop) and the panel takes the full width below her. */
+@media(max-width:768px) and (orientation:portrait){
+  #content-stage{left:8px;width:calc(100vw - 16px);top:calc(52px + 18dvh);
+    bottom:calc(var(--dock-top,118px) + 8px)}
+  #stage-body{padding:14px 14px}
+}
+@media(max-width:768px) and (orientation:landscape){
+  #content-stage{bottom:calc(var(--dock-top,118px) + 8px)}
+}
 #stage-body{flex:1;overflow-y:auto;padding:22px 26px;border-radius:10px;
   background:linear-gradient(180deg,rgba(6,10,24,.42),rgba(6,10,24,.26));
   border:1px solid rgba(0,212,255,.14);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
@@ -841,7 +878,7 @@ header{
                display:none">
         <option value="" data-i18n="face.agent_none">◇ SUNI</option>
       </select>
-      <a href="/" data-i18n-title="face.nav_orb_t" title="Switch to Orb mode"
+      <a href="/" data-i18n-title="face.nav_orb_t" data-icon="◎" class="hnav" title="Switch to Orb mode"
          style="padding:3px 8px;border:1px solid rgba(201,162,39,.45);border-radius:2px;
                 font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.08em;
                 color:rgba(201,162,39,.85);text-decoration:none;transition:all .2s;"
@@ -849,7 +886,7 @@ header{
          onmouseout="this.style.color='rgba(201,162,39,.85)';this.style.borderColor='rgba(201,162,39,.45)'">
         <span data-i18n="face.nav_orb">◎ ORB</span>
       </a>
-      <a href="/chat" data-i18n-title="face.nav_chat_t" title="Switch to Chat mode"
+      <a href="/chat" data-i18n-title="face.nav_chat_t" data-icon="☰" class="hnav" title="Switch to Chat mode"
          style="padding:3px 8px;border:1px solid rgba(201,162,39,.45);border-radius:2px;
                 font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.08em;
                 color:rgba(201,162,39,.85);text-decoration:none;transition:all .2s;"
@@ -857,7 +894,7 @@ header{
          onmouseout="this.style.color='rgba(201,162,39,.85)';this.style.borderColor='rgba(201,162,39,.45)'">
         <span data-i18n="face.nav_chat">☰ CHAT</span>
       </a>
-      <button id="stage-btn" aria-pressed="false" data-i18n-title="face.nav_stage_t" title="Stage view — shrink the head to the corner and open a content panel"
+      <button id="stage-btn" aria-pressed="false" data-icon="▣" class="hnav" data-i18n-title="face.nav_stage_t" title="Stage view — shrink the head to the corner and open a content panel"
          style="background:none;border:1px solid rgba(201,162,39,.45);border-radius:2px;
                 font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.08em;padding:3px 8px;
                 color:rgba(201,162,39,.85);cursor:pointer;transition:all .2s;"
@@ -865,7 +902,7 @@ header{
          onmouseout="if(!this.classList.contains('on')){this.style.color='rgba(201,162,39,.85)';this.style.borderColor='rgba(201,162,39,.45)'}">
         <span data-i18n="face.nav_stage">▣ STAGE</span>
       </button>
-      <button id="cam-btn" aria-pressed="false" data-i18n-title="face.nav_cam_t"
+      <button id="cam-btn" aria-pressed="false" data-icon="◉" class="hnav" data-i18n-title="face.nav_cam_t"
          title="Camera off — click to let SUNI follow your movement (stays on this device)"
          style="background:none;border:1px solid rgba(201,162,39,.45);border-radius:2px;
                 font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.08em;padding:3px 8px;
@@ -874,7 +911,7 @@ header{
          onmouseout="if(!this.classList.contains('on')){this.style.color='rgba(201,162,39,.85)';this.style.borderColor='rgba(201,162,39,.45)'}">
         <span data-i18n="face.nav_cam">◉ CAM</span>
       </button>
-      <button id="orb-settings-btn" data-i18n-title="face.nav_settings_t" title="Language &amp; voice settings"
+      <button id="orb-settings-btn" data-icon="⚙" class="hnav" data-i18n-title="face.nav_settings_t" title="Language &amp; voice settings"
          style="background:none;border:1px solid rgba(201,162,39,.45);border-radius:2px;
                 font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.08em;padding:3px 8px;
                 color:rgba(201,162,39,.85);cursor:pointer;transition:all .2s;"
@@ -911,7 +948,7 @@ header{
     </div>
     <!-- EU AI Act Art. 50(1): persistent AI-interaction disclosure -->
     <div class="ai-disclosure" data-i18n="common.ai_disclosure"
-         style="text-align:center;font-size:11px;color:var(--text);opacity:.72;margin-top:8px">SUNI is an AI assistant — responses are AI-generated and may be inaccurate.</div>
+         style="text-align:center;font-family:'DM Mono',monospace;font-size:10.5px;line-height:1.45;color:var(--text);opacity:.72;margin-top:8px">SUNI is an AI assistant — responses are AI-generated and may be inaccurate.</div>
   </div>
 </div>
 <!-- The camera, before it takes anything. Framing a shot blind and finding
@@ -1959,7 +1996,14 @@ function renderHead(dt){
   const breath=1+Math.sin(T*0.9)*0.010;
 
   const asp=canvas.width/canvas.height;
-  const proj=m4persp(0.80,asp,0.1,100);
+  // A fixed vertical field of view keeps her the same HEIGHT in any window, so
+  // on a tall phone she came out wider than the screen. Hold a minimum
+  // horizontal field as well (she is about three quarters of the width at the
+  // limit), and give a short landscape window some air so the dock does not
+  // sit on her chin. Desktop windows are untouched: 0.27/asp < tan(0.40) there.
+  let _fovT = Math.max(Math.tan(0.40), 0.30 / asp);
+  if (H < 520) _fovT *= 1.38;
+  const proj=m4persp(2*Math.atan(_fovT),asp,0.1,100);
   let view=m4mul(m4trans(0,0.24,-3.05), m4mul(m4rotX(pitch), m4rotY(yaw)));
   view=m4mul(view, m4scale(breath,breath,breath));
   const mvp=m4mul(proj,view);
@@ -2001,7 +2045,10 @@ function renderHead(dt){
   // but only the panel opens the panel, or it would cover what it made room for.
   _stageT += (((_stageMode || _netFocus) ? 1 : 0) - _stageT) * Math.min(1, 4 * dt);
   if (_stageT > 0.002){
-    const f = 1 - 0.62 * _stageT;                       // shrink toward ~38%
+    // On a portrait phone a 38% head sat across the panel's edge; there she
+    // goes smaller and up to the header, and the panel runs below her.
+    const _phoneStage = W <= 768 && H > W;
+    const f = 1 - (_phoneStage ? 0.75 : 0.62) * _stageT;   // shrink toward ~38% (phone ~25%)
     const vpW = canvas.width * f, vpH = canvas.height * f;
     // Negative right margin: the viewport hangs a little past the right edge.
     // The head only fills the middle ~65% of its viewport's width (the viewport
@@ -2009,7 +2056,8 @@ function renderHead(dt){
     // overhang costs empty space, not face, and buys the network the room it
     // wanted. Top margin leaves room for the state label above her head,
     // which no longer moves out of her way.
-    const mx = canvas.width * -0.055, my = Math.max(canvas.height * 0.10, 84 * (canvas.height / H));
+    let mx = canvas.width * -0.055, my = Math.max(canvas.height * 0.10, 84 * (canvas.height / H));
+    if (_phoneStage) { mx = canvas.width * 0.01; my = 44 * (canvas.height / H); }   // fully on screen, under the label
     gl.viewport((canvas.width - vpW - mx) * _stageT, (canvas.height - vpH - my) * _stageT, vpW, vpH);
   }
   gl.useProgram(prog);
@@ -2147,6 +2195,17 @@ if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', _adjustOverlay);
   window.visualViewport.addEventListener('scroll', _adjustOverlay);
 }
+// The caption, the network's controls and the stage sit above the dock. On a
+// phone the dock's height changes (two rows, the conversation opening, the
+// keyboard), so measure its top edge instead of guessing a constant.
+function _dockMeasure() {
+  const r = _overlay.getBoundingClientRect();
+  document.documentElement.style.setProperty('--dock-top', Math.round(window.innerHeight - r.top) + 'px');
+}
+if (window.ResizeObserver) new ResizeObserver(_dockMeasure).observe(_overlay);
+window.addEventListener('resize', _dockMeasure);
+if (window.visualViewport) window.visualViewport.addEventListener('resize', () => requestAnimationFrame(_dockMeasure));
+_dockMeasure();
 
 // ── Auth: JWT from localStorage only ──────────────────────────────────────────
 // Server injects a fresh access token here when the session cookie is valid,
