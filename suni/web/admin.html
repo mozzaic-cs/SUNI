@@ -527,6 +527,33 @@ main:not(.on-dashboard) #update-banner{display:none!important}
 /* long card titles read better in sentence case; short labels stay caps */
 .card-title.is-long{text-transform:none;letter-spacing:.02em;font-size:13px}
 
+/* ══ ROLE MATRIX ══════════════════════════════════════════════════════════ */
+.rm-card{margin-bottom:16px}
+.rm-toolbar{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:12px}
+.rm-filter{flex:0 1 320px;background:rgba(255,255,255,.04);border:1px solid var(--field-border);color:var(--text);
+  padding:8px 11px;border-radius:4px;font:inherit;font-size:14px}
+.rm-riskonly{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--label);cursor:pointer}
+.rm-riskonly input{width:18px;height:18px;accent-color:var(--gold)}
+.rm-legend{font-size:13px;color:var(--muted);margin-left:auto}
+.rm-wrap{overflow-x:auto}
+.rm-table{width:100%;border-collapse:collapse;font-size:14px}
+.rm-cap{text-align:left;font-size:13px;color:var(--label);padding-bottom:8px}
+.rm-table th,.rm-table td{border-bottom:1px solid var(--border);padding:7px 10px;vertical-align:middle}
+.rm-table thead th{position:sticky;top:0;background:#0d0d14;z-index:1;font-size:12px;font-weight:600;color:var(--label);text-align:left}
+.rm-role,.rm-cell{text-align:center!important;width:110px}
+.rm-cell input[type=checkbox]{width:18px;height:18px;accent-color:var(--gold);cursor:pointer}
+.rm-cell input[type=checkbox]:disabled{cursor:not-allowed;opacity:.35}
+.rm-grouprow th,.rm-grouprow td{background:rgba(201,162,39,.06);border-top:1px solid rgba(201,162,39,.2)}
+.rm-grouprow th{font-family:var(--font-display);font-weight:700;color:var(--gold);font-size:14px;text-align:left}
+.rm-count{font-family:var(--font-mono);font-weight:400;font-size:12px;color:var(--muted);margin-left:8px}
+.rm-row:hover td{background:rgba(255,255,255,.02)}
+.rm-name{font-family:var(--font-mono);font-size:13px;color:var(--text)}
+.rm-desc{font-size:13px;color:var(--muted);margin-top:2px;max-width:70ch}
+.rm-tag{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:3px;font-family:var(--font-ui);font-size:12px;vertical-align:1px}
+.rm-tag.risk{color:#ff8095;border:1px solid rgba(255,69,96,.4);background:rgba(255,69,96,.08)}
+.rm-tag.every{color:var(--gold-b);border:1px solid rgba(201,162,39,.45);background:rgba(201,162,39,.1)}
+.rm-empty{color:var(--muted);text-align:center;padding:20px}
+
 /* ══ COLOUR ROLES ═════════════════════════════════════════════════════════ */
 .field-hint{color:var(--hint)}
 .tab.active{font-weight:600}
@@ -1468,11 +1495,11 @@ input,textarea{caret-color:var(--cyan)}
     <div style="display:flex;align-items:center;gap:12px">
       <div class="card-title" style="margin:0;border:none" data-i18n="admin.roles_title">Role permissions</div>
       <span style="font-size:13px;color:var(--muted)" data-i18n="admin.roles_hint">Changes apply immediately on next request</span>
-      <button class="tbl-btn primary" onclick="saveRoles()" data-i18n="admin.roles_save" style="margin-left:auto">Save changes</button>
+      <span id="roles-save-msg" style="font-size:13px;color:var(--green);margin-left:auto;display:none" data-i18n="common.saved">Saved.</span>
+      <button class="tbl-btn primary" onclick="saveRoles()" data-i18n="admin.roles_save" style="margin-left:12px">Save changes</button>
     </div>
   </div>
   <div id="roles-container"></div>
-  <div id="roles-save-msg" style="font-size:13px;color:var(--green);margin-top:10px;display:none" data-i18n="common.saved">Saved.</div>
 </div>
 
 <!-- ════════════════════ MCP ════════════════════ -->
@@ -3103,58 +3130,131 @@ async function loadRoles(){
   // tool too, so Roles showed an empty tool list for every role.
   const _mcpPre = (dash.tools?.mcp_prefixes || []).map(p => p + '_');
   _allToolNames = (dash.tools?.all || []).filter(t => !_mcpPre.some(p => t.startsWith(p)));
+  const cat = await _apiFetch('/api/tools/catalog').then(r => r.ok ? r.json() : []).catch(() => []);
+  _toolInfo = Object.fromEntries((cat || []).map(x => [x.name, x]));
   renderRoles();
+}
+
+let _toolInfo = {};
+let _rolesFilter = '', _rolesRiskOnly = false;
+const _ROLE_ORDER = ['read-only', 'standard', 'power-user', 'admin'];
+// Grouped by what a tool does. First matching rule wins; anything new lands
+// in "other" rather than disappearing.
+const _TOOL_GROUPS = [
+  ['shell',   /^(run_shell|claude_|code_task|codex)/],
+  ['files',   /^(read_file|write_file|list_files|delete_file|download_file|create_pdf|create_document|document_|convert_|file_)/],
+  ['web',     /^(web_|summarize_|ping_host|browse)/],
+  ['comms',   /^(send_email|list_emails|read_email|email_|calendar_|notify|whatsapp|telegram)/],
+  ['memory',  /^(memory_|search_knowledge|kb_|skills?_|articles?_|get_recent_articles|search_articles|get_article)/],
+  ['agents',  /^(invoke_agent|list_agents|create_agent|create_schedule|list_schedules|delete_schedule|tasks?_|assign)/],
+  ['people',  /^(contacts_|project_)/],
+  ['system',  /^(monitor_|show_network|diagnose_self|look_at_screen|start_meeting|stop_meeting|generate_image|db_|graph_)/],
+];
+function _toolGroup(name) {
+  const g = _TOOL_GROUPS.find(([, re]) => re.test(name));
+  return g ? g[0] : 'other';
+}
+function _roleHas(role, tool) {
+  const cfg = _rolesData[role] || {};
+  return cfg.allowed == null ? !(cfg.blocked || []).includes(tool) : cfg.allowed.includes(tool);
 }
 
 function renderRoles(){
   const c = el('roles-container');
-  const roleOrder = ['read-only','standard','power-user','admin'];
-  const MODES = ['assistant','task','read-only'];
-  c.innerHTML = roleOrder.map(role => {
-    const cfg = _rolesData[role] || {};
-    const blocked = cfg.blocked || [];
-    const allowed = cfg.allowed;  // null = all allowed
-    const defMode = cfg.default_mode || 'assistant';
-    const allowedModes = cfg.modes || ['assistant'];
+  const MODES = ['assistant','task','read-only','collaborate'];
+  const q = _rolesFilter.trim().toLowerCase();
+  const tools = _allToolNames.filter(n => {
+    const info = _toolInfo[n] || {};
+    if (_rolesRiskOnly && !info.consequential) return false;
+    return !q || n.toLowerCase().includes(q) || (info.description || '').toLowerCase().includes(q);
+  });
+  const groups = {};
+  tools.forEach(n => (groups[_toolGroup(n)] = groups[_toolGroup(n)] || []).push(n));
+  const groupOrder = _TOOL_GROUPS.map(g => g[0]).concat('other').filter(g => groups[g]);
 
-    const toolRows = _allToolNames.map(t => {
-      const isAllowed = allowed === null ? !blocked.includes(t) : allowed.includes(t);
-      return `<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:3px 0">
-        <input type="checkbox" data-role="${role}" data-tool="${t}" ${isAllowed?'checked':''}
-               style="accent-color:var(--gold)" onchange="roleToolChanged('${role}','${t}',this.checked)">
-        <span style="color:var(--text)">${esc(t)}</span>
-      </label>`;
+  const head = `<tr><th class="rm-tool">${t('admin.roles_col_tool')}</th>${_ROLE_ORDER.map(r =>
+    `<th class="rm-role"><span class="role-badge ${_ROLE_CSS[r]||''}">${esc(r)}</span></th>`).join('')}</tr>`;
+
+  const body = groupOrder.map(g => {
+    const names = groups[g];
+    const groupCells = _ROLE_ORDER.map(r => {
+      const editable = names.filter(n => !((_toolInfo[n] || {}).never_roles || []).includes(r));
+      const on = editable.filter(n => _roleHas(r, n)).length;
+      return `<td class="rm-cell"><input type="checkbox" class="rm-group" data-role="${r}" data-group="${g}"
+        aria-label="${esc(t('admin.roles_group_toggle', {group: t('admin.toolgrp_' + g), role: r}))}"
+        ${editable.length && on === editable.length ? 'checked' : ''} data-mixed="${on > 0 && on < editable.length ? 1 : 0}"></td>`;
     }).join('');
-
-    const modeChecks = MODES.map(m =>
-      `<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
-        <input type="checkbox" data-role="${role}" data-mode="${m}" ${allowedModes.includes(m)?'checked':''}
-               style="accent-color:var(--cyan)" onchange="roleModeChanged('${role}','${m}',this.checked)">
-        <span>${m}</span>
-      </label>`).join('');
-
-    const defOptions = MODES.map(m =>
-      `<option value="${m}" ${defMode===m?'selected':''}>${m}</option>`).join('');
-
-    return `<div class="card" style="margin-bottom:14px">
-      <div class="card-title"><span class="role-badge ${_ROLE_CSS[role]||''}">${esc(role)}</span></div>
-      <div style="display:grid;grid-template-columns:1fr 200px;gap:24px">
-        <div>
-          <div style="font-size:12px;color:var(--label);margin-bottom:8px">${t('admin.roles_tool_access')}</div>
-          <div style="columns:2;gap:12px">${toolRows}</div>
-        </div>
-        <div>
-          <div style="font-size:12px;color:var(--label);margin-bottom:8px">${t('admin.roles_allowed_modes')}</div>
-          <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">${modeChecks}</div>
-          <div style="font-size:12px;color:var(--label);margin-bottom:6px">${t('admin.roles_default_mode')}</div>
-          <select data-role="${role}" data-key="default_mode" onchange="roleKeyChanged('${role}','default_mode',this.value)"
-            style="background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:3px;font-family:var(--font-ui);font-size:13px;width:100%">
-            ${defOptions}
-          </select>
-        </div>
-      </div>
-    </div>`;
+    const rows = names.map(n => {
+      const info = _toolInfo[n] || {};
+      const tag = info.every_time ? `<span class="rm-tag every">${t('admin.roles_tag_every')}</span>`
+                : info.consequential ? `<span class="rm-tag risk">${t('admin.roles_tag_risk')}</span>` : '';
+      // A role the code refuses this tool to is shown as refused, whatever
+      // the role file says (a file saved before code_task existed lists it
+      // as allowed for "standard", which was untrue).
+      const cells = _ROLE_ORDER.map(r => (info.never_roles || []).includes(r)
+        ? `<td class="rm-cell"><input type="checkbox" disabled title="${esc(t('admin.roles_never'))}"
+             aria-label="${esc(n)} — ${esc(r)}: ${esc(t('admin.roles_never'))}"></td>`
+        : `<td class="rm-cell"><input type="checkbox" data-role="${r}" data-tool="${esc(n)}" ${_roleHas(r, n) ? 'checked' : ''}
+          aria-label="${esc(n)} — ${esc(r)}" onchange="roleToolChanged('${r}','${esc(n)}',this.checked);_rolesSyncGroups()"></td>`).join('');
+      return `<tr class="rm-row"><td class="rm-tool"><div class="rm-name">${esc(n)}${tag}</div>${
+        info.description ? `<div class="rm-desc">${esc(info.description)}</div>` : ''}</td>${cells}</tr>`;
+    }).join('');
+    return `<tbody><tr class="rm-grouprow"><th class="rm-tool" scope="rowgroup">${t('admin.toolgrp_' + g)}
+      <span class="rm-count">${names.length}</span></th>${groupCells}</tr>${rows}</tbody>`;
   }).join('');
+
+  const modeRows = MODES.map(m => `<tr><td class="rm-tool"><div class="rm-name">${esc(m)}</div></td>${_ROLE_ORDER.map(r => {
+      const modes = (_rolesData[r] || {}).modes || ['assistant'];
+      return `<td class="rm-cell"><input type="checkbox" data-role="${r}" data-mode="${m}" ${modes.includes(m) ? 'checked' : ''}
+        aria-label="${esc(m)} — ${esc(r)}" onchange="roleModeChanged('${r}','${m}',this.checked)"></td>`;
+    }).join('')}</tr>`).join('');
+  const defRow = `<tr><td class="rm-tool"><div class="rm-name">${t('admin.roles_default_mode')}</div></td>${_ROLE_ORDER.map(r => {
+      const d = (_rolesData[r] || {}).default_mode || 'assistant';
+      return `<td class="rm-cell"><select class="bm-sel" aria-label="${esc(t('admin.roles_default_mode'))} — ${esc(r)}"
+        onchange="roleKeyChanged('${r}','default_mode',this.value)">${MODES.map(m =>
+        `<option value="${m}" ${d === m ? 'selected' : ''}>${m}</option>`).join('')}</select></td>`;
+    }).join('')}</tr>`;
+
+  c.innerHTML = `
+    <div class="card rm-card">
+      <div class="rm-toolbar">
+        <input type="search" id="roles-filter" class="rm-filter" placeholder="${esc(t('admin.roles_filter_ph'))}"
+          aria-label="${esc(t('admin.roles_filter_ph'))}" value="${esc(_rolesFilter)}">
+        <label class="rm-riskonly"><input type="checkbox" id="roles-riskonly" ${_rolesRiskOnly ? 'checked' : ''}>
+          ${t('admin.roles_risk_only')}</label>
+        <span class="rm-legend"><span class="rm-tag risk">${t('admin.roles_tag_risk')}</span> ${t('admin.roles_tag_risk_hint')}
+          &nbsp; <span class="rm-tag every">${t('admin.roles_tag_every')}</span> ${t('admin.roles_tag_every_hint')}</span>
+      </div>
+      <div class="rm-wrap"><table class="rm-table">
+        <caption class="rm-cap">${t('admin.roles_tool_access')}</caption>
+        <thead>${head}</thead>${body || `<tbody><tr><td colspan="5" class="rm-empty">${t('admin.roles_no_match')}</td></tr></tbody>`}
+      </table></div>
+    </div>
+    <div class="card rm-card">
+      <div class="card-title">${t('admin.roles_allowed_modes')}</div>
+      <div class="rm-wrap"><table class="rm-table"><thead>${head}</thead><tbody>${modeRows}${defRow}</tbody></table></div>
+    </div>`;
+
+  const f = el('roles-filter');
+  f.oninput = () => { _rolesFilter = f.value; const pos = f.selectionStart; renderRoles(); const g = el('roles-filter'); g.focus(); g.setSelectionRange(pos, pos); };
+  el('roles-riskonly').onchange = e => { _rolesRiskOnly = e.target.checked; renderRoles(); };
+  c.querySelectorAll('.rm-group').forEach(cb => {
+    cb.indeterminate = cb.dataset.mixed === '1';
+    cb.onchange = () => {
+      const role = cb.dataset.role, g = cb.dataset.group;
+      (groups[g] || []).filter(n => !((_toolInfo[n] || {}).never_roles || []).includes(role)).forEach(n => { roleToolChanged(role, n, cb.checked);
+        const box = c.querySelector(`input[data-role="${role}"][data-tool="${CSS.escape(n)}"]`); if (box) box.checked = cb.checked; });
+      cb.indeterminate = false;
+    };
+  });
+}
+// keep each group's tri-state box honest after a single tool changes
+function _rolesSyncGroups() {
+  document.querySelectorAll('#roles-container .rm-group').forEach(cb => {
+    const boxes = [...cb.closest('tbody').querySelectorAll(`input[data-role="${cb.dataset.role}"][data-tool]`)];
+    const on = boxes.filter(b => b.checked).length;
+    cb.checked = on === boxes.length; cb.indeterminate = on > 0 && on < boxes.length;
+  });
 }
 
 function roleToolChanged(role, tool, checked){

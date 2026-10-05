@@ -1500,6 +1500,31 @@ def create_app() -> FastAPI:
     async def get_roles(user: dict = Depends(get_current_user)):
         return JSONResponse(_rbac.all_roles())
 
+    @app.get("/api/tools/catalog")
+    async def tools_catalog(admin: dict = Depends(require_admin)):
+        """Native tools with their own description and the approval gate's
+        risk call, for the role matrix. Read from the registry and approval
+        at request time, so the page never carries a copy that can drift."""
+        import re as _re
+        from .. import approval as _ap
+        from ..tools.code_project import _NEVER_ROLES as _cp_floor
+        prefixes = [p + "_" for p in getattr(registry, "_mcp_prefixes", [])]
+        out = []
+        for name, sch in registry._schemas.items():
+            if any(name.startswith(p) for p in prefixes):
+                continue
+            desc = " ".join(str(sch.get("description", "")).split())
+            first = _re.split(r"(?<=[.!?])\s", desc, maxsplit=1)[0][:180]
+            out.append({
+                "name": name,
+                "description": first,
+                "consequential": bool(_ap.is_consequential(name, registry=registry)),
+                "every_time": name in _ap.NEVER_TRUSTED,
+                # roles the code refuses whatever the role file says
+                "never_roles": sorted(_cp_floor) if name == "code_task" else [],
+            })
+        return JSONResponse(out)
+
     @app.put("/api/roles")
     async def update_roles(request: Request, admin: dict = Depends(require_admin)):
         body = await request.json()
