@@ -574,7 +574,7 @@ input,textarea{caret-color:var(--cyan)}
 <body>
 
 <header>
-  <button class="nav-toggle" onclick="toggleSidebar()" aria-label="Toggle menu" title="Collapse menu">☰</button>
+  <button class="nav-toggle" onclick="toggleSidebar()" aria-label="Toggle menu" title="Collapse menu" data-i18n-title="admin.menu_hide">☰</button>
   <div class="logo">SUNI <span>Control</span></div>
   <div class="header-status">
     <div class="hs-line">
@@ -1915,7 +1915,7 @@ input,textarea{caret-color:var(--cyan)}
     <div class="bm-toolbar">
       <div class="bm-summary" id="bm-summary"></div>
       <div style="flex:1"></div>
-      <select id="bm-suite-sel" class="bm-sel" title="Which suites to run">
+      <select id="bm-suite-sel" class="bm-sel" title="Which suites to run" data-i18n-title="admin.lbl_f_suite">
         <option value="" data-i18n="admin.opt_all_suites">All suites</option>
       </select>
       <label style="font-size:13px;color:var(--label);display:flex;align-items:center;gap:5px;cursor:pointer">
@@ -2131,9 +2131,9 @@ function renderBenchmarks(d) {
   // last run
   if (d.last_run) {
     el('bm-lastrun').textContent =
-      `Last run: ${fmtTime(d.last_run.finished)} · ${d.last_run.suite_keys.length} suites · ${d.last_run.elapsed_s}s · model ${d.model}`;
+      t('admin.bm_last_run', {when: fmtTime(d.last_run.finished), n: d.last_run.suite_keys.length, s: d.last_run.elapsed_s, model: d.model});
   } else {
-    el('bm-lastrun').textContent = `No benchmark run yet · model ${d.model}`;
+    el('bm-lastrun').textContent = t('admin.bm_never_run', {model: d.model});
   }
 
   // categories
@@ -2227,7 +2227,7 @@ function fmtUptime(s) {
 function fmtTime(iso) {
   try {
     const d = new Date(iso);
-    return d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    return d.toLocaleTimeString(_uiLocale(), {hour:'2-digit',minute:'2-digit',second:'2-digit'});
   } catch { return '—'; }
 }
 function fmtExpiry(iso) {
@@ -2319,7 +2319,7 @@ function renderDashboard(d) {
   // Memory — show active count; note deprecated (soft-deleted) entries separately
   const memActive = d.memory?.active ?? d.memory?.total ?? 0;
   const memDep    = d.memory?.deprecated ?? 0;
-  set('d-mem-count', memActive.toLocaleString() + (memDep ? ` (+${memDep.toLocaleString()} deprecated)` : ''));
+  set('d-mem-count', memActive.toLocaleString(_uiLocale()) + (memDep ? ` (+${memDep.toLocaleString(_uiLocale())} deprecated)` : ''));
 
   // Activity log
   _recentTools = d.tools?.recent || [];
@@ -2575,26 +2575,26 @@ function applyConfigToForm(cfg) {
 
   // SMTP password is masked by the API (has_smtp_pass flag) — show configured state.
   const smp = document.getElementById('smtp_pass');
-  if (smp) { smp.value = ''; smp.placeholder = cfg.has_smtp_pass ? '•••• configured (leave blank to keep)' : 'app password'; }
+  if (smp) { smp.value = ''; smp.placeholder = cfg.has_smtp_pass ? t('admin.ph_key_set') : 'app password'; }
   const tge = document.getElementById('telegram_enabled');
   if (tge) { tge.checked = !!cfg.telegram_enabled; }
   // Bot token is masked by the API (has_telegram_token flag) — show configured state.
   const tgt = document.getElementById('telegram_bot_token');
-  if (tgt) { tgt.value = ''; tgt.placeholder = cfg.has_telegram_token ? '•••• configured (leave blank to keep)' : 'from @BotFather'; }
+  if (tgt) { tgt.value = ''; tgt.placeholder = cfg.has_telegram_token ? t('admin.ph_key_set') : 'from @BotFather'; }
   const tgc = document.getElementById('telegram_allowed_chats_raw');
   if (tgc) { tgc.value = (cfg.telegram_allowed_chats || []).join('\n'); }
   const dce = document.getElementById('discord_enabled');
   if (dce) { dce.checked = !!cfg.discord_enabled; }
   const dct = document.getElementById('discord_bot_token');
-  if (dct) { dct.value = ''; dct.placeholder = cfg.has_discord_token ? '•••• configured (leave blank to keep)' : 'Developer Portal → Bot → Token'; }
+  if (dct) { dct.value = ''; dct.placeholder = cfg.has_discord_token ? t('admin.ph_key_set') : 'Developer Portal → Bot → Token'; }
   const dcc = document.getElementById('discord_allowed_channels_raw');
   if (dcc) { dcc.value = (cfg.discord_allowed_channels || []).join('\n'); }
   const ske = document.getElementById('slack_enabled');
   if (ske) { ske.checked = !!cfg.slack_enabled; }
   const ska = document.getElementById('slack_app_token');
-  if (ska) { ska.value = ''; ska.placeholder = cfg.has_slack_app_token ? '•••• configured (leave blank to keep)' : 'connections:write'; }
+  if (ska) { ska.value = ''; ska.placeholder = cfg.has_slack_app_token ? t('admin.ph_key_set') : 'connections:write'; }
   const skb = document.getElementById('slack_bot_token');
-  if (skb) { skb.value = ''; skb.placeholder = cfg.has_slack_bot_token ? '•••• configured (leave blank to keep)' : 'chat:write'; }
+  if (skb) { skb.value = ''; skb.placeholder = cfg.has_slack_bot_token ? t('admin.ph_key_set') : 'chat:write'; }
   const skc = document.getElementById('slack_allowed_channels_raw');
   if (skc) { skc.value = (cfg.slack_allowed_channels || []).join('\n'); }
 
@@ -2646,7 +2646,7 @@ function _renderModelChain(){
   const wrap = document.getElementById('model-chain-list');
   if (!wrap) return;
   if (!_modelChain.length){
-    wrap.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:8px 0">No models yet — click “+ Add model”.</div>';
+    wrap.innerHTML = `<div style="font-size:13px;color:var(--muted);padding:8px 0">${t('admin.mc_empty')}</div>`;
     return;
   }
   wrap.innerHTML = _modelChain.map((e,i) => `
@@ -2655,16 +2655,16 @@ function _renderModelChain(){
              border:1px solid rgba(255,255,255,.12);border-radius:5px;background:rgba(255,255,255,.02)">
       <span title="${t('admin.drag_reorder')}" style="cursor:grab;color:var(--muted);font-size:15px;padding:0 3px">≡</span>
       <span style="font-size:13px;color:var(--muted);width:14px;text-align:right">${i+1}</span>
-      <input class="mc-label" placeholder="Label" value="${esc(e.label||'')}" style="flex:1;min-width:84px">
+      <input class="mc-label" placeholder="${t('admin.mc_label')}" value="${esc(e.label||'')}" style="flex:1;min-width:84px">
       <select class="mc-provider" style="min-width:104px" aria-label="${t('admin.mc_provider')}">
         ${(_MC_PROVIDERS.includes(e.provider) || !e.provider ? _MC_PROVIDERS : _MC_PROVIDERS.concat([e.provider]))
           .map(p=>`<option value="${esc(p)}"${p===e.provider?' selected':''}>${esc(p)}</option>`).join('')}
       </select>
       <input class="mc-model" placeholder="${t('admin.ph_model_id')}" value="${esc(e.model||'')}" style="flex:1;min-width:108px">
       <input class="mc-base" placeholder="${t('admin.ph_base_url')}" value="${esc(e.base_url||'')}" style="flex:1;min-width:118px">
-      <input class="mc-key" type="password" autocomplete="off" placeholder="${e.has_key?'•••• configured':'API key (opt.)'}" style="min-width:118px">
+      <input class="mc-key" type="password" autocomplete="off" placeholder="${e.has_key?t('admin.ph_key_set_short'):t('admin.ph_key_opt')}" style="min-width:118px">
       <label style="display:flex;align-items:center;gap:4px;font-size:13px;color:var(--muted);cursor:pointer">
-        <input class="mc-enabled" type="checkbox"${e.enabled!==false?' checked':''} style="accent-color:var(--gold)"> on
+        <input class="mc-enabled" type="checkbox"${e.enabled!==false?' checked':''} style="accent-color:var(--gold)"> ${t('admin.mc_on')}
       </label>
       <button type="button" class="tbl-btn" title="${t('admin.dlg_remove')}" aria-label="${t('admin.dlg_remove')}" onclick="_removeModelChain('${esc(e.id)}')">×</button>
       ${e.enabled !== false && _MC_NEEDS_MODEL.includes(e.provider) && !(e.model||'').trim()
@@ -2739,9 +2739,9 @@ function _renderCollabPool(){
         ${_CP_PROVIDERS.map(p=>`<option value="${p}"${p===e.provider?' selected':''}>${p}</option>`).join('')}
       </select>
       <input class="cp-model" placeholder="model id (opt.)" value="${esc(e.model||'')}" style="flex:1;min-width:108px">
-      <input class="cp-key" type="password" autocomplete="off" placeholder="${e.has_key?'•••• configured':'API key (opt.)'}" style="min-width:118px">
+      <input class="cp-key" type="password" autocomplete="off" placeholder="${e.has_key?t('admin.ph_key_set_short'):t('admin.ph_key_opt')}" style="min-width:118px">
       <label style="display:flex;align-items:center;gap:4px;font-size:13px;color:var(--muted);cursor:pointer">
-        <input class="cp-enabled" type="checkbox"${e.enabled!==false?' checked':''} style="accent-color:var(--gold)"> on
+        <input class="cp-enabled" type="checkbox"${e.enabled!==false?' checked':''} style="accent-color:var(--gold)"> ${t('admin.mc_on')}
       </label>
       <button type="button" class="tbl-btn" title="Remove" onclick="_removeCollabPool('${esc(e.id)}')">×</button>
     </div>`).join('');
@@ -2953,7 +2953,7 @@ async function loadHardware() {
 
   const w = (d.measured || {}).whisper;
   if (w && (w.results || []).length) {
-    const when = new Date((w.at || 0) * 1000).toLocaleDateString();
+    const when = new Date((w.at || 0) * 1000).toLocaleDateString(_uiLocale());
     rows.push(`<div style="margin-top:6px"><b>${t('admin.hw_measured')}</b> (${when}):</div>`);
     for (const r of w.results) {
       rows.push(`<div style="padding-left:10px">${esc(r.detail || r.device)} — ${r.seconds}s (${r.realtime_x}x)</div>`);
@@ -3065,8 +3065,8 @@ async function fetchKnowledge() {
     const d = await r.json();
     const ds = d.doc_store || {};
     const sc = d.scanner   || {};
-    set('kb-files',  (ds.total_files  ?? 0).toLocaleString());
-    set('kb-chunks', (ds.total_chunks ?? 0).toLocaleString());
+    set('kb-files',  (ds.total_files  ?? 0).toLocaleString(_uiLocale()));
+    set('kb-chunks', (ds.total_chunks ?? 0).toLocaleString(_uiLocale()));
     // Status badge
     const statusEl = el('kb-status');
     if (sc.running) {
@@ -3296,7 +3296,7 @@ async function saveRoles(){
 // ═══════════════════════════════════════════
 async function loadMcp(){
   const servers = await _apiFetch('/api/mcp/servers').then(r=>r.json()).catch(()=>[]);
-  el('mcp-count').textContent = '(' + servers.length + ' configured)';
+  el('mcp-count').textContent = '(' + t('admin.mcp_n_configured', {n: servers.length}) + ')';
   const tbody = el('mcp-tbody');
   if(!servers.length){
     tbody.innerHTML=`<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">${t('admin.mcp_none')}</td></tr>`;
@@ -3309,7 +3309,7 @@ async function loadMcp(){
       : `<span style="font-size:12px;color:var(--cyan);border:1px solid rgba(0,212,255,.3);padding:1px 5px;border-radius:2px">Claude Desktop</span>`;
     return `<tr>
       <td><strong>${esc(s.name)}</strong></td>
-      <td><span class="status-dot ${s.connected?'on':'off'}"></span>${s.connected?t('admin.mcp_connected'):t('admin.mcp_offline')}${s.connected?'':' <span style="font-size:12px;color:var(--muted)">(restart)</span>'}</td>
+      <td><span class="status-dot ${s.connected?'on':'off'}"></span>${s.connected?t('admin.mcp_connected'):t('admin.mcp_offline')}${s.connected?'':' <span style="font-size:12px;color:var(--muted)">(' + t('admin.mcp_needs_restart') + ')</span>'}</td>
       <td>${srcBadge}</td>
       <td style="font-size:13px;color:var(--muted)">${esc(s.command)} ${(s.args||[]).slice(0,2).map(esc).join(' ')}</td>
       <td style="color:var(--cyan)">${s.tool_count}</td>
@@ -3838,7 +3838,7 @@ async function loadAgents() {
         `<td>${e.mode === 'collaborate' ? '<strong>panel</strong>' : esc(e.mode || '')}</td>` +
         `<td>${e.tools === 'all' ? 'all' : e.tools}</td>` +
         `<td>${a.max_runs_day ? esc(String(a.max_runs_day)) + '/day' : '—'}` +
-        `${a.max_tokens_day ? ' · ' + esc(Number(a.max_tokens_day).toLocaleString()) + ' tok/day' : ''}</td>` +
+        `${a.max_tokens_day ? ' · ' + esc(Number(a.max_tokens_day).toLocaleString(_uiLocale())) + ' tok/day' : ''}</td>` +
         `<td>${a.used_count || 0}</td>` +
         `<td style="text-align:right"><button class="tbl-btn" onclick="deleteAgent('${esc(a.slug)}')" data-i18n="admin.btn_delete">Delete</button></td>`;
       tb.appendChild(tr);
@@ -4141,8 +4141,8 @@ async function loadUsers(){
       <td><strong>${esc(u.username)}</strong></td>
       <td><span class="role-badge ${_ROLE_CSS[u.role]||''}">${esc(u.role)}</span></td>
       <td><span class="status-dot ${u.active?'on':'off'}"></span>${u.active?t('admin.dash_active'):t('admin.dash_disabled')}</td>
-      <td>${u.last_login ? new Date(u.last_login).toLocaleDateString() : '—'}</td>
-      <td>${new Date(u.created_at).toLocaleDateString()}</td>
+      <td>${u.last_login ? new Date(u.last_login).toLocaleDateString(_uiLocale()) : '—'}</td>
+      <td>${new Date(u.created_at).toLocaleDateString(_uiLocale())}</td>
       <td class="tbl-actions">
         <button class="tbl-btn" onclick="openEditUser(${JSON.stringify(u).replace(/"/g,'&quot;')})">${t('common.edit')}</button>
         <button class="tbl-btn" onclick="resetPassword('${u.id}','${esc(u.username)}')">${t('admin.users_reset_pw')}</button>
@@ -4180,8 +4180,8 @@ function openEditUser(u){
   if(el('modal-apikey')) el('modal-apikey').value='';
   // Show placeholder if user has a key set
   if(el('modal-apikey')) el('modal-apikey').placeholder = u.has_api_key
-    ? 'sk-ant-… (key set — leave blank to keep current)'
-    : 'sk-ant-… — leave blank to use global account';
+    ? t('admin.ph_user_key_set')
+    : t('admin.ph_user_key_none');
   el('modal-err').style.display='none';
   el('modal-user').classList.add('open');
 }
@@ -4281,7 +4281,7 @@ async function loadMemoryQueue() {
         <td style="max-width:420px">${esc(c.content)}</td>
         <td><span class="role-badge ${_SENS_CSS[c.sensitivity] || ''}">${esc(t('admin.sens_' + c.sensitivity))}</span></td>
         <td style="font-size:13px;color:var(--muted)">${reasons.map(esc).join(', ') || '—'}</td>
-        <td style="font-size:13px;color:var(--muted)">${c.timestamp ? new Date(c.timestamp).toLocaleDateString() : '—'}</td>
+        <td style="font-size:13px;color:var(--muted)">${c.timestamp ? new Date(c.timestamp).toLocaleDateString(_uiLocale()) : '—'}</td>
         <td class="tbl-actions">${rejected ? `
           <button class="tbl-btn" onclick="memqDecide('${c.id}','approve')">${t('admin.memq_approve')}</button>`
           : `
@@ -4460,7 +4460,7 @@ async function _fetchAudit(){
   if(!d.rows.length){ tbody.innerHTML=`<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">${t('admin.audit_none')}</td></tr>`; return; }
   tbody.innerHTML = d.rows.map(r=>`
     <tr>
-      <td style="white-space:nowrap;font-size:13px">${new Date(r.ts).toLocaleString()}</td>
+      <td style="white-space:nowrap;font-size:13px">${new Date(r.ts).toLocaleString(_uiLocale())}</td>
       <td><strong>${esc(r.username)}</strong></td>
       <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)">${esc(r.query_preview||'—')}</td>
       <td><span class="tool-chip">${esc(r.route||'—')}</span></td>
@@ -4480,7 +4480,7 @@ function _setSidebar(collapsed){
   document.getElementById('sidebar').classList.toggle('collapsed', collapsed);
   document.querySelector('main').classList.toggle('nav-collapsed', collapsed);
   const btn = document.querySelector('.nav-toggle');
-  if (btn) btn.title = collapsed ? 'Show menu' : 'Hide menu';
+  if (btn) btn.title = t(collapsed ? 'admin.menu_show' : 'admin.menu_hide');
   try { localStorage.setItem('suni_sidebar', collapsed ? 'collapsed' : 'expanded'); } catch(e){}
 }
 function toggleSidebar(){
