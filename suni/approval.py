@@ -119,6 +119,13 @@ _CONSEQUENTIAL: dict[str, list[str]] = {
     "claude_code":           ["task"],
     # Edits a real project and runs its tests. Also in NEVER_TRUSTED below.
     "code_task":             ["project_dir", "task"],
+    # Both ran ungated until the role matrix showed them without a risk tag
+    # (2026-10-05). claude_schedule_task gives Claude Code bare Bash and
+    # leaves a Windows scheduled task running a command unattended;
+    # claude_init_project gives it a bare Write, which (measured) writes
+    # anywhere, in whatever folder the model names.
+    "claude_schedule_task":  ["task_name", "schedule", "command"],
+    "claude_init_project":   ["directory"],
     # Creates recurring, unattended execution under the user's identity — a
     # heavier commitment than writing a file, which is already gated. The
     # preview shows the cadence and where results are sent.
@@ -522,6 +529,17 @@ def _build_preview(tool_name: str, args: dict) -> str | None:
     if tool_name == "code_task":
         from .tools.code_project import preview as _code_preview
         return cap(_code_preview(args))
+
+    if tool_name == "claude_schedule_task":
+        return cap("Create a Windows scheduled task (runs unattended, via Claude Code with shell access):\n"
+                   f"Name: {args.get('task_name', '')}\n"
+                   f"When: {args.get('schedule', '')}\n"
+                   f"Runs: {args.get('command', '')}\n\n"
+                   f"{args.get('description', '')}")
+
+    if tool_name == "claude_init_project":
+        return cap("Claude Code writes CLAUDE.md (and may write other files) in:\n"
+                   f"{args.get('directory', '')}")
 
     if tool_name in ("claude_task", "claude_code"):
         task = args.get("task", "")
