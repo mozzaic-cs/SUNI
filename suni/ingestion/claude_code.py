@@ -184,7 +184,11 @@ async def ingest_all(memory_manager, force: bool = False) -> dict:
     state = {} if force else _load_state()
     sessions = find_new_or_updated(state) if not force else discover_sessions()
 
-    stats = {"sessions": 0, "chunks": 0, "skipped": 0}
+    # "chunks" counts what was actually NEW. It used to count every chunk of
+    # every re-read session, so a growing session logged "+67 memories" each
+    # minute while the store, which drops exact duplicates, did not grow.
+    stats = {"sessions": 0, "chunks": 0, "skipped": 0, "known": 0}
+    knows = getattr(memory_manager, "knows", None)
 
     for session in sessions:
         messages = extract_messages(session["path"])
@@ -197,15 +201,18 @@ async def ingest_all(memory_manager, force: bool = False) -> dict:
         )
 
         for chunk in chunks:
+            if knows is not None and knows(chunk["content"]):
+                stats["known"] += 1
+                continue
             await memory_manager.add(
                 chunk["content"],
                 memory_type="conversation",
                 metadata={"project": chunk["project"], "session": chunk["session"]},
             )
+            stats["chunks"] += 1
 
         state[session["path"]] = session["mtime"]
         stats["sessions"] += 1
-        stats["chunks"] += len(chunks)
 
     _save_state(state)
     return stats

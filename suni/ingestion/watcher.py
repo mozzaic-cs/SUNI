@@ -36,8 +36,10 @@ async def watch(memory_manager, stop_event: asyncio.Event, resolve=None) -> None
                 target = resolve() if resolve is not None else memory_manager
                 stats = await ingest_all(target)
                 console.print(
-                    f"[dim]Watcher: +{stats['chunks']} memories from "
-                    f"{stats['sessions']} session(s)[/dim]"
+                    f"[dim]Watcher: +{stats['chunks']} new memories from "
+                    f"{stats['sessions']} session(s)"
+                    + (f" ({stats['known']} already stored)" if stats.get("known") else "")
+                    + "[/dim]"
                 )
         except Exception as e:
             console.print(f"[dim yellow]Watcher error: {e}[/dim yellow]")

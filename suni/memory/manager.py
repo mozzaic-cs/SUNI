@@ -185,12 +185,23 @@ class MemoryManager:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, lambda: _get_model_384().encode(text).tolist())
 
+    def knows(self, content: str) -> bool:
+        """True when exactly this content is already stored."""
+        return bool(hasattr(self.store, "existing_id") and self.store.existing_id(content))
+
     async def add(
         self,
         content: str,
         memory_type: str | None = None,
         metadata: dict | None = None,
     ) -> str:
+        # Already stored: return its id before paying for an embedding. The
+        # session watcher re-reads a growing session every minute, and every
+        # chunk it had already stored used to be embedded again (on the same
+        # model server as the chat) only to be dropped as a duplicate.
+        known = self.store.existing_id(content) if hasattr(self.store, "existing_id") else None
+        if known:
+            return known
         mtype = memory_type or _detect_type(content)
         embedding = await self._embed(content)
         if not self._embed_write_ok(embedding):

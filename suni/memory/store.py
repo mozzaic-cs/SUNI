@@ -95,6 +95,13 @@ class MemoryStore:
     # Public API
     # ──────────────────────────────────────────────────────────────────
 
+    def existing_id(self, content: str) -> str | None:
+        """The id of an entry holding exactly this content, or None. Lets a
+        caller skip the embedding for something already stored: the dedup in
+        add() only runs AFTER the embedding has been paid for."""
+        with self._lock:
+            return self._content_ids.get(content)
+
     def add(
         self,
         content: str,
