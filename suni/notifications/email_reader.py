@@ -256,6 +256,17 @@ def _send_notification(emails: list[dict], notify_to: str, smtp_user: str) -> No
         console.print(f"  [yellow]email watcher: notification send failed: {e}[/yellow]")
 
 
+# What the watcher is doing, for the dashboard. The Inbox card used to be
+# hard-coded ("Active", a placeholder address, "Auto-reply: Disabled" for a
+# feature that does not exist) and said Active while this function had
+# returned at start-up because no IMAP host was set.
+_STATUS: dict = {"state": "not_started"}
+
+
+def status() -> dict:
+    return dict(_STATUS)
+
+
 async def watch(stop_event: asyncio.Event) -> None:
     """
     Background coroutine — polls INBOX every poll_interval() seconds.
@@ -269,6 +280,7 @@ async def watch(stop_event: asyncio.Event) -> None:
 
     if not (user and password and notify_to):
         console.print("  [yellow]email watcher: SMTP not configured (admin panel or .env), not starting[/yellow]")
+        _STATUS.clear(); _STATUS.update(state="not_configured", missing="smtp")
         return
 
     # Reading the inbox needs an IMAP host, which is separate from the SMTP
@@ -279,9 +291,11 @@ async def watch(stop_event: asyncio.Event) -> None:
     if not imap_host():
         console.print("  [yellow]email watcher: no IMAP host set "
                       "(imap_host / SUNI_IMAP_HOST), not starting[/yellow]")
+        _STATUS.clear(); _STATUS.update(state="not_configured", missing="imap", account=user)
         return
 
     console.print(f"  [dim]Inbox watcher started (polling every {poll_interval()}s)[/dim]")
+    _STATUS.clear(); _STATUS.update(state="running", account=user, poll_s=poll_interval())
 
     loop = asyncio.get_event_loop()
     while not stop_event.is_set():
@@ -289,6 +303,8 @@ async def watch(stop_event: asyncio.Event) -> None:
             new_emails = await loop.run_in_executor(
                 None, _check_inbox_sync, user, password
             )
+            from datetime import datetime as _dt, timezone as _tz
+            _STATUS.update(last_check=_dt.now(_tz.utc).isoformat(), last_error=None)
             if new_emails:
                 count = len(new_emails)
                 console.print(
@@ -298,6 +314,7 @@ async def watch(stop_event: asyncio.Event) -> None:
                     None, _send_notification, new_emails, notify_to, user
                 )
         except Exception as e:
+            _STATUS.update(last_error=str(e)[:200])
             console.print(f"  [yellow]email watcher error: {e}[/yellow]")
 
         try:

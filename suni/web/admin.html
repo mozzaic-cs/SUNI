@@ -646,13 +646,57 @@ tbody:not(.is-open) .rm-row{display:none}
 input,textarea{caret-color:var(--cyan)}
 ::selection{background:rgba(201,162,39,.38);color:#fff}
 *{scrollbar-color:rgba(201,162,39,.35) transparent}
+
+/* ══ CRITIQUE 4 ══════════════════════════════════════════════════════════ */
+/* a closed modal is out of the page, not only transparent: hidden from Tab
+   and from screen readers, after its fade-out */
+.modal-overlay{visibility:hidden;transition:opacity .2s,visibility 0s linear .2s}
+.modal-overlay.open{visibility:visible;transition:opacity .2s,visibility 0s}
+/* Perfis: a changed cell shows it, so "N changes" can be traced */
+.rm-cell.rm-changed{box-shadow:inset 0 0 0 1.5px var(--gold);background:rgba(201,162,39,.12)}
+.rm-locked{display:block;font-size:11px;color:var(--muted);margin-top:1px}
+.rm-loading{padding:28px 18px;color:var(--muted);font-size:14px}
+/* "needs approval" is a safety feature, not a danger */
+.rm-tag.risk{color:#f2b46d;border-color:rgba(242,180,109,.45);background:rgba(242,180,109,.08)}
+/* off is a state, not an alarm */
+.badge.off{background:rgba(138,141,158,.1);color:var(--muted);border:1px solid rgba(138,141,158,.28)}
+.badge.warn{background:rgba(242,180,109,.08);color:#f2b46d;border:1px solid rgba(242,180,109,.4)}
+/* the hint's "Mais" lives inside the hint, so it hides with it */
+.field-hint > .hint-more{display:block;margin:4px 0 0}
+/* users: Edit stays, the rest behind one menu */
+.row-menu{position:relative;display:inline-block}
+.row-menu-list{position:absolute;right:0;top:calc(100% + 4px);z-index:60;min-width:220px;padding:4px;
+  background:#0d0d18;border:1px solid var(--border);border-radius:6px;box-shadow:0 12px 30px rgba(0,0,0,.55)}
+.row-menu-list[hidden]{display:none}
+.row-menu-list button{display:block;width:100%;text-align:left;padding:8px 10px;border:0;border-radius:4px;
+  background:none;color:var(--text);font:inherit;font-size:13px;cursor:pointer}
+.row-menu-list button:hover,.row-menu-list button:focus-visible{background:rgba(255,255,255,.06)}
+.row-menu-list button.danger{color:#ff8095}
+.row-menu-list hr{border:0;border-top:1px solid var(--border);margin:4px 2px}
+/* backup: our own file picker, and one column on a phone */
+.file-pick{display:flex;align-items:center;gap:12px;min-width:0}
+.file-pick input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.file-pick-name{color:var(--muted);font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:768px){ .bk-grid{grid-template-columns:1fr!important} }
+/* dashboard: the one question first */
+.att{display:flex;flex-direction:column;gap:6px;margin:0 0 16px;padding:14px 18px;border-radius:var(--radius);
+  border:1px solid var(--border);background:rgba(255,255,255,.02)}
+.att.ok{border-color:rgba(0,227,150,.28);color:var(--text)}
+.att.warn{border-color:rgba(242,180,109,.45);background:rgba(242,180,109,.05)}
+.att-head{font-family:var(--font-display);font-weight:700;font-size:14px;color:#f2b46d}
+.att.ok .att-head{color:var(--green)}
+.att ul{margin:0;padding:0;list-style:none}
+.att li{padding:3px 0;font-size:14px;line-height:1.5}
+.att li a{color:var(--cyan);margin-left:10px;text-underline-offset:3px}
+.tools-fold > summary{cursor:pointer;color:var(--cyan);font-size:13px;padding:2px 0 8px;width:max-content}
+.tools-fold > summary::marker{color:var(--muted)}
 </style>
 </head>
 <body>
 <a class="skip-link" href="#main" data-i18n="admin.skip_to_content">Skip to content</a>
 
 <header>
-  <button class="nav-toggle" onclick="toggleSidebar()" aria-label="Toggle menu" title="Collapse menu" data-i18n-title="admin.menu_hide">☰</button>
+  <button class="nav-toggle" onclick="toggleSidebar()" title="Hide menu" aria-label="Hide menu" aria-expanded="true" aria-controls="sidebar">☰</button>
   <div class="logo">SUNI <span>Control</span></div>
   <div class="header-status">
     <div class="hs-line">
@@ -698,7 +742,7 @@ input,textarea{caret-color:var(--cyan)}
 
 <!-- ════════════════════ DASHBOARD ════════════════════ -->
 <div class="panel active" id="panel-dashboard">
-  <div id="d-backup-warn" class="dash-warn" role="status" hidden></div>
+  <section id="d-att" class="att" role="status" aria-live="polite" hidden></section>
 
   <div class="dash-top">
     <!-- Status -->
@@ -781,7 +825,8 @@ input,textarea{caret-color:var(--cyan)}
     <!-- Tools -->
     <div class="card">
       <div class="card-title"><span data-i18n="admin.dash_tools">Tools</span> <span id="tool-count" style="color:var(--cyan);margin-left:4px"></span></div>
-      <div class="tool-grid" id="tool-list"></div>
+      <details class="tools-fold"><summary id="tool-fold-sum"></summary>
+        <div class="tool-grid" id="tool-list"></div></details>
     </div>
   </div>
 
@@ -797,12 +842,8 @@ input,textarea{caret-color:var(--cyan)}
     <!-- Inbox -->
     <div class="card">
       <div class="card-title" data-i18n="admin.dash_inbox">Inbox Monitor</div>
-      <div class="kv-grid">
-        <div class="kv"><div class="kv-k" data-i18n="admin.sp_account">Account</div><div class="kv-v">noreply@example.com</div></div>
-        <div class="kv"><div class="kv-k" data-i18n="admin.dash_poll">Poll interval</div><div class="kv-v" id="d-poll">—</div></div>
-        <div class="kv"><div class="kv-k" data-i18n="common.status">Status</div><div class="kv-v"><span class="badge ok" data-i18n="admin.dash_active">Active</span></div></div>
-        <div class="kv"><div class="kv-k" data-i18n="admin.dash_auto_reply">Auto-reply</div><div class="kv-v"><span class="badge err" data-i18n="admin.dash_disabled">Disabled</span></div></div>
-      </div>
+      <!-- filled from the watcher's real state (it used to be hard-coded) -->
+      <div class="kv-grid" id="d-inbox"><div class="kv"><div class="kv-v">—</div></div></div>
     </div>
   </div>
 
@@ -1873,7 +1914,7 @@ input,textarea{caret-color:var(--cyan)}
 
 <!-- ════════════════════ BACKUP ════════════════════ -->
 <div class="panel" id="panel-backup">
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+  <div class="bk-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
 
     <!-- Create backup -->
     <div class="card">
@@ -1905,14 +1946,16 @@ input,textarea{caret-color:var(--cyan)}
       <div class="card-title" data-i18n="admin.backup_restore_ttl">Restore from backup</div>
       <div class="field" style="margin-bottom:16px">
         <label data-i18n="admin.backup_select">Select backup ZIP file</label>
-        <input type="file" id="restore-file" accept=".zip"
-          style="background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);
-                 padding:8px 11px;border-radius:4px;font-family:var(--font-ui);font-size:13px;width:100%">
+        <div class="file-pick">
+          <input type="file" id="restore-file" accept=".zip" onchange="restorePicked()">
+          <label for="restore-file" class="btn btn-secondary" data-i18n="admin.backup_choose">Choose a backup file</label>
+          <span class="file-pick-name" id="restore-file-name" data-i18n="admin.backup_none_chosen">No file chosen</span>
+        </div>
       </div>
       <div class="field-hint" style="margin-bottom:14px" data-i18n-html="admin.backup_warning">
         Nothing changes until SUNI restarts.
       </div>
-      <button class="btn btn-secondary" onclick="restoreBackup()" data-i18n="admin.backup_restore_btn" style="width:100%">Restore</button>
+      <button class="btn btn-secondary" id="restore-btn" onclick="restoreBackup()" data-i18n="admin.backup_restore_btn" style="width:100%" disabled>Restore</button>
       <div id="restore-msg" style="margin-top:10px;font-size:13px;display:none"></div>
       <div id="restore-state" style="margin-top:12px;font-size:13px;line-height:1.5" hidden></div>
     </div>
@@ -2066,7 +2109,36 @@ function logout(){
 // ═══════════════════════════════════════════
 //  TAB SWITCHER
 // ═══════════════════════════════════════════
+// Perfis and Configuração keep their edits on the page until saved. Moving to
+// another section used to throw them away without a word (beforeunload only
+// covers closing the tab), so leaving asks first.
+function _pendingChanges(panel) {
+  if (panel === 'roles') return rolesDirtyCount();
+  if (panel === 'config') return cfgDirtyCount();
+  return 0;
+}
 function switchTab(name, btn) {
+  const cur = (document.querySelector('.panel.active')?.id || '').replace('panel-', '');
+  const n = cur && cur !== name ? _pendingChanges(cur) : 0;
+  if (n) {
+    uiConfirm({
+      title: t('admin.leave_title'),
+      body: n === 1 ? t('admin.leave_body_one') : t('admin.leave_body_many', {n}),
+      okLabel: t('admin.leave_go'), cancelLabel: t('admin.leave_stay'),
+    }).then(go => {
+      if (go) {
+        if (cur === 'roles' && _rolesBase) { _rolesData = JSON.parse(JSON.stringify(_rolesBase)); rolesDirtyUpdate(); }
+        if (cur === 'config') loadConfig();   // the form goes back to what is saved
+        _switchTab(name, btn);
+      } else if (location.hash.replace(/^#/, '').split('/')[0] !== cur) {
+        try { history.replaceState(null, '', '#' + cur); } catch (e) {}
+      }
+    });
+    return;
+  }
+  _switchTab(name, btn);
+}
+function _switchTab(name, btn) {
   document.querySelectorAll('.tab').forEach(tab => { tab.classList.remove('active'); tab.removeAttribute('aria-current'); });
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   btn.classList.add('active');
@@ -2436,9 +2508,73 @@ function renderDashboard(d) {
   // Knowledge Base (separate endpoint)
   fetchKnowledge();
 
-  // Poll interval
-  const pi = d.config?.email_poll_interval;
-  set('d-poll', pi ? (pi >= 60 ? Math.round(pi/60) + 'm' : pi + 's') : '—');
+  renderInbox(d.inbox || {});
+  _att.dash = [
+    ...(d.mcp_servers || []).filter(s => !s.connected).map(s =>
+      ({text: t('admin.att_mcp_failed', {name: s.name}), go: '#mcp', label: t('admin.att_go_mcp')})),
+    ...((d.inbox || {}).state === 'running' && d.inbox.last_error
+      ? [{text: t('admin.att_inbox'), go: '#config/channels', label: t('admin.att_go_email')}] : []),
+  ];
+  renderAttention();
+}
+
+// The inbox card reports the watcher's real state. It used to be hard-coded:
+// "Active" while the watcher had not started for want of an IMAP host.
+function renderInbox(ib) {
+  const box = el('d-inbox'); if (!box) return;
+  const kv = (k, v) => `<div class="kv"><div class="kv-k">${esc(k)}</div><div class="kv-v">${v}</div></div>`;
+  if (ib.state === 'running') {
+    const pi = ib.poll_s;
+    box.innerHTML = kv(t('common.status'), `<span class="badge ok">${esc(t('admin.inbox_running'))}</span>`)
+      + kv(t('admin.sp_account'), esc(ib.account || '—'))
+      + kv(t('admin.dash_poll'), pi ? (pi >= 60 ? Math.round(pi / 60) + ' min' : pi + ' s') : '—')
+      + kv(t('admin.inbox_last_check'), ib.last_check ? esc(fmtTime(ib.last_check)) : '—')
+      + (ib.last_error ? kv(t('admin.inbox_last_error'), `<span class="badge warn">${esc(ib.last_error)}</span>`) : '');
+  } else if (ib.state === 'not_configured') {
+    box.innerHTML = kv(t('common.status'), `<span class="badge off">${esc(t('admin.inbox_not_configured'))}</span>`)
+      + `<div class="kv" style="grid-column:1/-1"><div class="kv-v" style="font-family:var(--font-ui);white-space:normal">${
+          esc(t(ib.missing === 'imap' ? 'admin.inbox_missing_imap' : 'admin.inbox_missing_smtp'))}
+          <a href="#config/channels" style="color:var(--cyan);margin-left:6px">${esc(t('admin.inbox_setup'))}</a></div></div>`;
+  } else {
+    box.innerHTML = kv(t('common.status'), `<span class="badge off">${esc(t('admin.inbox_not_started'))}</span>`);
+  }
+}
+
+// ── "is anything wrong?": the first thing on the dashboard ──────────────────
+// One line when all is well; otherwise each thing that needs the owner, with
+// where to go. Sources that change slowly are fetched on load and every few
+// minutes; the dashboard's own data updates its part on every refresh.
+const _att = {backup: [], restore: [], memq: [], dash: []};
+function renderAttention() {
+  const box = el('d-att'); if (!box) return;
+  const items = [..._att.backup, ..._att.restore, ..._att.memq, ..._att.dash];
+  box.hidden = false;
+  box.className = 'att ' + (items.length ? 'warn' : 'ok');
+  box.innerHTML = items.length
+    ? `<div class="att-head">${esc(t('admin.att_title'))}</div><ul>${items.map(i =>
+        `<li>${esc(i.text)}${i.go ? `<a href="${i.go}">${esc(i.label)}</a>` : ''}</li>`).join('')}</ul>`
+    : `<div class="att-head">${esc(t('admin.att_ok'))}</div>`;
+}
+async function refreshAttention() {
+  const [list, rs, mq] = await Promise.all([
+    _apiFetch('/api/backup/list').then(r => r.ok ? r.json() : null).catch(() => null),
+    _apiFetch('/api/backup/restore').then(r => r.ok ? r.json() : null).catch(() => null),
+    _apiFetch('/api/memory/candidates?include_rejected=false').then(r => r.ok ? r.json() : null).catch(() => null),
+  ]);
+  if (Array.isArray(list)) {
+    const days = _backupAge(list);
+    _att.backup = days === null ? [{text: t('admin.att_backup_none'), go: '#backup', label: t('admin.att_go_backup')}]
+                : days > 7 ? [{text: t('admin.att_backup_old', {age: _ageText(days)}), go: '#backup', label: t('admin.att_go_backup')}] : [];
+  }
+  if (rs) {
+    _att.restore = rs.pending ? [{text: t('admin.att_restore_pending'), go: '#backup', label: t('admin.att_go_backup')}]
+                 : (rs.last && rs.last.status !== 'applied') ? [{text: t('admin.att_restore_failed'), go: '#backup', label: t('admin.att_go_backup')}] : [];
+  }
+  if (mq && mq.counts) {
+    const n = mq.counts.candidate || 0;
+    _att.memq = n ? [{text: n === 1 ? t('admin.att_memq_one') : t('admin.att_memq', {n}), go: '#memory', label: t('admin.att_go_memory')}] : [];
+  }
+  renderAttention();
 }
 
 function renderGPU(gpus) {
@@ -2487,6 +2623,7 @@ function renderTools(tools) {
   const recent = tools.recent || [];
   const mcpPrefixes = tools.mcp_prefixes || [];
   el('tool-count').textContent = '(' + all.length + ')';
+  const sum = el('tool-fold-sum'); if (sum) sum.textContent = t('admin.dash_tools_show', {n: all.length});
   const list = el('tool-list');
   list.innerHTML = all.map(name => {
     const isMcp = mcpPrefixes.some(p => name.startsWith(p + '_'));
@@ -2505,7 +2642,7 @@ function renderMCP(servers) {
   wrap.innerHTML = servers.map(s => `
     <div class="mcp-row">
       <span class="mcp-name">${esc(s.name)}</span>
-      <span class="badge ${s.connected ? 'ok' : 'err'}">${s.connected ? t('admin.mcp_connected') : t('admin.mcp_failed')}</span>
+      <span class="badge ${s.connected ? 'ok' : 'err'}" ${s.error ? `title="${esc(s.error)}"` : ''}>${s.connected ? t('admin.mcp_connected') : t('admin.mcp_failed')}</span>
     </div>`).join('');
 }
 
@@ -3106,6 +3243,7 @@ const _chartDefaults = {
 
 function _makeChart(id, color, yMax) {
   const opts = JSON.parse(JSON.stringify(_chartDefaults));
+  opts.locale = _uiLocale();          // axis numbers: "3 000" in pt, not "3,000"
   if (yMax) opts.scales.y.max = yMax;
   return new Chart(document.getElementById(id), {
     type: 'line',
@@ -3120,7 +3258,7 @@ function _initCharts() {
   if (_chartVram) return;
   _chartVram = _makeChart('chart-vram', 'rgb(0,212,255)', null);
   _chartUtil  = _makeChart('chart-util', 'rgb(201,162,39)', 100);
-  _chartTemp  = _makeChart('chart-temp', 'rgb(255,100,96)', null);
+  _chartTemp  = _makeChart('chart-temp', 'rgb(160,164,184)', null);   // a reading, not an alarm
 }
 
 function _updateCharts(history) {
@@ -3131,7 +3269,7 @@ function _updateCharts(history) {
   const labels = [], vram = [], util = [], temp = [];
   history.forEach(s => {
     const t = new Date(s.ts);
-    labels.push(t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    labels.push(t.toLocaleTimeString(_uiLocale(), { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }));
     const g = (s.gpu || []).find(g => g.mem_total >= 8000) || s.gpu?.[0];
     vram.push(g ? g.mem_used : null);
     util.push(g ? g.util_pct : null);
@@ -3210,17 +3348,22 @@ let _rolesData = {};
 let _allToolNames = [];
 
 async function loadRoles(){
-  [_rolesData] = await Promise.all([
+  // an empty card with only a save bar read as broken while this loaded
+  const c = el('roles-container'), bar = document.querySelector('.rm-savebar');
+  if (!c.querySelector('.rm-table')) c.innerHTML = `<div class="card rm-loading" role="status">${esc(t('admin.roles_loading'))}</div>`;
+  if (bar) bar.hidden = true;
+  let dash, cat;
+  [_rolesData, dash, cat] = await Promise.all([
     _apiFetch('/api/roles').then(r=>r.json()).catch(()=>({})),
+    _apiFetch('/api/dashboard').then(r=>r.json()).catch(()=>({})),
+    _apiFetch('/api/tools/catalog').then(r => r.ok ? r.json() : []).catch(() => []),
   ]);
-  // Get tool names from dashboard
-  const dash = await _apiFetch('/api/dashboard').then(r=>r.json()).catch(()=>({}));
+  if (bar) bar.hidden = false;
   // Native tools only. MCP tools are named <prefix>_<tool>; filtering on any
   // "_" (as this did) dropped run_shell, read_file and nearly every native
   // tool too, so Roles showed an empty tool list for every role.
   const _mcpPre = (dash.tools?.mcp_prefixes || []).map(p => p + '_');
   _allToolNames = (dash.tools?.all || []).filter(t => !_mcpPre.some(p => t.startsWith(p)));
-  const cat = await _apiFetch('/api/tools/catalog').then(r => r.ok ? r.json() : []).catch(() => []);
   _toolInfo = Object.fromEntries((cat || []).map(x => [x.name, x]));
   _rolesBase = JSON.parse(JSON.stringify(_rolesData));
   renderRoles();
@@ -3242,6 +3385,12 @@ const _TOOL_GROUPS = [
   ['people',  /^(contacts_|project_)/],
   ['system',  /^(monitor_|show_network|diagnose_self|look_at_screen|start_meeting|stop_meeting|generate_image|db_|graph_)/],
 ];
+// Role, mode and tool names as people read them; the keys stay in the data.
+const _ROLE_KEYS = {'read-only': 'admin.users_role_readonly', 'standard': 'admin.users_role_standard',
+                    'power-user': 'admin.users_role_power', 'admin': 'admin.users_role_admin'};
+function _roleLabel(r) { return _ROLE_KEYS[r] ? t(_ROLE_KEYS[r]) : r; }
+function _modeLabel(m) { const k = 'admin.mode_name_' + m, v = t(k); return v === k ? m : v; }
+function _toolDesc(name, fallback) { const k = 'tooldesc.' + name, v = t(k); return v === k ? (fallback || '') : v; }
 function _toolGroup(name) {
   const g = _TOOL_GROUPS.find(([, re]) => re.test(name));
   return g ? g[0] : 'other';
@@ -3265,7 +3414,8 @@ function renderRoles(){
   const groupOrder = _TOOL_GROUPS.map(g => g[0]).concat('other').filter(g => groups[g]);
 
   const head = `<tr><th class="rm-tool" scope="col">${t('admin.roles_col_tool')}</th>${_ROLE_ORDER.map(r =>
-    `<th class="rm-role rm-c rm-c-${r}" scope="col"><span class="role-badge ${_ROLE_CSS[r]||''}">${esc(r)}</span></th>`).join('')}</tr>`;
+    `<th class="rm-role rm-c rm-c-${r}" scope="col"><span class="role-badge ${_ROLE_CSS[r]||''}">${esc(_roleLabel(r))}</span></th>`).join('')}</tr>`;
+  const modeHead = head.replace(t('admin.roles_col_tool'), t('admin.roles_col_mode'));
   // searching or filtering opens every group; otherwise they open on request
   const expandAll = !!q || _rolesRiskOnly;
 
@@ -3274,9 +3424,11 @@ function renderRoles(){
     const groupCells = _ROLE_ORDER.map(r => {
       const editable = names.filter(n => !((_toolInfo[n] || {}).never_roles || []).includes(r));
       const on = editable.filter(n => _roleHas(r, n)).length;
+      const locked = names.length - editable.length;
       return `<td class="rm-cell rm-c rm-c-${r}"><input type="checkbox" class="rm-group" data-role="${r}" data-group="${g}"
-        aria-label="${esc(t('admin.roles_group_toggle', {group: t('admin.toolgrp_' + g), role: r}))}"
-        ${editable.length && on === editable.length ? 'checked' : ''} data-mixed="${on > 0 && on < editable.length ? 1 : 0}"><span class="rm-gcount">${on}/${editable.length}</span></td>`;
+        aria-label="${esc(t('admin.roles_group_toggle', {group: t('admin.toolgrp_' + g), role: _roleLabel(r)}))}"
+        ${editable.length && on === editable.length ? 'checked' : ''} data-mixed="${on > 0 && on < editable.length ? 1 : 0}"><span class="rm-gcount">${on}/${editable.length}</span>${
+        locked ? `<span class="rm-locked" title="${esc(t('admin.roles_locked_t'))}">${esc(t('admin.roles_locked_n', {n: locked}))}</span>` : ''}</td>`;
     }).join('');
     const rows = names.map(n => {
       const info = _toolInfo[n] || {};
@@ -3287,13 +3439,13 @@ function renderRoles(){
       // as allowed for "standard", which was untrue).
       const cells = _ROLE_ORDER.map(r => (info.never_roles || []).includes(r)
         ? `<td class="rm-cell rm-c rm-c-${r}"><input type="checkbox" disabled title="${esc(t('admin.roles_never'))}"
-             aria-label="${esc(n)} — ${esc(r)}: ${esc(t('admin.roles_never'))}"></td>`
+             aria-label="${esc(n)}, ${esc(_roleLabel(r))}: ${esc(t('admin.roles_never'))}"></td>`
         : `<td class="rm-cell rm-c rm-c-${r}"><input type="checkbox" data-role="${r}" data-tool="${esc(n)}" ${_roleHas(r, n) ? 'checked' : ''}
-          aria-label="${esc(n)} — ${esc(r)}" onchange="roleToolChanged('${r}','${esc(n)}',this.checked);_rolesSyncGroups()"></td>`).join('');
+          aria-label="${esc(n)}, ${esc(_roleLabel(r))}" onchange="roleToolChanged('${r}','${esc(n)}',this.checked);_rolesSyncGroups()"></td>`).join('');
       const never = (info.never_roles || []).length
-        ? `<div class="rm-never">${esc(t('admin.roles_never_note', {roles: info.never_roles.join(', ')}))}</div>` : '';
+        ? `<div class="rm-never">${esc(t('admin.roles_never_note', {roles: info.never_roles.map(_roleLabel).join(', ')}))}</div>` : '';
       return `<tr class="rm-row"><th class="rm-tool" scope="row"><div class="rm-name">${esc(n)}${tag}</div>${
-        info.description ? `<div class="rm-desc">${esc(info.description)}</div>` : ''}${never}</th>${cells}</tr>`;
+        _toolDesc(n, info.description) ? `<div class="rm-desc">${esc(_toolDesc(n, info.description))}</div>` : ''}${never}</th>${cells}</tr>`;
     }).join('');
     const open = expandAll || _rolesOpen.has(g);
     return `<tbody class="${open ? 'is-open' : ''}" data-group="${g}"><tr class="rm-grouprow"><th class="rm-tool" scope="rowgroup">
@@ -3301,16 +3453,16 @@ function renderRoles(){
       ${t('admin.toolgrp_' + g)}<span class="rm-count">${names.length}</span></button></th>${groupCells}</tr>${rows}</tbody>`;
   }).join('');
 
-  const modeRows = MODES.map(m => `<tr><th class="rm-tool" scope="row"><div class="rm-name">${esc(m)}</div></th>${_ROLE_ORDER.map(r => {
+  const modeRows = MODES.map(m => `<tr><th class="rm-tool" scope="row"><div class="rm-name">${esc(_modeLabel(m))}</div></th>${_ROLE_ORDER.map(r => {
       const modes = (_rolesData[r] || {}).modes || ['assistant'];
       return `<td class="rm-cell rm-c rm-c-${r}"><input type="checkbox" data-role="${r}" data-mode="${m}" ${modes.includes(m) ? 'checked' : ''}
-        aria-label="${esc(m)} — ${esc(r)}" onchange="roleModeChanged('${r}','${m}',this.checked)"></td>`;
+        aria-label="${esc(_modeLabel(m))}, ${esc(_roleLabel(r))}" onchange="roleModeChanged('${r}','${m}',this.checked)"></td>`;
     }).join('')}</tr>`).join('');
   const defRow = `<tr><th class="rm-tool" scope="row"><div class="rm-name">${t('admin.roles_default_mode')}</div></th>${_ROLE_ORDER.map(r => {
       const d = (_rolesData[r] || {}).default_mode || 'assistant';
-      return `<td class="rm-cell rm-c rm-c-${r}"><select class="bm-sel" aria-label="${esc(t('admin.roles_default_mode'))} — ${esc(r)}"
+      return `<td class="rm-cell rm-c rm-c-${r}"><select class="bm-sel" aria-label="${esc(t('admin.roles_default_mode'))}, ${esc(_roleLabel(r))}"
         onchange="roleKeyChanged('${r}','default_mode',this.value)">${MODES.map(m =>
-        `<option value="${m}" ${d === m ? 'selected' : ''}>${m}</option>`).join('')}</select></td>`;
+        `<option value="${m}" ${d === m ? 'selected' : ''}>${esc(_modeLabel(m))}</option>`).join('')}</select></td>`;
     }).join('')}</tr>`;
 
   c.innerHTML = `
@@ -3324,7 +3476,7 @@ function renderRoles(){
           &nbsp; <span class="rm-tag every">${t('admin.roles_tag_every')}</span> ${t('admin.roles_tag_every_hint')}</span>
       </div>
       <label class="rm-showrole">${t('admin.roles_show_role')}
-        <select id="roles-show" class="bm-sel">${_ROLE_ORDER.map(r => `<option value="${r}" ${r === _rolesShow ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select></label>
+        <select id="roles-show" class="bm-sel">${_ROLE_ORDER.map(r => `<option value="${r}" ${r === _rolesShow ? 'selected' : ''}>${esc(_roleLabel(r))}</option>`).join('')}</select></label>
       <div class="rm-wrap"><table class="rm-table" data-show="${_rolesShow}">
         <caption class="rm-cap">${t('admin.roles_tool_access')}</caption>
         <thead>${head}</thead>${body || `<tbody><tr><td colspan="5" class="rm-empty">${t('admin.roles_no_match')}</td></tr></tbody>`}
@@ -3332,7 +3484,7 @@ function renderRoles(){
     </div>
     <div class="card rm-card">
       <div class="card-title">${t('admin.roles_allowed_modes')}</div>
-      <div class="rm-wrap"><table class="rm-table" data-show="${_rolesShow}"><thead>${head}</thead><tbody>${modeRows}${defRow}</tbody></table></div>
+      <div class="rm-wrap"><table class="rm-table" data-show="${_rolesShow}"><thead>${modeHead}</thead><tbody>${modeRows}${defRow}</tbody></table></div>
     </div>`;
 
   const f = el('roles-filter');
@@ -3344,6 +3496,7 @@ function renderRoles(){
     tb.classList.toggle('is-open', open); b.setAttribute('aria-expanded', open);
     if (open) _rolesOpen.add(g); else _rolesOpen.delete(g);
   });
+  rolesDirtyUpdate();
   c.querySelectorAll('.rm-group').forEach(cb => {
     cb.indeterminate = cb.dataset.mixed === '1';
     cb.onchange = () => {
@@ -3420,6 +3573,17 @@ function rolesDirtyCount(){
 function rolesDirtyUpdate(){
   const n = rolesDirtyCount(), out = el('roles-dirty');
   if (out) out.textContent = n ? (n === 1 ? t('admin.cfg_dirty_one') : t('admin.cfg_dirty_many').replace('{n}', n)) : '';
+  // mark each changed cell, so the count can be traced to what changed
+  if (!_rolesBase) return;
+  const has = (cfg, tool) => (cfg.allowed == null ? !(cfg.blocked || []).includes(tool) : (cfg.allowed || []).includes(tool));
+  document.querySelectorAll('#roles-container input[data-role][data-tool]').forEach(b => {
+    const base = has(_rolesBase[b.dataset.role] || {}, b.dataset.tool);
+    b.closest('td')?.classList.toggle('rm-changed', b.checked !== base);
+  });
+  document.querySelectorAll('#roles-container input[data-role][data-mode]').forEach(b => {
+    const base = ((_rolesBase[b.dataset.role] || {}).modes || ['assistant']).includes(b.dataset.mode);
+    b.closest('td')?.classList.toggle('rm-changed', b.checked !== base);
+  });
 }
 
 // ═══════════════════════════════════════════
@@ -4189,6 +4353,11 @@ async function deleteBackup(filename){
   else uiAlert(t('admin.delete_failed_http', {s: r.status}), {error: true});
 }
 
+function restorePicked(){
+  const f = el('restore-file').files[0];
+  el('restore-file-name').textContent = f ? f.name : t('admin.backup_none_chosen');
+  el('restore-btn').disabled = !f;
+}
 async function restoreBackup(){
   const file = el('restore-file').files[0];
   const msg  = el('restore-msg');
@@ -4215,8 +4384,8 @@ async function restoreBackup(){
       return;
     }
     msg.style.display='none';
-    el('restore-file').value='';
-    loadRestoreState();
+    el('restore-file').value=''; restorePicked();
+    loadRestoreState(); refreshAttention();
   } catch(e){ msg.style.color='var(--red)'; msg.textContent=e.message; }
 }
 
@@ -4298,6 +4467,48 @@ async function fetchLogs() {
 // ═══════════════════════════════════════════
 const _ROLE_CSS = {'admin':'role-admin','power-user':'role-power','standard':'role-standard','read-only':'role-readonly'};
 
+// row menus: one open at a time; outside click or Escape closes; arrows move
+// While open, the list is moved to <body> and placed against the window: inside
+// the table card it was clipped (the card hides overflow, and a transformed
+// ancestor makes even position:fixed relative to it), and focusing its first
+// item scrolled the row out of view. On close it goes back beside its button.
+function _closeRowMenus(refocus) {
+  document.querySelectorAll('.row-menu-list:not([hidden])').forEach(m => {
+    m.hidden = true;
+    const b = m._btn;
+    if (b) {
+      b.setAttribute('aria-expanded', 'false');
+      b.after(m);
+      if (refocus) b.focus();
+    }
+  });
+}
+function _toggleRowMenu(btn) {
+  const list = btn._list || btn.nextElementSibling;
+  btn._list = list; list._btn = btn;
+  const open = list.hidden;
+  _closeRowMenus();
+  if (!open) return;
+  document.body.appendChild(list);
+  list.hidden = false; btn.setAttribute('aria-expanded', 'true');
+  const r = btn.getBoundingClientRect();
+  list.style.position = 'fixed';
+  list.style.top = Math.max(8, Math.min(r.bottom + 4, innerHeight - list.offsetHeight - 8)) + 'px';
+  list.style.left = Math.max(8, r.right - list.offsetWidth) + 'px';
+  list.style.right = 'auto';
+  const items = [...list.querySelectorAll('button')];
+  items[0]?.focus({preventScroll: true});
+  list.onkeydown = e => {
+    const i = items.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length].focus(); }
+    if (e.key === 'ArrowUp')   { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+    if (e.key === 'Tab') { e.preventDefault(); _closeRowMenus(true); }
+  };
+}
+document.addEventListener('click', e => { if (!e.target.closest('.row-menu, .row-menu-list')) _closeRowMenus(); });
+// a fixed menu would float away from its row when the page scrolls
+document.querySelector('main')?.addEventListener('scroll', () => _closeRowMenus(), {passive: true});
+window.addEventListener('resize', () => _closeRowMenus());
 async function loadUsers(){
   const rows = await _apiFetch('/api/users').then(r=>r.json()).catch(()=>[]);
   el('user-count').textContent = '(' + rows.length + ')';
@@ -4306,17 +4517,22 @@ async function loadUsers(){
   tbody.innerHTML = rows.map(u=>`
     <tr>
       <td><strong>${esc(u.username)}</strong></td>
-      <td><span class="role-badge ${_ROLE_CSS[u.role]||''}">${esc(u.role)}</span></td>
+      <td><span class="role-badge ${_ROLE_CSS[u.role]||''}">${esc(_roleLabel(u.role))}</span></td>
       <td><span class="status-dot ${u.active?'on':'off'}"></span>${u.active?t('admin.dash_active'):t('admin.dash_disabled')}</td>
       <td>${u.last_login ? new Date(u.last_login).toLocaleDateString(_uiLocale()) : '—'}</td>
       <td>${new Date(u.created_at).toLocaleDateString(_uiLocale())}</td>
       <td class="tbl-actions">
         <button class="tbl-btn" onclick="openEditUser(${JSON.stringify(u).replace(/"/g,'&quot;')})">${t('common.edit')}</button>
-        <button class="tbl-btn" onclick="resetPassword('${u.id}','${esc(u.username)}')">${t('admin.users_reset_pw')}</button>
-        <button class="tbl-btn" onclick="exportUser('${u.id}','${esc(u.username)}')">${t('admin.users_export')}</button>
-        ${u.id === window._meId ? `<span class="tbl-self" title="${t('admin.users_self_hint')}">${t('admin.users_self')}</span>` : `
-        <button class="tbl-btn danger" onclick="deleteUser('${u.id}','${esc(u.username)}')">${t('admin.users_remove')}</button>
-        <button class="tbl-btn danger" onclick="eraseUser('${u.id}','${esc(u.username)}')">${t('admin.users_erase')}</button>`}
+        <span class="row-menu"><button class="tbl-btn" type="button" aria-haspopup="true" aria-expanded="false"
+          aria-label="${esc(t('admin.users_more', {user: u.username}))}" onclick="_toggleRowMenu(this)">⋯</button>
+          <span class="row-menu-list" role="menu" hidden>
+            <button role="menuitem" type="button" onclick="_closeRowMenus();resetPassword('${u.id}','${esc(u.username)}')">${t('admin.users_reset_pw')}</button>
+            <button role="menuitem" type="button" onclick="_closeRowMenus();exportUser('${u.id}','${esc(u.username)}')">${t('admin.users_export')}</button>
+            ${u.id === window._meId ? '' : `<hr>
+            <button role="menuitem" type="button" class="danger" onclick="_closeRowMenus();deleteUser('${u.id}','${esc(u.username)}')">${t('admin.users_remove')}</button>
+            <button role="menuitem" type="button" class="danger" onclick="_closeRowMenus();eraseUser('${u.id}','${esc(u.username)}')">${t('admin.users_erase')}</button>`}
+          </span></span>
+        ${u.id === window._meId ? `<span class="tbl-self" title="${t('admin.users_self_hint')}">${t('admin.users_self')}</span>` : ''}
       </td>
     </tr>`).join('');
   // Populate audit user filter
@@ -4661,9 +4877,15 @@ function _setSidebar(collapsed){
   const scrim = document.getElementById('nav-scrim');
   if (scrim) scrim.hidden = collapsed || !_isPhone();
   document.querySelector('main').classList.toggle('nav-collapsed', collapsed);
-  const btn = document.querySelector('.nav-toggle');
-  if (btn) btn.title = t(collapsed ? 'admin.menu_show' : 'admin.menu_hide');
+  _syncNavToggle();
   try { localStorage.setItem('suni_sidebar', collapsed ? 'collapsed' : 'expanded'); } catch(e){}
+}
+function _syncNavToggle() {
+  const btn = document.querySelector('.nav-toggle'); if (!btn) return;
+  const collapsed = document.getElementById('sidebar').classList.contains('collapsed');
+  const label = t(collapsed ? 'admin.menu_show' : 'admin.menu_hide');
+  btn.title = label; btn.setAttribute('aria-label', label);
+  btn.setAttribute('aria-expanded', String(!collapsed));
 }
 function toggleSidebar(){
   _setSidebar(!document.getElementById('sidebar').classList.contains('collapsed'));
@@ -4684,6 +4906,7 @@ _checkAuth().then(()=>{
   a11yPass();
   routeFromHash();
   checkBackupAge();
+  setInterval(refreshAttention, 180000);
   fetchDashboard();
   fetchMetrics();
   // Once, on load. NOT on an interval like the two above: /api/update/status
@@ -4733,14 +4956,19 @@ function _hintSplit(h) {
   rest.querySelectorAll('*').forEach(e => { if (!e.textContent.trim() && !e.children.length) e.remove(); });
   const span = document.createElement('span');
   span.className = 'hint-rest';
+  span.id = 'hr' + (++_a11yId);
   span.appendChild(rest);
   h.appendChild(span);
   return true;
 }
 function clampHints(root) {
   (root || document).querySelectorAll('.field-hint').forEach(h => {
-    let btn = h.nextElementSibling && h.nextElementSibling.classList.contains('hint-more')
-              ? h.nextElementSibling : null;
+    // the button sits INSIDE the hint: hidden with it (a hidden warning used to
+    // leave an orphan "Mais"), and wiped with it when translation replaces the
+    // text, after which this splits the new text and adds a new one
+    let btn = h.querySelector(':scope > .hint-more');
+    const stray = h.nextElementSibling;
+    if (stray && stray.classList.contains('hint-more')) stray.remove();
     if (!h.querySelector(':scope > .hint-rest') && !_hintSplit(h)) {
       h.classList.remove('open'); if (btn) btn.remove(); return;
     }
@@ -4749,6 +4977,8 @@ function clampHints(root) {
     if (!btn) {
       btn = document.createElement('button');
       btn.type = 'button'; btn.className = 'hint-more';
+      const rest = h.querySelector(':scope > .hint-rest');
+      if (rest) btn.setAttribute('aria-controls', rest.id);
       btn.onclick = () => {
         const o = h.dataset.expanded !== '1';
         h.dataset.expanded = o ? '1' : '';
@@ -4756,10 +4986,20 @@ function clampHints(root) {
         btn.setAttribute('aria-expanded', o ? 'true' : 'false');
         btn.textContent = t(o ? 'admin.hint_less' : 'admin.hint_more');
       };
-      h.after(btn);
+      h.appendChild(btn);
     }
-    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    btn.textContent = t(open ? 'admin.hint_less' : 'admin.hint_more');
+    // Write only what changed. The button lives inside the hint, and the hint
+    // observer re-runs this on any change inside a hint: rewriting the same
+    // text every pass was a change, which re-ran it, forever (page froze).
+    const want = t(open ? 'admin.hint_less' : 'admin.hint_more');
+    // what it opens, from the hint's current text (some hints are translated
+    // piece by piece, so the button is not rebuilt on a language switch)
+    const lead = [...h.childNodes].filter(n => n !== btn && !(n.classList && n.classList.contains('hint-rest')))
+      .map(n => n.textContent).join('').trim().split(/\s+/).slice(0, 6).join(' ');
+    const label = t('admin.hint_more_of', {start: lead});
+    if (btn.getAttribute('aria-label') !== label) btn.setAttribute('aria-label', label);
+    if (btn.getAttribute('aria-expanded') !== String(open)) btn.setAttribute('aria-expanded', String(open));
+    if (btn.textContent !== want) btn.textContent = want;
   });
 }
 // a hint whose text changes (language switch, re-render) is measured again
@@ -4960,6 +5200,7 @@ function _renderBackupAge(list) {
                   : t('admin.backup_age', {age: _ageText(days)}) + (days > 7 ? ' ' + t('admin.backup_age_old') : '');
 }
 async function checkBackupAge() {
+  return refreshAttention();      // folded into the dashboard's attention line
   const box = el('d-backup-warn'); if (!box) return;
   const list = await _apiFetch('/api/backup/list').then(r => r.ok ? r.json() : null).catch(() => null);
   if (!Array.isArray(list)) return;
@@ -5010,19 +5251,50 @@ function a11yPass(root) {
   });
   document.querySelectorAll('.modal-overlay > .modal:not([role])').forEach(m => {
     m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true');
-    const h = m.querySelector('h3, .modal-title span, .modal-title');
+    // the title, in that order of preference: never the block holding the ✕
+    const h = m.querySelector('h3') || m.querySelector('.modal-title span') || m.querySelector('.modal-title');
     if (h) { if (!h.id) h.id = 'mt' + (++_a11yId); m.setAttribute('aria-labelledby', h.id); }
   });
+  document.querySelectorAll('.modal-overlay:not([data-watched])').forEach(ov => {
+    ov.dataset.watched = '1';
+    _syncModal(ov);
+    new MutationObserver(() => _syncModal(ov)).observe(ov, {attributes: true, attributeFilter: ['class']});
+  });
+  _syncNavToggle();
   document.querySelectorAll('.card-title').forEach(c => {
     const txt = (c.firstChild && c.firstChild.textContent || c.textContent || '').trim();
     c.classList.toggle('is-long', txt.length > 26);
   });
 }
-// Escape closes the topmost of the older modals, as it does the new dialogs
+// A closed modal is inert: CSS hides it from Tab and screen readers after the
+// fade; this also blocks interaction during the fade, moves focus into it on
+// open, and returns focus to whatever opened it on close.
+function _syncModal(ov) {
+  const open = ov.classList.contains('open');
+  if (open === ov._wasOpen) return;
+  ov._wasOpen = open;
+  ov.inert = !open;
+  if (open) {
+    ov._ret = document.activeElement;
+    requestAnimationFrame(() => {
+      const f = ov.querySelector('input:not([type=hidden]):not([disabled]), select, textarea, button:not(.modal-close)');
+      if (f) f.focus();
+    });
+  } else if (ov._ret && document.contains(ov._ret)) {
+    ov._ret.focus();
+  }
+}
+// Escape closes, in this order: an open row menu, the topmost older modal,
+// the phone drawer.
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape' || document.querySelector('.ui-dialog')) return;
+  const menu = document.querySelector('.row-menu-list:not([hidden])');
+  if (menu) { e.preventDefault(); _closeRowMenus(true); return; }
   const open = [...document.querySelectorAll('.modal-overlay.open')].pop();
-  if (open && open.id) { e.preventDefault(); closeModal(open.id); }
+  if (open && open.id) { e.preventDefault(); closeModal(open.id); return; }
+  if (_isPhone() && !document.getElementById('sidebar').classList.contains('collapsed')) {
+    e.preventDefault(); _setSidebar(true); document.querySelector('.nav-toggle')?.focus();
+  }
 });
 let _a11yT = null;
 new MutationObserver(() => { clearTimeout(_a11yT); _a11yT = setTimeout(() => { a11yPass(); labelTableCells(); }, 120); })

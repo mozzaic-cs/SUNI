@@ -91,6 +91,9 @@ class MCPBridge:
     def __init__(self, registry):
         self.registry = registry
         self._connections: dict[str, _Connection] = {}
+        # name -> why it did not connect. Without this a failed server simply
+        # vanished from the dashboard, which listed only the connected ones.
+        self.failed: dict[str, str] = {}
         self.tool_count = 0
 
     def _load_all_servers(self) -> dict[str, tuple[dict, str]]:
@@ -127,6 +130,7 @@ class MCPBridge:
             return
 
         console.print("  [dim]MCP bridge: connecting to servers...[/dim]")
+        self.failed = {}
         for name, (server_cfg, _source) in servers.items():
             await self._connect_server(name, server_cfg)
 
@@ -143,6 +147,7 @@ class MCPBridge:
 
         if not command:
             console.print(f"  [yellow]  ✗ {name}: no command specified[/yellow]")
+            self.failed[name] = "no command specified"
             return
 
         params = StdioServerParameters(command=command, args=args, env=env or None)
@@ -156,14 +161,17 @@ class MCPBridge:
                 self._register_tool(name, tool, conn)
 
             self._connections[name] = conn
+            self.failed.pop(name, None)
             self.registry.register_mcp_prefix(name)
             console.print(f"  [green]  ✓ {name}[/green] [dim]({len(tools)} tools)[/dim]")
 
         except asyncio.TimeoutError:
             console.print(f"  [yellow]  ✗ {name}: timed out[/yellow]")
+            self.failed[name] = "timed out"
             await conn.close()
         except Exception as e:
             console.print(f"  [yellow]  ✗ {name}: {e}[/yellow]")
+            self.failed[name] = str(e)[:200]
             await conn.close()
 
     def _register_tool(self, server: str, tool, conn: _Connection) -> None:

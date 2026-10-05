@@ -185,6 +185,14 @@ def _set_auth_cookie(response: Response, refresh_token: str) -> None:
         path="/",
     )
 
+def _email_reader_status() -> dict:
+    try:
+        from ..notifications import email_reader as _er
+        return _er.status()
+    except Exception:
+        return {"state": "unknown"}
+
+
 def _check_page_auth(request: "Request", admin_required: bool = False):
     """
     Server-side guard for HTML routes.
@@ -1534,7 +1542,9 @@ def create_app() -> FastAPI:
             if any(name.startswith(p) for p in prefixes):
                 continue
             desc = " ".join(str(sch.get("description", "")).split())
-            first = _re.split(r"(?<=[.!?])\s", desc, maxsplit=1)[0][:180]
+            first = _re.split(r"(?<=[.!?])\s", desc, maxsplit=1)[0]
+            if len(first) > 180:      # at a word, not mid-word ("developm")
+                first = first[:180].rsplit(" ", 1)[0].rstrip(",;:—-") + "…"
             out.append({
                 "name": name,
                 "description": first,
@@ -3983,7 +3993,11 @@ def create_app() -> FastAPI:
             "mcp_servers": [
                 {"name": name, "connected": True}
                 for name in bridge._connections.keys()
+            ] + [
+                {"name": name, "connected": False, "error": why}
+                for name, why in getattr(bridge, "failed", {}).items()
             ],
+            "inbox": _email_reader_status(),
             "activity": list(activity_log),
             "config":   suni_config.all(),
         })
