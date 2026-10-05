@@ -155,8 +155,8 @@ def test_no_secret_value_appears_anywhere_in_the_payload(instance):
     udir = instance / "memory" / "users" / SUBJECT
     (udir / "settings.json").write_text(json.dumps({
         "stt_language": "pt-PT",
-        "anthropic_api_key": "APIKEY-CANARY-9times",  # allowlist-secret: fake credential, a test fixture
-        "smtp_pass": "SMTPPASS-CANARY-9times",  # allowlist-secret: fake credential, a test fixture
+        "anthropic_api_key": "APIKEY-CANARY-9times",  # allowlist-secret=APIKEY-CANARY-9times (fake credential, a test fixture)
+        "smtp_pass": "SMTPPASS-CANARY-9times",  # allowlist-secret=SMTPPASS-CANARY-9times (fake credential, a test fixture)
     }), encoding="utf-8")
 
     blob = subject_access.to_json(subject_access.export(SUBJECT, root=instance))

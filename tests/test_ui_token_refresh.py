@@ -84,7 +84,7 @@ def test_refresh_returns_a_working_access_token(client, test_users):
     """End to end against the real endpoint: the UI fix is worthless if this
     does not actually mint a usable token."""
     r = client.post("/api/auth/login",
-                    data={"username": "admin_test", "password": "Admin123!"})  # allowlist-secret: fake credential, a test fixture
+                    data={"username": "admin_test", "password": "Admin123!"})  # allowlist-secret=Admin123! (fake credential, a test fixture)
     assert r.status_code == 200, r.text
     refresh = r.json()["refresh_token"]
 

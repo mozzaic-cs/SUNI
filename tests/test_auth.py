@@ -16,7 +16,7 @@ class TestLogin:
 
     def test_admin_login_returns_tokens(self, client, test_users):
         r = client.post("/api/auth/login",
-                        data={"username": "admin_test", "password": "Admin123!"})  # allowlist-secret: test fixture
+                        data={"username": "admin_test", "password": "Admin123!"})  # allowlist-secret=Admin123! (test fixture)
         assert r.status_code == 200
         body = r.json()
         assert "access_token" in body
@@ -26,33 +26,33 @@ class TestLogin:
 
     def test_standard_login_returns_correct_role(self, client):
         r = client.post("/api/auth/login",
-                        data={"username": "std_test", "password": "Standard123!"})  # allowlist-secret: test fixture
+                        data={"username": "std_test", "password": "Standard123!"})  # allowlist-secret=Standard123! (test fixture)
         assert r.status_code == 200
         assert r.json()["role"] == "standard"
 
     def test_readonly_login_returns_correct_role(self, client):
         r = client.post("/api/auth/login",
-                        data={"username": "ro_test", "password": "Readonly123!"})  # allowlist-secret: test fixture
+                        data={"username": "ro_test", "password": "Readonly123!"})  # allowlist-secret=Readonly123! (test fixture)
         assert r.status_code == 200
         assert r.json()["role"] == "read-only"
 
     def test_wrong_password_returns_401(self, client):
         r = client.post("/api/auth/login",
-                        data={"username": "admin_test", "password": "wrongpassword"})  # allowlist-secret: test fixture
+                        data={"username": "admin_test", "password": "wrongpassword"})
         assert r.status_code == 401
 
     def test_unknown_user_returns_401(self, client):
         r = client.post("/api/auth/login",
-                        data={"username": "nobody", "password": "anything"})  # allowlist-secret: test fixture
+                        data={"username": "nobody", "password": "anything"})
         assert r.status_code == 401
 
     def test_empty_credentials_returns_401(self, client):
-        r = client.post("/api/auth/login", data={"username": "", "password": ""})  # allowlist-secret: test fixture
+        r = client.post("/api/auth/login", data={"username": "", "password": ""})
         assert r.status_code == 401
 
     def test_login_response_has_no_password(self, client):
         r = client.post("/api/auth/login",
-                        data={"username": "admin_test", "password": "Admin123!"})  # allowlist-secret: test fixture
+                        data={"username": "admin_test", "password": "Admin123!"})  # allowlist-secret=Admin123! (test fixture)
         body = r.json()
         assert "password" not in body
         assert "password_h" not in body

@@ -87,10 +87,10 @@ def test_reserved_domains_are_not_flagged(scan, line):
 
 # ── the two documented blind spots ───────────────────────────────────────────
 @pytest.mark.parametrize("line", [
-    'SUNI_SMTP_PASS = "hunter2xyz"',      # underscore prefix — the \b bug; allowlist-secret: fake credential, a test fixture
-    'password = "hunter2xyz"',            # bare identifier-shaped value; allowlist-secret: fake credential, a test fixture
-    'PWD=hunter2xyz;Server=x',            # connection string; allowlist-secret: fake credential, a test fixture
-    'postgres://admin:hunter2xyz@db:5432/x',  # allowlist-secret: fake credential, a test fixture
+    'SUNI_SMTP_PASS = "hunter2xyz"',      # underscore prefix — the \b bug; allowlist-secret=hunter2xyz (fake credential, a test fixture)
+    'password = "hunter2xyz"',            # bare identifier-shaped value; allowlist-secret=hunter2xyz (fake credential, a test fixture)
+    'PWD=hunter2xyz;Server=x',            # connection string; allowlist-secret=hunter2xyz (fake credential, a test fixture)
+    'postgres://admin:hunter2xyz@db:5432/x',  # allowlist-secret=hunter2xyz (fake credential, a test fixture)
 ])
 def test_the_credential_patterns_still_fire(scan, line):
     found = False
@@ -134,3 +134,62 @@ def test_the_seed_includes_the_places_leaks_actually_appear(scan):
 # That check belongs in one place — scripts/prepare_public_release.py — and it
 # is a release step, not a per-commit one. What this file protects is that the
 # detectors behind it still detect.
+
+# ── the opt-out marker ───────────────────────────────────────────────────────
+# Added 2026-10-05. The marker used to skip its whole line, so a REAL password
+# pasted onto a fixture line read clean, and so did a second credential written
+# beside the excused one. It now names the fake values it excuses, and excuses
+# only those, only from the pattern checks.
+#
+# This file is scanned too, so the lines under test are assembled at runtime:
+# written out literally, each would be a finding (or an exception) in its own
+# right.
+_MARK = "allowlist-" + "secret"
+_REAL = "zq7" + "Rl-live-" + "4410"          # stands in for a value read off disk
+_REAL_LABEL = "env:" + "SMTP_PASS"
+
+
+def _assign(val):
+    return "password = " + chr(34) + val + chr(34)
+
+
+def _scan_line(scan, tmp_path, line):
+    (tmp_path / "f.py").write_text(line + "\n", encoding="utf-8")
+    return [(sev, why) for sev, _rel, _ln, why in scan.scan(tmp_path, {_REAL: _REAL_LABEL})]
+
+
+def test_a_named_fake_value_is_excused(scan, tmp_path):
+    fake = "hunter" + "2xyz"
+    assert _scan_line(scan, tmp_path, _assign(fake)), "the fixture is not even flagged"
+    assert _scan_line(scan, tmp_path, _assign(fake) + "  # " + _MARK + "=" + fake) == []
+
+
+def test_a_real_value_on_a_marked_line_is_still_caught(scan, tmp_path):
+    hits = _scan_line(scan, tmp_path, _assign(_REAL) + "  # " + _MARK + "=" + _REAL)
+    assert any(sev == "SECRET" and why.startswith("matched") for sev, why in hits), hits
+
+
+def test_the_marker_does_not_excuse_a_value_it_does_not_name(scan, tmp_path):
+    fake, other = "hunter" + "2xyz", "Tr0ub" + "4dor99"
+    line = _assign(fake) + "; " + _assign(other) + "  # " + _MARK + "=" + fake
+    hits = _scan_line(scan, tmp_path, line)
+    assert [s for s, _ in hits] == ["SECRET"], hits
+
+
+def test_a_marker_naming_nothing_is_a_finding(scan, tmp_path):
+    hits = _scan_line(scan, tmp_path, _assign("hunter" + "2xyz") + "  # " + _MARK + ": fixture")
+    assert any("names no value" in why for _, why in hits), hits
+
+
+def test_a_stale_exception_is_reported(scan, tmp_path):
+    hits = _scan_line(scan, tmp_path, "x = 1  # " + _MARK + "=gone" + "Value9")
+    assert [s for s, _ in hits] == ["STALE"], hits
+
+
+@pytest.mark.parametrize("label", [
+    "palavra-passe de aplicação",
+    "Portal do Programador → Bot → Token",
+])
+def test_translated_ui_labels_are_prose(scan, label):
+    """pt-PT placeholders under keys named *_password / *_token."""
+    assert scan._looks_placeholder(label)
