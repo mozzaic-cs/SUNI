@@ -1488,13 +1488,33 @@ def create_app() -> FastAPI:
         tmp   = _backup.BACKUP_DIR / f"restore_tmp_{int(time.time())}.zip"
         _backup.BACKUP_DIR.mkdir(exist_ok=True)
         tmp.write_bytes(data)
+        # STAGED, not applied: the files are checked and unpacked beside the
+        # live ones, and the next start puts them in place (see backup.py for
+        # what writing over a running server did).
         try:
             loop   = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, lambda: _backup.restore(tmp))
-            _log.info("[BACKUP] restored %d files by %s", len(result["restored"]), admin["username"])
-            return JSONResponse(result)
+            result = await loop.run_in_executor(
+                None, lambda: _backup.stage_restore(tmp, by=admin["username"]))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
         finally:
             tmp.unlink(missing_ok=True)
+        _log.info("[BACKUP] restore of %d file(s) from %s staged by %s; applies at next start",
+                  len(result["files"]), result.get("created_at"), admin["username"])
+        return JSONResponse(result)
+
+    @app.get("/api/backup/restore")
+    async def backup_restore_state(admin: dict = Depends(require_admin)):
+        """A staged restore waiting for a restart, and what the last start did."""
+        return JSONResponse({"pending": _backup.pending_restore(),
+                             "last": _backup.last_restore()})
+
+    @app.delete("/api/backup/restore")
+    async def backup_restore_cancel(admin: dict = Depends(require_admin)):
+        ok = _backup.cancel_pending()
+        if ok:
+            _log.info("[BACKUP] staged restore cancelled by %s", admin["username"])
+        return JSONResponse({"cancelled": ok})
 
     @app.get("/api/roles")
     async def get_roles(user: dict = Depends(get_current_user)):

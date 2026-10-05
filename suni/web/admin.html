@@ -1909,11 +1909,12 @@ input,textarea{caret-color:var(--cyan)}
           style="background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);
                  padding:8px 11px;border-radius:4px;font-family:var(--font-ui);font-size:13px;width:100%">
       </div>
-      <div style="font-size:13px;color:var(--red);margin-bottom:14px" data-i18n="admin.backup_warning">
-        Warning: restore overwrites current data. SUNI must be restarted after restore.
+      <div class="field-hint" style="margin-bottom:14px" data-i18n-html="admin.backup_warning">
+        Nothing changes until SUNI restarts.
       </div>
       <button class="btn btn-secondary" onclick="restoreBackup()" data-i18n="admin.backup_restore_btn" style="width:100%">Restore</button>
       <div id="restore-msg" style="margin-top:10px;font-size:13px;display:none"></div>
+      <div id="restore-state" style="margin-top:12px;font-size:13px;line-height:1.5" hidden></div>
     </div>
   </div>
 
@@ -4125,6 +4126,7 @@ async function deleteSkill(slug){
 //  BACKUP
 // ═══════════════════════════════════════════
 async function loadBackups(){
+  loadRestoreState();
   const list = await _apiFetch('/api/backup/list').then(r=>r.json()).catch(()=>[]);
   el('bk-count').textContent = '(' + list.length + ')';
   _renderBackupAge(list);
@@ -4207,10 +4209,45 @@ async function restoreBackup(){
     const headers = {'Authorization':'Bearer '+_ST};
     const r = await fetch('/api/backup/restore', {method:'POST', headers, body:form});
     const d = await r.json();
-    msg.style.color = d.errors?.length ? 'var(--gold)' : 'var(--green)';
-    msg.textContent = t('admin.restore_done', {n: d.restored?.length || 0})
-                    + (d.errors?.length ? ' ' + t('admin.restore_errors', {e: d.errors.join(', ')}) : '');
+    if(!r.ok){
+      msg.style.color='var(--red)';
+      msg.textContent = t('admin.restore_refused', {why: d.detail || r.status});
+      return;
+    }
+    msg.style.display='none';
+    el('restore-file').value='';
+    loadRestoreState();
   } catch(e){ msg.style.color='var(--red)'; msg.textContent=e.message; }
+}
+
+// A staged restore applies at the next start, so the page says so, and what
+// the last start did with one. Read from the server, never assumed.
+async function loadRestoreState(){
+  const box = el('restore-state');
+  const d = await _apiFetch('/api/backup/restore').then(r=>r.json()).catch(()=>null);
+  if(!d){ box.hidden = true; return; }
+  const p = d.pending, l = d.last, parts = [];
+  if(p){
+    const when = p.created_at ? fmtTime(p.created_at) : p.source;
+    parts.push(`<div style="padding:10px 12px;border:1px solid rgba(201,162,39,.4);border-radius:var(--radius);background:rgba(201,162,39,.06)">
+      <b style="color:var(--gold)">${esc(t('admin.restore_pending', {n: p.files.length, when}))}</b><br>
+      ${esc(t('admin.restore_pending_how'))}
+      ${p.not_in_backup?.length ? '<br>' + esc(t('admin.restore_not_in', {n: p.not_in_backup.length})) : ''}
+      <div style="margin-top:8px"><button class="tbl-btn" onclick="cancelRestore()">${esc(t('admin.restore_cancel'))}</button></div></div>`);
+  }
+  if(l && (!p || l.status !== 'applied')){
+    const ok = l.status === 'applied';
+    parts.push(`<div style="margin-top:${p?10:0}px;color:${ok?'var(--green)':'var(--gold)'}">${esc(t('admin.restore_last_' + l.status, {
+      n: l.files, when: fmtTime(l.at), dir: l.previous_files || '', why: l.reason || ''}))}</div>`);
+  }
+  box.innerHTML = parts.join('');
+  box.hidden = !parts.length;
+}
+
+async function cancelRestore(){
+  if(!await uiConfirm({title: t('admin.restore_cancel'), body: t('admin.restore_cancel_body')})) return;
+  await _apiFetch('/api/backup/restore', {method:'DELETE'}).catch(()=>null);
+  loadRestoreState();
 }
 
 // ═══════════════════════════════════════════

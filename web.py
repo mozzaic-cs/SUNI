@@ -6,6 +6,20 @@ sys.path.insert(0, os.path.dirname(__file__))
 from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
+# A restore staged from the admin panel is applied HERE: before any other suni
+# module is imported, so nothing has opened a file under memory/ yet. Applied
+# over a running server it came back as the live data with "no errors" (see
+# suni/backup.py). Only this entry point applies it: run.py, the CLI, may be
+# started beside a running server. suni.backup imports nothing but stdlib.
+if __name__ == "__main__":
+    from suni import backup as _backup
+    _restore = _backup.apply_pending(port=int(os.environ.get("SUNI_PORT", 8765)))
+    if _restore:
+        print(f"  [RESTORE] {_restore['status']}: {_restore.get('files')} file(s) from "
+              f"{_restore.get('source')}"
+              + (f"; previous files in {_restore['previous_files']}" if _restore.get("previous_files") else "")
+              + (f"; {_restore['reason']}" if _restore.get("reason") else ""), flush=True)
+
 # Non-secret defaults — overridden by environment if already set.
 # SUNI_MODEL is deliberately absent: the model is chosen in the admin panel and
 # resolved by model_inventory.resolve_model() (config, then this environment
