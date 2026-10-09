@@ -493,6 +493,14 @@ def list_trust_rules(user_id: str) -> dict:
     return dict(_trust_rules.get(user_id, {}))
 
 
+def _current_agent() -> str:
+    try:
+        from .core.agent_presence import CURRENT_AGENT
+        return CURRENT_AGENT.get()
+    except Exception:      # noqa: BLE001
+        return ""
+
+
 def _build_summary(tool_name: str, args: dict) -> str:
     keys = _CONSEQUENTIAL.get(tool_name, list(args.keys())[:2])
     parts = [f"{k}={str(args[k])[:80]}" for k in keys if k in args]
@@ -646,6 +654,8 @@ async def request_approval(
             "risk":    risk,
             # the card hides "always allow" rather than offer a box that does nothing
             "no_always": tool_name in NEVER_TRUSTED,
+            # which agent is asking, if one is — its figure on the Face waits too
+            "agent": _current_agent(),
         })
 
     try:

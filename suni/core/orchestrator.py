@@ -670,6 +670,13 @@ class Orchestrator:
         # Both are reset in the finally block — covers early returns and exceptions.
         from ..tools.claude_code_advanced import CLAUDE_API_KEY_CTX, EVENT_CB_CTX
         from ..tools import memory_tool as _memory_tool
+        from . import agent_presence as _presence
+        # Read BEFORE EVENT_CB_CTX is replaced below: a delegated sub-run has no
+        # stream of its own, and its figure belongs on the outer turn's.
+        _presence_cb = (event_cb or EVENT_CB_CTX.get()) if agent_profile else None
+        _agent_token = _presence.CURRENT_AGENT.set(
+            _presence.describe(agent_profile)["slug"] if agent_profile
+            else _presence.CURRENT_AGENT.get())
         _key_token = CLAUDE_API_KEY_CTX.set(claude_api_key)
         _uid_token = USER_ID_CTX.set(user_id)
         # The Claude Code agent streams progress through this when a live
@@ -688,13 +695,22 @@ class Orchestrator:
         # Bind THIS user's memory manager for the memory_* tools (task-local, so
         # concurrent users never cross). Identity comes from here, not tool args.
         _mem_token = _memory_tool.bind(self.memory)
+        _presence.emit(_presence_cb, "start", agent_profile)
         try:
-            return await self._run_inner(
+            out = await self._run_inner(
                 user_input, context, user_role, conv_mode, response_language,
                 user_mcp_servers, event_cb, user_id, claude_api_key, images,
                 agent_profile, dry_run, fanout_profiles, memory_for,
             )
+            _presence.emit(_presence_cb, "done", agent_profile)
+            return out
+        except BaseException as exc:
+            # Stopped (CancelledError) or failed: either way the figure must go,
+            # not hang on the screen as if still working.
+            _presence.emit(_presence_cb, "error", agent_profile, type(exc).__name__)
+            raise
         finally:
+            _presence.CURRENT_AGENT.reset(_agent_token)
             CLAUDE_API_KEY_CTX.reset(_key_token)
             USER_ID_CTX.reset(_uid_token)
             EVENT_CB_CTX.reset(_evt_token)

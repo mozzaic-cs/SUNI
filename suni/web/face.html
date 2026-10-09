@@ -291,6 +291,51 @@ header{
 #subtitle.show{opacity:1;transform:translateX(-50%) translateY(0)}
 @media(prefers-reduced-motion:reduce){#subtitle{transition:opacity .3s ease}}
 
+/* ── AGENT FIGURES ──────────────────────────────────────────────────────
+   One per agent at work, orbiting her head. Deliberately NOT her likeness:
+   a faceted mask with a visor where eyes would be, in the agent's own hue,
+   built from the same light as she is. HTML/SVG over the canvas rather than
+   in the WebGL scene, so a lost GPU context cannot take them with it. */
+#agent-layer{position:fixed;inset:0;pointer-events:none;z-index:9}
+.agent-fig{position:absolute;left:0;top:0;width:58px;
+  display:flex;flex-direction:column;align-items:center;gap:4px;
+  --c:hsl(var(--h) 85% 64%);--c2:hsl(var(--h) 90% 76%);
+  will-change:transform}
+.agent-fig svg{width:46px;height:52px;overflow:visible;
+  filter:drop-shadow(0 0 6px var(--c)) drop-shadow(0 0 16px hsl(var(--h) 85% 55% / .45))}
+.agent-fig .shell{fill:hsl(var(--h) 70% 30% / .30);stroke:var(--c);stroke-width:1.1;stroke-linejoin:round}
+.agent-fig .facet{fill:none;stroke:var(--c);stroke-width:.6;opacity:.55}
+.agent-fig .scan{fill:url(#agf-scan);opacity:.35}
+.agent-fig .visor{fill:var(--c2)}
+.agent-fig .name{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.06em;
+  color:var(--c2);white-space:nowrap;max-width:110px;overflow:hidden;text-overflow:ellipsis;
+  text-shadow:0 1px 8px rgba(0,0,0,.95),0 0 12px hsl(var(--h) 85% 55% / .5)}
+/* materialise from the chin up, as she does */
+.agent-fig .body{clip-path:inset(100% 0 0 0);transition:clip-path .9s cubic-bezier(.2,.7,.2,1)}
+.agent-fig.in .body{clip-path:inset(0 0 0 0)}
+.agent-fig .name{opacity:0;transition:opacity .4s ease .5s}
+.agent-fig.in .name{opacity:1}
+/* working: a slow drift and a breathing visor */
+.agent-fig.in.working svg{animation:agf-bob 3.2s ease-in-out infinite}
+.agent-fig.in.working .visor{animation:agf-pulse 1.5s ease-in-out infinite}
+/* waiting on a person: amber, the colour the approval card uses */
+.agent-fig.waiting{--c:#f0b43c;--c2:#ffd27a}
+.agent-fig.waiting .visor{animation:agf-pulse .9s ease-in-out infinite}
+/* finished: a flash, then it dissolves from the top down */
+.agent-fig.done svg{animation:agf-flash .35s ease-out}
+.agent-fig.out .body{clip-path:inset(0 0 100% 0);transition:clip-path .7s ease-in}
+.agent-fig.out .name{opacity:0;transition:opacity .3s ease}
+.agent-fig.failed{--c:hsl(0 45% 58%);--c2:hsl(0 55% 70%)}
+@keyframes agf-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+@keyframes agf-pulse{0%,100%{opacity:.55}50%{opacity:1}}
+@keyframes agf-flash{0%{filter:brightness(2.2)}100%{filter:none}}
+@media (prefers-reduced-motion: reduce){
+  .agent-fig .body,.agent-fig.out .body{transition:opacity .3s ease;clip-path:none}
+  .agent-fig:not(.in) .body,.agent-fig.out .body{opacity:0}
+  .agent-fig svg,.agent-fig .visor{animation:none!important}
+}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
 /* ── CHAT DOCK (retractable) ── */
 #chat-overlay{
   position:fixed;bottom:24px;
@@ -934,6 +979,19 @@ header{
   </header>
   <div id="state-label" data-i18n="orb.idle">IDLE</div>
   <div id="subtitle"></div>
+  <div id="agent-layer" aria-hidden="true">
+    <svg width="0" height="0" style="position:absolute">
+      <defs>
+        <pattern id="agf-scan" width="4" height="3" patternUnits="userSpaceOnUse">
+          <rect width="4" height="1" fill="#fff"/>
+        </pattern>
+        <clipPath id="agf-clip" clipPathUnits="userSpaceOnUse">
+          <polygon points="32,3 49,9 58,25 56,42 47,57 37,68 27,68 17,57 8,42 6,25 15,9"/>
+        </clipPath>
+      </defs>
+    </svg>
+  </div>
+  <div id="agent-status" class="sr-only" role="status" aria-live="polite"></div>
   <div id="chat-overlay" class="collapsed">
     <div id="dock-handle" role="button" tabindex="0" aria-label="Show conversation" aria-expanded="false">
       <span class="chev"></span>
@@ -2765,6 +2823,7 @@ const _FILLERS = {
     work:     ['Ainda estou a trabalhar nisto.', 'Isto está a demorar um pouco, mas estou a avançar.',
                'Continuo nisto, obrigada pela paciência.'],
     approval: ['Preciso da sua aprovação no ecrã.'],
+    agent:    ['{name} está a tratar disso.', '{name} está a trabalhar nisto.'],
   },
   en: {
     ack:      ['One moment, let me look into that.', 'On it.', 'Let me check that, one moment.'],
@@ -2774,9 +2833,10 @@ const _FILLERS = {
     work:     ['Still working on this.', 'This is taking a little while, but it is moving.',
                'Still on it, thanks for your patience.'],
     approval: ['I need your approval on screen.'],
+    agent:    ['{name} is on it.', '{name} is working on this.'],
   },
 };
-const _fill = { on: true, timer: null, n: 0, kind: '', last: '', playing: false, gen: 0, clips: {} };
+const _fill = { on: true, timer: null, n: 0, kind: '', last: '', playing: false, gen: 0, clips: {}, agent: '' };
 
 function _fillerKind(tool) {
   const n = String(tool || '').replace(/^[·\s]+/, '').toLowerCase();
@@ -2792,7 +2852,7 @@ function _fillerPick(kind) {
   const opts = (L[kind] || L.work).filter(p => p !== _fill.last);
   const p = opts[Math.floor(Math.random() * opts.length)] || L.work[0];
   _fill.last = p;
-  return p;
+  return p.replace('{name}', _fill.agent || 'SUNI');
 }
 
 function _fillerClip(text) {
@@ -2841,7 +2901,7 @@ function _fillerTick() {
 // A new turn: arm the first filler, and warm the cache for the opening line.
 function _fillerStart() {
   _fillerStop();
-  _fill.n = 0; _fill.kind = '';
+  _fill.n = 0; _fill.kind = ''; _fill.agent = '';
   if (!ttsOn || !_fill.on) return;
   _fill.timer = setTimeout(_fillerTick, _FILL_FIRST_MS);
   // Cached after the first time, so this costs a request only once per voice.
@@ -2851,6 +2911,8 @@ function _fillerStart() {
 
 // What she is doing now — the tool name from cc_note / tool_start.
 function _fillerHint(tool) { const k = _fillerKind(tool); if (k) _fill.kind = k; }
+// An agent took the task: the next filler names it instead of "still working".
+function _fillerAgent(name) { if (name) { _fill.agent = name; _fill.kind = 'agent'; } }
 
 // The answer started, the turn ended, or it is waiting on a person: stop, and
 // cut off a filler mid-word rather than make the answer queue behind it.
@@ -2870,6 +2932,172 @@ function _fillerApproval() { _fillerStop(); _fillerSay('approval'); }
 function _fillerResume() {
   if (_fill.timer || !_isRunning || !ttsOn || !_fill.on || _fill.n >= _FILL_MAX) return;
   _fill.timer = setTimeout(_fillerTick, _FILL_GAP_MS);
+}
+
+// ── Agent figures ─────────────────────────────────────────────────────
+/* The server sends {type:'agent', phase:'start'|'done'|'error', slug, name}
+   whenever a turn runs as an agent: a delegation, each specialist of a
+   fan-out, or an agent picked for the turn. An approval card raised inside one
+   carries its slug, and the figure turns amber until the card is answered.
+
+   Placement follows her head (_headBox) through the stage transition, on
+   slots around it, skipping any that would leave the screen or sit on the
+   dock. Positioned from a rAF loop that runs only while a figure is up. */
+const _AGF_MIN_MS = 1400;            // never flicker: a fast agent still fully appears
+// Six hues that stay apart from each other, from her cyan, from the approval
+// amber and from the failure red. Two figures on screen never share one.
+const _AGF_HUES = [272, 135, 325, 80, 222, 18];
+const _agf = { figs: new Map(), raf: 0 };
+const _agfLayer = document.getElementById('agent-layer');
+const _agfStatus = document.getElementById('agent-status');
+
+function _agfHue(slug){
+  let h = 0;
+  for (const ch of String(slug)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  // The agent's own hue, unless a figure already on screen has it: then the
+  // next free one, so two agents side by side can always be told apart.
+  const taken = new Set([..._agf.figs.values()].map(f => f.hue));
+  for (let i = 0; i < _AGF_HUES.length; i++) {
+    const hue = _AGF_HUES[(h + i) % _AGF_HUES.length];
+    if (!taken.has(hue)) return hue;
+  }
+  return _AGF_HUES[h % _AGF_HUES.length];
+}
+
+function _agfSay(key, name){
+  const fallback = {working:'{name} is working', waiting:'{name} is waiting for your approval',
+                    done:'{name} finished', failed:'{name} stopped'}[key];
+  let s = (typeof t === 'function') ? t('face.agent_' + key, {name}) : '';
+  if (!s || s === 'face.agent_' + key) s = fallback.replace('{name}', name);
+  if (_agfStatus) _agfStatus.textContent = s;
+  return s;
+}
+
+const _AGF_SVG = `<svg viewBox="0 0 64 72" aria-hidden="true">
+  <polygon class="shell" points="32,3 49,9 58,25 56,42 47,57 37,68 27,68 17,57 8,42 6,25 15,9"/>
+  <rect class="scan" x="0" y="0" width="64" height="72" clip-path="url(#agf-clip)"/>
+  <polyline class="facet" points="15,9 32,20 49,9"/>
+  <polyline class="facet" points="6,25 32,20 58,25"/>
+  <polyline class="facet" points="17,57 32,48 47,57"/>
+  <line class="facet" x1="32" y1="3" x2="32" y2="20"/>
+  <line class="facet" x1="32" y1="48" x2="32" y2="68"/>
+  <polyline class="facet" points="8,42 22,40 32,48 42,40 56,42"/>
+  <polygon class="visor" points="13,30 51,30 48,35 16,35"/>
+</svg>`;
+
+function _agfSlots(n, w, h){
+  // Angles round the head, clockwise from straight up: temples first, then
+  // cheeks, then below the jaw. Whatever does not fit on screen is skipped.
+  const hb = _headBox(w, h), db = _dockBox(w, h);
+  // The open content stage is as off-limits as the dock: a figure over it
+  // covers what she is showing.
+  const st = document.getElementById('content-stage');
+  const sb = (st && st.classList.contains('on')) ? st.getBoundingClientRect() : null;
+  const clear = (x, y) => !(sb && x + 30 > sb.left && x - 30 < sb.right
+                                && y + 40 > sb.top && y - 34 < sb.bottom);
+  // A portrait phone with the stage open has one free band: between the
+  // header and the panel, left of her (shrunk, top-right) head. A row there,
+  // spaced for the names, which overlapped at a tighter pitch.
+  if (sb && w <= 768 && h > w) {
+    const y = Math.max(92, sb.top - 44);
+    return Array.from({length: n}, (_, i) => [44 + i * 82, y]);
+  }
+  const cx = (hb.x0 + hb.x1) / 2, cy = (hb.y0 + hb.y1) / 2;
+  const rx = (hb.x1 - hb.x0) / 2 + 52, ry = (hb.y1 - hb.y0) / 2 + 26;
+  const order = [-58, 58, -96, 96, -130, 130, -24, 24, 160, -160];
+  const out = [];
+  for (const deg of order) {
+    if (out.length >= n) break;
+    const a = deg * Math.PI / 180;
+    const x = cx + rx * Math.sin(a), y = cy - ry * Math.cos(a);
+    if (x < 40 || x > w - 40 || y < 56 || y > h - 40) continue;
+    if (db && y + 40 > db.y0 && x > db.x0 && x < db.x1) continue;
+    if (!clear(x, y)) continue;
+    out.push([x, y]);
+  }
+  // Nowhere left round her (a phone with the stage open): a row beside her
+  // head, level with her eyes, going left.
+  let x = hb.x0 - 34;
+  const y = Math.max(56, (hb.y0 + hb.y1) / 2 - 10);
+  while (out.length < n) {
+    out.push([Math.max(34, x), y]);
+    x -= 62;
+  }
+  return out;
+}
+
+function _agfPlace(){
+  _agf.raf = 0;
+  if (!_agf.figs.size) return;
+  const w = window.innerWidth, h = window.innerHeight;
+  const figs = [..._agf.figs.values()];
+  const slots = _agfSlots(figs.length, w, h);
+  figs.forEach((f, i) => {
+    const [x, y] = slots[i];
+    f.el.style.transform = `translate(${Math.round(x - 29)}px, ${Math.round(y - 30)}px)`;
+  });
+  _agf.raf = requestAnimationFrame(_agfPlace);
+}
+
+function _agfStart(slug, name){
+  if (!slug && !name) return;
+  const key = slug || name;
+  let f = _agf.figs.get(key);
+  if (f) {                          // called again before it left: keep the figure
+    clearTimeout(f.leaveT);
+    f.el.classList.remove('out', 'done', 'failed', 'waiting');
+    f.el.classList.add('in', 'working');
+    f.born = performance.now();
+    return;
+  }
+  const el = document.createElement('div');
+  el.className = 'agent-fig working';
+  const hue = _agfHue(key);
+  el.style.setProperty('--h', hue);
+  el.innerHTML = `<div class="body">${_AGF_SVG}</div><div class="name"></div>`;
+  el.querySelector('.name').textContent = name || slug;
+  el.title = _agfSay('working', name || slug);
+  _agfLayer.appendChild(el);
+  f = { el, hue, name: name || slug, born: performance.now(), leaveT: 0 };
+  _agf.figs.set(key, f);
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
+  if (!_agf.raf) _agf.raf = requestAnimationFrame(_agfPlace);
+}
+
+function _agfEnd(slug, name, failed){
+  const key = slug || name, f = _agf.figs.get(key);
+  if (!f) return;
+  const wait = Math.max(0, _AGF_MIN_MS - (performance.now() - f.born));
+  clearTimeout(f.leaveT);
+  f.leaveT = setTimeout(() => {
+    f.el.classList.remove('working', 'waiting');
+    f.el.classList.add(failed ? 'failed' : 'done');
+    f.el.title = _agfSay(failed ? 'failed' : 'done', f.name);
+    f.leaveT = setTimeout(() => {
+      f.el.classList.add('out');
+      f.leaveT = setTimeout(() => {
+        f.el.remove();
+        if (_agf.figs.get(key) === f) _agf.figs.delete(key);
+      }, 800);
+    }, 450);
+  }, wait);
+}
+
+function _agfWaiting(slug, on){
+  const f = slug && _agf.figs.get(slug);
+  if (!f) return;
+  f.el.classList.toggle('waiting', on);
+  f.el.title = _agfSay(on ? 'waiting' : 'working', f.name);
+}
+
+// The turn is over: nothing may stay on screen, whatever events were missed.
+function _agfClearAll(){
+  for (const [k, f] of _agf.figs) _agfEnd(k, f.name, false);
+}
+
+function _agfEvent(ev){
+  if (ev.phase === 'start') _agfStart(ev.slug, ev.name);
+  else _agfEnd(ev.slug, ev.name, ev.phase === 'error');
 }
 
 // Emit each complete sentence in `buf` to voice (TTS on) or straight to the
@@ -4319,7 +4547,7 @@ async function send() {
           sentenceBuf += _tk;
           sentenceBuf = _emitSentences(sentenceBuf, () => { surfaced = true; });
         } else if (ev.type === 'done') {
-          _fillerStop();
+          _fillerStop(); _agfClearAll();
           full = ev.text;
           // Extract media from the RAW reply (still has the serve URL) for the stage,
           // but display/enhance the CLEANED text (no URL to read aloud).
@@ -4355,10 +4583,10 @@ async function send() {
             if (_stageMode) _armStageClose();
           }
         } else if (ev.type === 'stopped') {
-          _fillerStop();
+          _fillerStop(); _agfClearAll();
           setState('idle');
         } else if (ev.type === 'error') {
-          _fillerStop();
+          _fillerStop(); _agfClearAll();
           finalMsg(suniWrap, `— ${ev.text}`); setState('idle');
         } else if (ev.type === 'tool_start') {
           _fillerHint(ev.name);
@@ -4371,6 +4599,9 @@ async function send() {
           setTimeout(() => { if (state==='thinking') hideSub(); }, 2500);
         } else if (ev.type === 'term') {
           _ccTerm.on(ev);
+        } else if (ev.type === 'agent') {
+          _agfEvent(ev);
+          if (ev.phase === 'start') _fillerAgent(ev.name || ev.slug);
         } else if (ev.type === 'cc_note') {
           // Progress while Claude Code works. Subtitle only: it never enters the
           // caption buffer and never reaches the speech queue.
@@ -4388,8 +4619,10 @@ async function send() {
           showApprovalPrompt(ev, {
             onWaiting:  () => { setState('idle');
                                 showSub(t('chat.approval_required'));
+                                _agfWaiting(ev.agent, true);
                                 _fillerApproval(); },
-            onAnswered: () => { hideSub(); setState('thinking'); _fillerResume(); },
+            onAnswered: () => { hideSub(); setState('thinking');
+                                _agfWaiting(ev.agent, false); _fillerResume(); },
           });
         } else if (ev.type === 'net_view') {
           /* SUNI took the view somewhere. Asked which devices are on the
@@ -4426,7 +4659,7 @@ async function send() {
     finalMsg(suniWrap, `Connection error: ${e.message}`);
     setState('idle');
   } finally {
-    _fillerStop();
+    _fillerStop(); _agfClearAll();
     _isRunning = false; sendBtn.disabled = false;
     sendBtn.textContent = t('chat.send'); sendBtn.title = '';
     sendBtn.classList.remove('stopping');
