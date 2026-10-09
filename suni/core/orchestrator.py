@@ -1205,7 +1205,9 @@ class Orchestrator:
         elif _cc_should_direct:
             ts = time.perf_counter()
             response = await self._handle_claude_code_direct(
-                user_input, context, trace, event_cb=event_cb
+                user_input, context, trace, event_cb=event_cb,
+                user_id=user_id, user_role=user_role, conv_mode=conv_mode,
+                grants=_agent_grants,
             )
             context.add(response)
             _tick("claude-code direct", ts)
@@ -1341,7 +1343,9 @@ class Orchestrator:
         return response.content
 
     async def _handle_claude_code_direct(
-        self, user_input: str, context: Context, trace: list, event_cb=None
+        self, user_input: str, context: Context, trace: list, event_cb=None, *,
+        user_id: str = "", user_role: str = "standard",
+        conv_mode: str = "assistant", grants: dict | None = None,
     ) -> Message:
         """
         Route directly to the ClaudeCodeAgent (T5) for self-contained
@@ -1349,16 +1353,46 @@ class Orchestrator:
 
         Skips the local-model tier loop and Ollama tool list entirely.
         RBAC and conv_mode guards are applied by the caller in run().
+
+        SUNI's own tools go with it: the CLI is lent the ones only SUNI has
+        (look at the screen, images, mail, a coding run in a project) through
+        suni/core/tool_bridge.py, behind the same gate as the local loop. A
+        coding run it asks for starts here, after its reply, with its own card.
         """
         if event_cb:
             event_cb({"type": "tier_route", "tier": CLAUDE_CODE_TIER, "reason": "classifier"})
 
         agent = self._tier_agents[CLAUDE_CODE_TIER]
+        from . import tool_bridge as _tb
+        _turn = None
+        if bool(_cfg.get("cc_tool_bridge", True)):
+            _turn = _tb.open_turn(
+                self, user_id=user_id, user_role=user_role, conv_mode=conv_mode,
+                grants=grants, user_input=user_input, event_cb=event_cb,
+                timeout_s=int(_cfg.get("claude_code_timeout", 300) or 300))
+        _tok = _tb.CURRENT.set(_turn)
         ts = time.perf_counter()
-        response = await agent.chat(context.get_conversation(), context)
+        try:
+            response = await agent.chat(context.get_conversation(), context)
+        finally:
+            _tb.CURRENT.reset(_tok)
+            _tb.close_turn(_turn)
         elapsed = time.perf_counter() - ts
         trace.append(("claude-code direct", elapsed, f"t{CLAUDE_CODE_TIER}"))
-        _log.info("[CC_DIRECT] %.2fs  agent=%s", elapsed, agent.name)
+        _log.info("[CC_DIRECT] %.2fs  agent=%s%s", elapsed, agent.name,
+                  f"  bridge={','.join(_turn.tools)}" if _turn else "")
+
+        if _turn is not None and _turn.handoff:
+            ts = time.perf_counter()
+            code = await self._handle_code_followup(
+                _turn.handoff["task"], {"project_dir": _turn.handoff["project_dir"]},
+                user_id, user_role, event_cb, conv_mode == "read-only")
+            trace.append(("code run (handoff)", time.perf_counter() - ts, ""))
+            _log.info("[CODE] %s handed off from Claude Code, %.1fs",
+                      _turn.handoff["project_dir"], time.perf_counter() - ts)
+            response = Message(role=Role.ASSISTANT, agent=response.agent,
+                               content=(response.content or "").rstrip()
+                               + _NL + _NL + code.content)
         return response
 
     async def _handle_vision_direct(
@@ -1797,6 +1831,155 @@ class Orchestrator:
         finally:
             self.memory = original_memory
 
+    def _tool_permissions(self, user_role: str, conv_mode: str,
+                          grants: dict | None) -> tuple[list | None, list]:
+        """(allowed, blocked) native tool names for this caller, this turn.
+
+        One answer for every path that offers SUNI's tools to a model: the
+        local tool loop, and the bridge that hands them to the Claude Code CLI.
+        Two copies of this would drift, and the drift would be a hole."""
+        _allowed = (grants["allowed_tools"] if grants else _rbac.allowed_tools(user_role))
+        _blocked = (grants["blocked_tools"] if grants else _rbac.blocked_tools(user_role))
+        if conv_mode == "read-only":
+            # Read-only mode promises nothing that writes, sends or changes
+            # anything. It was enforced for the direct routes and for MCP, and
+            # NOT HERE — so the model was still handed every native tool the
+            # caller's ROLE allows, which for an admin is all of them. The mode
+            # blocked the shortcuts and left the front door open.
+            #
+            # The list it needs already exists and is already maintained: the
+            # read-only ROLE's allowance. The mode and the role shared a name
+            # and nothing else. Intersected, never widened — the same rule
+            # agent grants follow, so selecting read-only can only ever take
+            # tools away from whatever the caller already had.
+            _ro = _rbac.allowed_tools("read-only")
+            if _ro is not None:
+                _allowed = (list(_ro) if _allowed is None
+                            else [t for t in _allowed if t in set(_ro)])
+        # code_task is never offered to these roles, whatever a saved role file
+        # says: one written before the tool existed lists every other block
+        # for "standard" but not this one, and the model would then see it.
+        from ..tools.code_project import _NEVER_ROLES as _CODE_NEVER
+        if user_role in _CODE_NEVER and "code_task" not in (_blocked or []):
+            _blocked = list(_blocked or []) + ["code_task"]
+        return _allowed, _blocked
+
+    async def _gated_call(self, name: str, args: dict, *, user_id: str,
+                          user_role: str, user_input: str, event_cb,
+                          approval_deadline: float | None = None
+                          ) -> tuple[str, bool, int]:
+        """Run one tool call through SUNI's floors: policy, the security review,
+        a person's approval, then the output guard on what it returned.
+
+        Returns (result, ran, elapsed_ms); ran is False when a floor stopped it.
+        The local tool loop and the bridge that hands SUNI's tools to the
+        Claude Code CLI both come through here, so there is one gate, not two.
+
+        approval_deadline (a time.monotonic() value) caps the wait for a
+        person's answer. The bridge needs it: the CLI that asked is killed at
+        its own timeout, and a card still open after that would approve a call
+        nobody is waiting for. Unanswered by then reads as a deny.
+        """
+        _judge_on    = _cfg.get("intent_judge", False)
+        _judge_model = _cfg.get("intent_judge_model") or _cfg.get("model") or ""
+        _guard_on    = _cfg.get("output_guard", False)
+        _trusted = _approval.is_trusted(user_id, name, args)
+
+        # ── Admin tool policy (approval-time; distinct from RBAC) ──
+        # First-match-wins glob+arg rule → allow | deny | ask. Precedence
+        # is two-floor: deny/block never de-escalate; allow only collapses
+        # the static consequential gate (NOT the judge 'gate' — a steered
+        # call can't be silenced by a broad glob).
+        _pol = _policy.evaluate(user_role, name, args)
+        _pol_action = _pol["action"] if _pol else None
+        if _pol_action == "deny":                       # Floor 1
+            reason = _pol.get("reason") or f"rule '{_pol.get('rule')}'"
+            _log.warning("[POLICY] denied %s for role=%s: %s", name, user_role, reason)
+            _approval._audit_log(user_id, name,
+                                 _approval._build_summary(name, args), f"policy:deny")
+            if event_cb:
+                event_cb({"type": "tool_end", "name": name,
+                          "result": f"blocked by policy: {reason}"[:200], "ok": False})
+            return f"Action '{name}' was blocked by policy: {reason}", False, 0
+
+        # ── Security review (heuristic pre-tier + LLM intent judge) ──
+        # The heuristic is sub-ms with no I/O, so it runs regardless of
+        # trust/policy-allow → its catastrophic BLOCK (Floor 1) fires even
+        # for a trusted or allow-listed call. The LLM judge stays behind
+        # `not _trusted` for cost. It may ESCALATE (gate/block), never
+        # auto-allow, so the human gate below is never weakened.
+        _verdict, judged = None, None
+        if _judge_on and not _approval.is_safe(name):
+            judged = _approval.assess_heuristic(name, args)
+            if judged is None and not _trusted:
+                judged = await _approval.assess_intent(
+                    user_input, name, args, model=_judge_model
+                )
+            _verdict = judged.get("verdict") if judged else None
+            if judged:
+                _approval._audit_log(
+                    user_id, name,
+                    _approval._build_summary(name, args), f"judge:{_verdict}"
+                )
+            if _verdict == "block":                     # Floor 1 — unconditional
+                reason = judged.get("reason", "off-intent")
+                _log.warning("[JUDGE] blocked %s for user=%s: %s", name, user_id, reason)
+                if event_cb:
+                    event_cb({"type": "tool_end", "name": name,
+                              "result": f"blocked by security review: {reason}"[:200], "ok": False})
+                return f"Action '{name}' was blocked by the security review: {reason}", False, 0
+
+        # ── Human approval gate (Floor 2) ──
+        # Consequential tools and policy 'ask' are bypassed by an explicit
+        # allow (trust rule OR policy-allow). The judge 'gate' is bypassed
+        # only by a per-user trust rule, NOT by a broad policy-allow.
+        # NEVER_TRUSTED tools (code_task) are approved every time: no
+        # trust rule or policy-allow collapses the card for them.
+        _always_ask = name in _approval.NEVER_TRUSTED
+        _allow_bypass = (_trusted or _pol_action == "allow") and not _always_ask
+        _need_gate = _always_ask or (
+            # registry= lets MCP tools be classified; without it they are
+            # all treated as safe, which let an MCP shell bypass the gate.
+            ((_approval.is_consequential(name, registry=self.registry)
+              or _pol_action == "ask") and not _allow_bypass)
+            or (_verdict == "gate" and not _trusted)
+        )
+        if _need_gate:
+            _ask = _approval.request_approval(
+                name, args, user_id=user_id, event_cb=event_cb,
+                risk=(judged if _verdict else None),
+            )
+            if approval_deadline is None:
+                decision = await _ask
+            else:
+                try:
+                    decision = await asyncio.wait_for(
+                        _ask, timeout=max(1.0, approval_deadline - time.monotonic()))
+                except asyncio.TimeoutError:
+                    decision = "deny"
+            if decision != "allow":
+                _log.info("[APPROVAL] denied %s by user=%s", name, user_id)
+                return f"Action '{name}' was denied by the user.", False, 0
+
+        t_start = time.perf_counter()
+        result  = await self.registry.execute(name, args)
+        elapsed_ms = round((time.perf_counter() - t_start) * 1000)
+
+        # ── Output guard — sanitize the RESULT before it reaches either
+        # the model context or the UI. Redacts secrets, annotates injected
+        # instructions in untrusted tool output. Sanitizer, not a gate:
+        # errors pass the raw result through (see output_guard.scan). ──
+        if _guard_on:
+            _sanitized, _findings = _output_guard.scan(name, result)
+            if _findings:
+                result = _sanitized
+                _fk = ", ".join(sorted({f"{f['kind']}:{f['label']}" for f in _findings}))
+                _log.warning("[OUTPUT_GUARD] %s → %s", name, _fk)
+                _approval._audit_log(user_id, name,
+                                     _approval._build_summary(name, args),
+                                     f"output_guard:{_fk}"[:80])
+        return result, True, elapsed_ms
+
     async def _agent_loop(
         self,
         context: Context,
@@ -1846,30 +2029,7 @@ class Orchestrator:
             if "filesystem" in (role_prefixes or []):
                 include.append("filesystem")
 
-        _allowed = (grants["allowed_tools"] if grants else _rbac.allowed_tools(user_role))
-        _blocked = (grants["blocked_tools"] if grants else _rbac.blocked_tools(user_role))
-        if conv_mode == "read-only":
-            # Read-only mode promises nothing that writes, sends or changes
-            # anything. It was enforced for the direct routes and for MCP, and
-            # NOT HERE — so the model was still handed every native tool the
-            # caller's ROLE allows, which for an admin is all of them. The mode
-            # blocked the shortcuts and left the front door open.
-            #
-            # The list it needs already exists and is already maintained: the
-            # read-only ROLE's allowance. The mode and the role shared a name
-            # and nothing else. Intersected, never widened — the same rule
-            # agent grants follow, so selecting read-only can only ever take
-            # tools away from whatever the caller already had.
-            _ro = _rbac.allowed_tools("read-only")
-            if _ro is not None:
-                _allowed = (list(_ro) if _allowed is None
-                            else [t for t in _allowed if t in set(_ro)])
-        # code_task is never offered to these roles, whatever a saved role file
-        # says: one written before the tool existed lists every other block
-        # for "standard" but not this one, and the model would then see it.
-        from ..tools.code_project import _NEVER_ROLES as _CODE_NEVER
-        if user_role in _CODE_NEVER and "code_task" not in (_blocked or []):
-            _blocked = list(_blocked or []) + ["code_task"]
+        _allowed, _blocked = self._tool_permissions(user_role, conv_mode, grants)
         tools = self.registry.get_ollama_tools(
             include_prefixes=include,
             allowed_tools=_allowed,
@@ -2020,7 +2180,9 @@ class Orchestrator:
                         event_cb({"type": "tier_escalate", "from": current_tier, "to": CLAUDE_CODE_TIER,
                                   "reason": "local_exhausted"})
                     return await self._handle_claude_code_direct(
-                        user_input, context, trace, event_cb=event_cb
+                        user_input, context, trace, event_cb=event_cb,
+                        user_id=user_id, user_role=user_role,
+                        conv_mode=conv_mode, grants=grants,
                     )
 
             # Dry run: report the intended calls and the grants in force, then
@@ -2096,9 +2258,6 @@ class Orchestrator:
             # Execute all tool calls (sequentially to preserve event ordering)
             ts = time.perf_counter()
             tool_results = []
-            _judge_on    = _cfg.get("intent_judge", False)
-            _judge_model = _cfg.get("intent_judge_model") or _cfg.get("model") or ""
-            _guard_on    = _cfg.get("output_guard", False)
             for tc in response.tool_calls:
                 # ── Repeat guard ──────────────────────────────────────────
                 # A tool that has already failed twice in this request will
@@ -2132,97 +2291,13 @@ class Orchestrator:
                                   "result": _msg[:200], "ok": False})
                     continue
 
-                _trusted = _approval.is_trusted(user_id, tc.name, tc.args)
-
-                # ── Admin tool policy (approval-time; distinct from RBAC) ──
-                # First-match-wins glob+arg rule → allow | deny | ask. Precedence
-                # is two-floor: deny/block never de-escalate; allow only collapses
-                # the static consequential gate (NOT the judge 'gate' — a steered
-                # call can't be silenced by a broad glob).
-                _pol = _policy.evaluate(user_role, tc.name, tc.args)
-                _pol_action = _pol["action"] if _pol else None
-                if _pol_action == "deny":                       # Floor 1
-                    reason = _pol.get("reason") or f"rule '{_pol.get('rule')}'"
-                    _log.warning("[POLICY] denied %s for role=%s: %s", tc.name, user_role, reason)
-                    _approval._audit_log(user_id, tc.name,
-                                         _approval._build_summary(tc.name, tc.args), f"policy:deny")
-                    tool_results.append((tc, f"Action '{tc.name}' was blocked by policy: {reason}"))
-                    if event_cb:
-                        event_cb({"type": "tool_end", "name": tc.name,
-                                  "result": f"blocked by policy: {reason}"[:200], "ok": False})
+                result, _ran, elapsed_ms = await self._gated_call(
+                    tc.name, tc.args, user_id=user_id, user_role=user_role,
+                    user_input=user_input, event_cb=event_cb)
+                if not _ran:
+                    tool_results.append((tc, result))
                     continue
-
-                # ── Security review (heuristic pre-tier + LLM intent judge) ──
-                # The heuristic is sub-ms with no I/O, so it runs regardless of
-                # trust/policy-allow → its catastrophic BLOCK (Floor 1) fires even
-                # for a trusted or allow-listed call. The LLM judge stays behind
-                # `not _trusted` for cost. It may ESCALATE (gate/block), never
-                # auto-allow, so the human gate below is never weakened.
-                _verdict, judged = None, None
-                if _judge_on and not _approval.is_safe(tc.name):
-                    judged = _approval.assess_heuristic(tc.name, tc.args)
-                    if judged is None and not _trusted:
-                        judged = await _approval.assess_intent(
-                            user_input, tc.name, tc.args, model=_judge_model
-                        )
-                    _verdict = judged.get("verdict") if judged else None
-                    if judged:
-                        _approval._audit_log(
-                            user_id, tc.name,
-                            _approval._build_summary(tc.name, tc.args), f"judge:{_verdict}"
-                        )
-                    if _verdict == "block":                     # Floor 1 — unconditional
-                        reason = judged.get("reason", "off-intent")
-                        _log.warning("[JUDGE] blocked %s for user=%s: %s", tc.name, user_id, reason)
-                        tool_results.append((tc, f"Action '{tc.name}' was blocked by the security review: {reason}"))
-                        if event_cb:
-                            event_cb({"type": "tool_end", "name": tc.name,
-                                      "result": f"blocked by security review: {reason}"[:200], "ok": False})
-                        continue
-
-                # ── Human approval gate (Floor 2) ──
-                # Consequential tools and policy 'ask' are bypassed by an explicit
-                # allow (trust rule OR policy-allow). The judge 'gate' is bypassed
-                # only by a per-user trust rule, NOT by a broad policy-allow.
-                # NEVER_TRUSTED tools (code_task) are approved every time: no
-                # trust rule or policy-allow collapses the card for them.
-                _always_ask = tc.name in _approval.NEVER_TRUSTED
-                _allow_bypass = (_trusted or _pol_action == "allow") and not _always_ask
-                _need_gate = _always_ask or (
-                    # registry= lets MCP tools be classified; without it they are
-                    # all treated as safe, which let an MCP shell bypass the gate.
-                    ((_approval.is_consequential(tc.name, registry=self.registry)
-                      or _pol_action == "ask") and not _allow_bypass)
-                    or (_verdict == "gate" and not _trusted)
-                )
-                if _need_gate:
-                    decision = await _approval.request_approval(
-                        tc.name, tc.args, user_id=user_id, event_cb=event_cb,
-                        risk=(judged if _verdict else None),
-                    )
-                    if decision != "allow":
-                        _log.info("[APPROVAL] denied %s by user=%s", tc.name, user_id)
-                        tool_results.append((tc, f"Action '{tc.name}' was denied by the user."))
-                        continue
-
-                t_start = time.perf_counter()
-                result  = await self.registry.execute(tc.name, tc.args)
-                elapsed_ms = round((time.perf_counter() - t_start) * 1000)
                 _tool_ok = not _is_tool_failure(result)
-
-                # ── Output guard — sanitize the RESULT before it reaches either
-                # the model context or the UI. Redacts secrets, annotates injected
-                # instructions in untrusted tool output. Sanitizer, not a gate:
-                # errors pass the raw result through (see output_guard.scan). ──
-                if _guard_on:
-                    _sanitized, _findings = _output_guard.scan(tc.name, result)
-                    if _findings:
-                        result = _sanitized
-                        _fk = ", ".join(sorted({f"{f['kind']}:{f['label']}" for f in _findings}))
-                        _log.warning("[OUTPUT_GUARD] %s → %s", tc.name, _fk)
-                        _approval._audit_log(user_id, tc.name,
-                                             _approval._build_summary(tc.name, tc.args),
-                                             f"output_guard:{_fk}"[:80])
 
                 tool_results.append((tc, result))
                 # Live agent-behaviour telemetry (self-correction metric)
@@ -2292,7 +2367,9 @@ class Orchestrator:
                         event_cb({"type": "tier_escalate", "from": current_tier,
                                   "to": CLAUDE_CODE_TIER, "reason": _esc_reason})
                     return await self._handle_claude_code_direct(
-                        user_input, context, trace, event_cb=event_cb
+                        user_input, context, trace, event_cb=event_cb,
+                        user_id=user_id, user_role=user_role,
+                        conv_mode=conv_mode, grants=grants,
                     )
                 # else: already at the top of what's available — keep trying here
 

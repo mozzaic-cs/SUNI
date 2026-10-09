@@ -141,6 +141,9 @@ DEFAULTS: dict[str, Any] = {
     "imap_host":              "",      # overrides SUNI_IMAP_HOST (inbox watcher)
     "imap_port":              993,     # overrides SUNI_IMAP_PORT
     "force_claude_code":      False,  # bypass all local models; route every request to T5
+    # Lend the Claude Code CLI the tools only SUNI has (screen, images, mail, a
+    # coding run in a project), behind the same approval gate as the local loop.
+    "cc_tool_bridge":         True,
     "claude_code_timeout":    300,     # seconds before a Claude Code (T5) call is aborted
     # code_task: Claude Code working inside a real project. Empty roots = the
     # tool refuses everywhere until an admin names the folders it may touch.

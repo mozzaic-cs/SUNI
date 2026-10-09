@@ -113,8 +113,11 @@ def test_the_guard_runs_before_the_approval_gate():
 
     src = inspect.getsource(orchestrator.Orchestrator._agent_loop)
     guard = src.index("_tool_fail_total.get(tc.name, 0) >= _REPEAT_FAIL_LIMIT")
-    gate = src.index("await _approval.request_approval(")
+    # The gate lives in _gated_call, shared with the Claude Code tool bridge.
+    gate = src.index("await self._gated_call(")
     assert guard < gate, "the repeat guard sits after the approval gate"
+    assert "_approval.request_approval(" in inspect.getsource(
+        orchestrator.Orchestrator._gated_call)
 
 
 def test_the_guard_survives_a_tier_escalation():

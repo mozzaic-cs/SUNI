@@ -49,7 +49,8 @@ SCHEMA = {
                 "type": "string",
                 "description": (
                     "Which screen: 'active' (default — the one they are working "
-                    "on), 'all', or a number from 1. This machine may have "
+                    "on), 'primary' (the main screen — use it when they say "
+                    "main/principal screen), 'all', or a number from 1. This machine may have "
                     "several; capturing all of them when one would do is both "
                     "slower and more of their desk than the question needs."
                 ),
@@ -174,6 +175,12 @@ def handler(reason: str = "", monitor: str = "active") -> str:
         wanted = [(None, 1)]
     elif choice == "all":
         wanted = [(r, i + 1) for i, r in enumerate(rects[:MAX_MONITORS])]
+    elif choice in ("primary", "main", "principal"):
+        # The main screen is the one at the desktop origin. "active" is the
+        # wrong answer to "o ecrã principal": the focused window is whatever
+        # they typed the question into, often the SUNI page on another screen.
+        idx = next((i for i, (l, t, _r, _b) in enumerate(rects) if l == 0 and t == 0), 0)
+        wanted = [(rects[idx], idx + 1)]
     elif choice.isdigit() and 1 <= int(choice) <= len(rects):
         idx = int(choice) - 1
         wanted = [(rects[idx], idx + 1)]

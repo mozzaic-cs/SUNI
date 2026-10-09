@@ -3101,6 +3101,33 @@ def create_app() -> FastAPI:
         )
         return JSONResponse({"rows": rows, "total": total})
 
+    # SUNI's own tools, lent to the Claude Code CLI for one turn. The bearer is
+    # a per-turn token from suni/core/tool_bridge.py, not a user credential:
+    # it opens this endpoint only, for the user and turn it was minted for,
+    # and is gone when the turn ends. Every call still meets the full gate.
+    @app.post("/mcp/bridge")
+    async def mcp_bridge(request: Request):
+        from ..core import tool_bridge as _tb
+        auth = request.headers.get("authorization", "")
+        turn = _tb.lookup(auth[7:].strip() if auth[:7].lower() == "bearer " else "")
+        if turn is None:
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        try:
+            msg = await request.json()
+        except ValueError:
+            return JSONResponse({"jsonrpc": "2.0", "id": None,
+                                 "error": {"code": -32700, "message": "Parse error"}},
+                                status_code=400)
+        reply = await _tb.handle_rpc(turn, msg)
+        if reply is None:
+            return Response(status_code=202)
+        return JSONResponse(reply)
+
+    @app.get("/mcp/bridge")
+    async def mcp_bridge_stream():
+        # No server-initiated messages; the CLI falls back to plain POSTs.
+        return Response(status_code=405)
+
     @app.get("/api/approval/pending")
     async def approval_pending(user: dict = Depends(get_current_user)):
         from .. import approval as _ap

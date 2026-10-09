@@ -98,7 +98,8 @@ async def _run_claude(args: list[str], timeout: int = 300, cwd: str | None = Non
 
 async def _run_claude_stream(args: list[str], on_line, timeout: int = 300,
                              cwd: str | None = None,
-                             stdin_data: str | None = None) -> tuple[int, str, str]:
+                             stdin_data: str | None = None,
+                             extra_env: dict[str, str] | None = None) -> tuple[int, str, str]:
     """Like _run_claude, but hands each stdout LINE to `on_line` as it arrives.
 
     A separate function rather than a flag on _run_claude: that one is used by
@@ -120,6 +121,8 @@ async def _run_claude_stream(args: list[str], on_line, timeout: int = 300,
     # The CLI writes JSON to stdout; without this, a non-ASCII reply can die on
     # the Windows console codepage mid-stream.
     env.setdefault("PYTHONIOENCODING", "utf-8")
+    if extra_env:
+        env.update(extra_env)
 
     _tmp_path = None
     _stdin = None

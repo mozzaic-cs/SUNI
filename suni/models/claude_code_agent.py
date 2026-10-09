@@ -80,7 +80,8 @@ def _record_cc_usage(parsed: dict) -> None:
 
 
 async def _stream_run(args: list[str], event_cb, timeout: int,
-                      task: str) -> tuple[int, str, str, dict]:
+                      task: str, extra_env: dict | None = None
+                      ) -> tuple[int, str, str, dict]:
     """Run the CLI in stream-json mode, reporting progress as it arrives.
 
     Every assistant turn is classified by its stop_reason, which the CLI sends
@@ -155,7 +156,8 @@ async def _stream_run(args: list[str], event_cb, timeout: int,
                     event_cb({"type": "cc_note", "text": text})
 
     rc, stdout, stderr = await _run_claude_stream(
-        args, _on_line, timeout=timeout, cwd=_CC_HOME, stdin_data=task)
+        args, _on_line, timeout=timeout, cwd=_CC_HOME, stdin_data=task,
+        **({"extra_env": extra_env} if extra_env else {}))
     # Anything we understood, not only a completed run: "said" survives a
     # stop, and an empty dict here is what sent the raw stream to the screen.
     return rc, stdout, stderr, (state if (state.get("result") or state.get("said")) else {})
@@ -237,6 +239,17 @@ class ClaudeCodeAgent(BaseAgent):
         from ..user_settings import resolve_output_dir as _rod
         task = task + _task_suffix(_rod(_UID_CTX.get("")))
 
+        # SUNI's own tools, lent for this turn (see suni/core/tool_bridge.py).
+        # Stream mode only: every one of them is approval-gated, and the event
+        # stream is where the card is shown.
+        from ..core import tool_bridge as _tb
+        _turn = _tb.CURRENT.get()
+        from ..tools.claude_code_advanced import EVENT_CB_CTX as _ECB
+        if _turn is not None and _ECB.get() is not None:
+            task = task + "\n\n" + _tb.task_note(_turn)
+        else:
+            _turn = None
+
         # The prompt goes through stdin (see _run_claude): passing it as a --print
         # argument routes it through the Windows cmd.exe shim, whose ~8191-char
         # command-line limit overflows on large prompts ("The command line is too
@@ -268,10 +281,26 @@ class ClaudeCodeAgent(BaseAgent):
         from .. import config as _cfg
         _cc_timeout = int(_cfg.get("claude_code_timeout", 300) or 300)
 
+        _mcp_cfg = None
+        _extra_env = None
+        if _turn is not None:
+            _mcp_cfg = _tb.write_mcp_config(_turn)
+            args += ["--mcp-config", _mcp_cfg]
+            _i = args.index("--allowedTools") + 1
+            args[_i] = ",".join([args[_i]] + _tb.allowed_tools(_turn))
+            _extra_env = _tb.cli_env(_cc_timeout)
+
         if _event_cb:
-            rc, stdout, stderr, _streamed = await _stream_run(
-                args, _event_cb, _cc_timeout, task
-            )
+            try:
+                rc, stdout, stderr, _streamed = await _stream_run(
+                    args, _event_cb, _cc_timeout, task, extra_env=_extra_env
+                )
+            finally:
+                if _mcp_cfg:
+                    try:
+                        os.remove(_mcp_cfg)
+                    except OSError:
+                        pass
         else:
             _streamed = {}
             rc, stdout, stderr = await _run_claude(
