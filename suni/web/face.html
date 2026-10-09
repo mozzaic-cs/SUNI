@@ -3002,6 +3002,18 @@ function _agfSlots(n, w, h){
     const y = Math.max(92, sb.top - 44);
     return Array.from({length: n}, (_, i) => [44 + i * 82, y]);
   }
+  // Stage or network open: she is small in the top-right corner and the
+  // space under her is free in both, so the figures line up beneath her
+  // head, centred on it, four to a row.
+  if (_stageT > 0.5) {
+    const cx = (hb.x0 + hb.x1) / 2, perRow = 4, pitch = 94;
+    return Array.from({length: n}, (_, i) => {
+      const row = Math.floor(i / perRow);
+      const inRow = Math.min(perRow, n - row * perRow);
+      const x = cx + (i % perRow - (inRow - 1) / 2) * pitch;
+      return [Math.min(w - 44, Math.max(44, x)), hb.y1 - 8 + row * 84];
+    });
+  }
   const cx = (hb.x0 + hb.x1) / 2, cy = (hb.y0 + hb.y1) / 2;
   const rx = (hb.x1 - hb.x0) / 2 + 52, ry = (hb.y1 - hb.y0) / 2 + 26;
   const order = [-58, 58, -96, 96, -130, 130, -24, 24, 160, -160];
@@ -3034,7 +3046,11 @@ function _agfPlace(){
   const slots = _agfSlots(figs.length, w, h);
   figs.forEach((f, i) => {
     const [x, y] = slots[i];
-    f.el.style.transform = `translate(${Math.round(x - 29)}px, ${Math.round(y - 30)}px)`;
+    // Glide rather than jump when the layout changes (into the stage or the
+    // network and back); a new figure starts where it belongs.
+    if (f.x === undefined) { f.x = x; f.y = y; }
+    f.x += (x - f.x) * 0.18; f.y += (y - f.y) * 0.18;
+    f.el.style.transform = `translate(${Math.round(f.x - 29)}px, ${Math.round(f.y - 30)}px)`;
   });
   _agf.raf = requestAnimationFrame(_agfPlace);
 }
@@ -3101,32 +3117,49 @@ function _agfEvent(ev){
 }
 
 /* A rehearsal, entirely in the browser: no server call, no real agent, nothing
-   runs. Open /face?demo=agents, or call _agfDemo() from the console. It plays
-   the same events the server sends, through the same handlers, so what you
-   see is what a real fan-out looks like. */
+   runs. It plays the same events the server sends, through the same handlers,
+   so what you see is what real agent work looks like.
+
+   Continuous, because a one-shot was over before anyone could open the stage
+   or the network to see how the figures behave there: three agents stay up,
+   cycling through every state, and one that finishes or fails comes back a
+   few seconds later. Open /face?demo=agents, or call _agfDemo() from the
+   console; _agfDemoStop() ends it (so does a reload without the parameter). */
+let _agfDemoT = null;
 function _agfDemo(){
+  _agfDemoStop();
   const pt = (typeof getLang === 'function' && getLang() === 'pt');
   const A = [{slug:'demo-revisor', name:'Revisor'},
              {slug:'demo-investigador', name: pt ? 'Investigador' : 'Researcher'},
              {slug:'demo-contabilista', name: pt ? 'Contabilista' : 'Bookkeeper'}];
-  const steps = [
-    [0,     () => showSub(pt ? 'Demonstração: três agentes simulados. Nada é executado.'
-                             : 'Demo: three simulated agents. Nothing runs.')],
-    [600,   () => _agfEvent({phase:'start', ...A[0]})],
-    [1300,  () => _agfEvent({phase:'start', ...A[1]})],
-    [2000,  () => _agfEvent({phase:'start', ...A[2]})],
-    [4000,  () => { _agfWaiting(A[0].slug, true);
-                    showSub(pt ? 'O Revisor aguarda a sua aprovação (simulado).'
-                               : 'Revisor is waiting for your approval (simulated).'); }],
-    [7500,  () => { _agfWaiting(A[0].slug, false); hideSub(); }],
-    [9000,  () => _agfEvent({phase:'done', ...A[1]})],
-    [10200, () => _agfEvent({phase:'error', ...A[2]})],
-    [11800, () => _agfEvent({phase:'done', ...A[0]})],
-    [13600, () => showSub(pt ? 'Fim da demonstração. _agfDemo() repete.' : 'Demo over. _agfDemo() runs it again.')],
-    [17000, hideSub],
+  showSub(pt ? 'Demonstração contínua: três agentes simulados, nada é executado. '
+               + 'Experimente o palco e a rede. _agfDemoStop() termina.'
+             : 'Continuous demo: three simulated agents, nothing runs. '
+               + 'Try the stage and the network. _agfDemoStop() ends it.');
+  setTimeout(hideSub, 7000);
+  A.forEach((a, i) => setTimeout(() => _agfEvent({phase:'start', ...a}), 400 + i * 700));
+  // One cycle, 24s, repeated: waiting → working → one done (returns) → one
+  // fails (returns). Every state is on screen within half a minute.
+  const cycle = [
+    [5000,  () => _agfWaiting(A[0].slug, true)],
+    [10000, () => _agfWaiting(A[0].slug, false)],
+    [12000, () => _agfEvent({phase:'done', ...A[1]})],
+    [16000, () => _agfEvent({phase:'start', ...A[1]})],
+    [18000, () => _agfEvent({phase:'error', ...A[2]})],
+    [22000, () => _agfEvent({phase:'start', ...A[2]})],
   ];
-  steps.forEach(([ms, fn]) => setTimeout(fn, ms));
+  let t0 = performance.now(), fired = new Set();
+  _agfDemoT = setInterval(() => {
+    const el = performance.now() - t0;
+    cycle.forEach(([ms, fn], i) => { if (el >= ms && !fired.has(i)) { fired.add(i); fn(); } });
+    if (el >= 24000) { t0 = performance.now(); fired = new Set(); }
+  }, 100);
 }
+function _agfDemoStop(){
+  if (_agfDemoT) { clearInterval(_agfDemoT); _agfDemoT = null; }
+  for (const k of [..._agf.figs.keys()]) if (String(k).startsWith('demo-')) _agfEnd(k, '', false);
+}
+window._agfDemoStop = _agfDemoStop;
 window._agfDemo = _agfDemo;
 try {
   if (new URLSearchParams(location.search).get('demo') === 'agents')
