@@ -297,7 +297,7 @@ header{
    built from the same light as she is. HTML/SVG over the canvas rather than
    in the WebGL scene, so a lost GPU context cannot take them with it. */
 #agent-layer{position:fixed;inset:0;pointer-events:none;z-index:9}
-.agent-fig{position:absolute;left:0;top:0;width:58px;
+.agent-fig{position:absolute;left:0;top:0;width:58px;transform-origin:29px 30px;
   display:flex;flex-direction:column;align-items:center;gap:4px;
   --c:hsl(var(--h) 85% 64%);--c2:hsl(var(--h) 90% 76%);
   will-change:transform}
@@ -712,6 +712,10 @@ header{
 #net-side{position:absolute;right:2.2%;bottom:132px;z-index:7;
   display:flex;flex-direction:column;align-items:flex-end;gap:7px;
   pointer-events:none}
+/* Wide enough that the centred dock (at most 680px) ends well before the
+   right edge: the legend can go down to the dock's level, which leaves the
+   space under her head to the agent figures. */
+@media(min-width:1300px){ #net-side{bottom:24px} }
 #net-legend{opacity:0;
   transition:opacity .35s ease;pointer-events:none;
   display:flex;flex-direction:column;gap:5px;
@@ -3006,12 +3010,31 @@ function _agfSlots(n, w, h){
   // space under her is free in both, so the figures line up beneath her
   // head, centred on it, four to a row.
   if (_stageT > 0.5) {
-    const cx = (hb.x0 + hb.x1) / 2, perRow = 4, pitch = 94;
+    const sc = _agfScale(n), pitch = 94 * sc;
+    // The network's legend is the other thing on that side: rows stop above
+    // it, packing closer if they have to rather than covering it.
+    const lg = document.getElementById('net-legend');
+    const lb = (lg && lg.classList.contains('on')) ? lg.getBoundingClientRect() : null;
+    const floor = Math.min(lb ? lb.top - 44 : h, db ? db.y0 - 44 : h);
+    const cx = (hb.x0 + hb.x1) / 2;
+    // As many to a row as fit under her head and a little either side.
+    const perRow = Math.max(3, Math.floor((hb.x1 - hb.x0 + 120) / pitch));
+    const rowsNeeded = Math.ceil(n / perRow);
+    if (hb.y1 - 8 + (rowsNeeded - 1) * 56 * sc > floor) {
+      // No room under her (a short window, with the legend filling that side):
+      // rows to the LEFT of her head instead, from her brow down, going left.
+      const across = 4;
+      return Array.from({length: n}, (_, i) => [
+        Math.max(44, hb.x0 - 40 - (i % across) * pitch),
+        Math.max(70, hb.y0 + 30) + Math.floor(i / across) * 84 * sc]);
+    }
     return Array.from({length: n}, (_, i) => {
       const row = Math.floor(i / perRow);
       const inRow = Math.min(perRow, n - row * perRow);
       const x = cx + (i % perRow - (inRow - 1) / 2) * pitch;
-      return [Math.min(w - 44, Math.max(44, x)), hb.y1 - 8 + row * 84];
+      const rows = Math.ceil(n / perRow);
+      const gap = rows > 1 ? Math.min(84 * sc, (floor - (hb.y1 - 8)) / (rows - 1)) : 0;
+      return [Math.min(w - 44, Math.max(44, x)), hb.y1 - 8 + row * Math.max(56 * sc, gap)];
     });
   }
   const cx = (hb.x0 + hb.x1) / 2, cy = (hb.y0 + hb.y1) / 2;
@@ -3038,19 +3061,23 @@ function _agfSlots(n, w, h){
   return out;
 }
 
+// Smaller as the team grows, so eight agents fit where three did.
+function _agfScale(n){ return n <= 3 ? 1 : n <= 5 ? 0.85 : n <= 8 ? 0.72 : 0.6; }
+
 function _agfPlace(){
   _agf.raf = 0;
   if (!_agf.figs.size) return;
   const w = window.innerWidth, h = window.innerHeight;
   const figs = [..._agf.figs.values()];
   const slots = _agfSlots(figs.length, w, h);
+  const sc = _agfScale(figs.length);
   figs.forEach((f, i) => {
     const [x, y] = slots[i];
     // Glide rather than jump when the layout changes (into the stage or the
     // network and back); a new figure starts where it belongs.
-    if (f.x === undefined) { f.x = x; f.y = y; }
-    f.x += (x - f.x) * 0.18; f.y += (y - f.y) * 0.18;
-    f.el.style.transform = `translate(${Math.round(f.x - 29)}px, ${Math.round(f.y - 30)}px)`;
+    if (f.x === undefined) { f.x = x; f.y = y; f.s = sc; }
+    f.x += (x - f.x) * 0.18; f.y += (y - f.y) * 0.18; f.s += (sc - f.s) * 0.18;
+    f.el.style.transform = `translate(${Math.round(f.x - 29)}px, ${Math.round(f.y - 30)}px) scale(${f.s.toFixed(3)})`;
   });
   _agf.raf = requestAnimationFrame(_agfPlace);
 }
