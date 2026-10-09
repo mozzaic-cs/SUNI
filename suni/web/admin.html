@@ -1161,6 +1161,13 @@ input,textarea{caret-color:var(--cyan)}
           <input type="password" name="tts_api_key" data-i18n-placeholder="admin.ph_key_ifreq" placeholder="only if the server requires it">
         </div>
         <div class="field">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:2px 0">
+            <input type="checkbox" id="voice_fillers" name="voice_fillers" style="accent-color:var(--gold)">
+            <span data-i18n="admin.chk_voice_fillers">Spoken progress during long tasks</span>
+          </label>
+          <div class="field-hint" data-i18n="admin.hint_voice_fillers">When the voice is on, the face says a short line after about 6 seconds without an answer ("One moment, let me look into that."), then every 20 seconds or so, at most four times. Never during a quick answer, and never over the answer itself.</div>
+        </div>
+        <div class="field">
           <label data-i18n="admin.cfg_stt_lang">Speech recognition language (microphone)</label>
           <select name="stt_language">
             <option value="en-GB" data-i18n="admin.opt_lang_engb_v">English — British (en-GB)</option>
@@ -2775,6 +2782,8 @@ function applyConfigToForm(cfg) {
   // Collaboration (Mode 2): toggles + pool
   const cen = document.getElementById('collaborate_enabled');
   if (cen) { cen.checked = cfg.collaborate_enabled !== false; }
+  const vfi = document.getElementById('voice_fillers');
+  if (vfi) { vfi.checked = cfg.voice_fillers !== false; }
   const csk = document.getElementById('collaborate_skip_critique');
   if (csk) { csk.checked = !!cfg.collaborate_skip_critique; }
   _collabPool = (cfg.collaborate_pool || []).map(e => ({
@@ -3079,6 +3088,7 @@ document.getElementById('cfg-form').addEventListener('submit', async e => {
     ? rawSkChans.split(/[\n,]/).map(s=>s.trim()).filter(Boolean) : [];
   // Collaboration (Mode 2)
   data.collaborate_enabled = !!document.getElementById('collaborate_enabled')?.checked;
+  data.voice_fillers = !!document.getElementById('voice_fillers')?.checked;
   data.collaborate_skip_critique = !!document.getElementById('collaborate_skip_critique')?.checked;
   data.collaborate_pool = _collectCollabPool();
   const rawPaths = (form.elements['doc_paths_raw']?.value || '').trim();

@@ -2279,6 +2279,7 @@ const _sessionId  = localStorage.getItem('suni_session') || (() => {
       _apiFetch('/api/config').then(r=>r.json()).catch(()=>({})),
     ]);
     _applyBranding(uCfg);
+    _fill.on = uCfg.voice_fillers !== false;
     const uiLang = uSettings.response_language || uCfg.response_language || 'en';
     if (typeof setLang !== 'undefined') setLang(uiLang);
   } catch {}
@@ -2740,6 +2741,135 @@ function _enqueueSentence(s) {
   if (s.trim().length < 4) return;
   _ttsQueue.push(s);
   _drainTts();
+}
+
+// ── Spoken fillers while a long turn runs ─────────────────────────────
+/* A Claude Code turn routinely takes 20s to 2 minutes, and the progress notes
+   it sends are subtitles only — so with the voice on she said nothing at all
+   until the answer, which reads as a hang. These are fixed phrases chosen by
+   WHAT she is doing (the tool name), never her own narration: the narration
+   names files and internal steps, which is exactly what must not be read out.
+
+   Rules: nothing before FIRST_MS, so a quick answer never gets one; then one
+   every GAP_MS, at most MAX per turn; the real answer cuts a filler off
+   mid-word and none is spoken after it starts; never while the mic is open.
+   Clips are cached as blobs per voice, so after the first time a filler plays
+   at once instead of waiting on /api/tts while the server is busy. */
+const _FILL_FIRST_MS = 6000, _FILL_GAP_MS = 22000, _FILL_MAX = 4;
+const _FILLERS = {
+  pt: {
+    ack:      ['Um momento, vou ver isso.', 'Já estou a tratar disso.', 'Vou analisar isso, um momento.'],
+    read:     ['Estou a ler os ficheiros.', 'Estou a ver o código.', 'Estou a percorrer os ficheiros.'],
+    web:      ['Estou a consultar a web.', 'Estou a ver a página.', 'Estou a pesquisar isso.'],
+    run:      ['Estou a fazer umas verificações.', 'Estou a correr uns comandos.'],
+    work:     ['Ainda estou a trabalhar nisto.', 'Isto está a demorar um pouco, mas estou a avançar.',
+               'Continuo nisto, obrigada pela paciência.'],
+    approval: ['Preciso da sua aprovação no ecrã.'],
+  },
+  en: {
+    ack:      ['One moment, let me look into that.', 'On it.', 'Let me check that, one moment.'],
+    read:     ['Reading through the files.', 'Looking at the code.', 'Going through the files.'],
+    web:      ['Checking the web.', 'Looking at the page.', 'Searching for that.'],
+    run:      ['Running a few checks.', 'Running some commands.'],
+    work:     ['Still working on this.', 'This is taking a little while, but it is moving.',
+               'Still on it, thanks for your patience.'],
+    approval: ['I need your approval on screen.'],
+  },
+};
+const _fill = { on: true, timer: null, n: 0, kind: '', last: '', playing: false, gen: 0, clips: {} };
+
+function _fillerKind(tool) {
+  const n = String(tool || '').replace(/^[·\s]+/, '').toLowerCase();
+  if (!n) return '';
+  if (/web|fetch|search_web|browse|playwright|url/.test(n)) return 'web';
+  if (/^(read|glob|grep|ls)$|read_file|search_doc|search_memory|list_dir|kb/.test(n)) return 'read';
+  if (/^(bash|powershell)$|shell|run_|command/.test(n)) return 'run';
+  return 'work';
+}
+
+function _fillerPick(kind) {
+  const L = _FILLERS[(typeof getLang === 'function' && getLang()) || 'en'] || _FILLERS.en;
+  const opts = (L[kind] || L.work).filter(p => p !== _fill.last);
+  const p = opts[Math.floor(Math.random() * opts.length)] || L.work[0];
+  _fill.last = p;
+  return p;
+}
+
+function _fillerClip(text) {
+  // Blob, not object URL: _playUrl revokes the URL it was given after playing.
+  const key = (window._suniTtsVoice || '') + '|' + text;
+  if (!_fill.clips[key]) {
+    _fill.clips[key] = _apiFetch('/api/tts', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({text, voice: window._suniTtsVoice || ''})
+    }).then(r => r.ok ? r.blob() : null).catch(() => null)
+      .then(b => { if (!b) delete _fill.clips[key]; return b; });
+  }
+  return _fill.clips[key];
+}
+
+function _fillerQuiet() {
+  const mic = document.getElementById('mic-btn');
+  return !ttsOn || !_fill.on || _ttsPaused || _ttsBusy || _ttsQueue.length
+         || (mic && mic.classList.contains('listening'));
+}
+
+async function _fillerSay(kind) {
+  if (_fillerQuiet()) return;
+  const gen = _fill.gen, text = _fillerPick(kind);
+  const blob = await _fillerClip(text);
+  // The turn may have answered, or ended, while the clip was being fetched.
+  if (!blob || gen !== _fill.gen || _fillerQuiet()) return;
+  _fill.playing = true;
+  try { await _playUrl(URL.createObjectURL(blob), text); }
+  finally {
+    _fill.playing = false;
+    if (!_ttsBusy && !_ttsQueue.length) ttsPauseBtn.classList.add('idle');
+    if (gen === _fill.gen && _isRunning) { setState('thinking'); hideSub(); }
+  }
+}
+
+function _fillerTick() {
+  _fill.timer = null;
+  if (!_isRunning || _fill.n >= _FILL_MAX) return;
+  const kind = _fill.n === 0 ? 'ack' : (_fill.kind || 'work');
+  _fill.n++; _fill.kind = '';      // a hint is used once; then "still working"
+  _fillerSay(kind);
+  if (_fill.n < _FILL_MAX) _fill.timer = setTimeout(_fillerTick, _FILL_GAP_MS);
+}
+
+// A new turn: arm the first filler, and warm the cache for the opening line.
+function _fillerStart() {
+  _fillerStop();
+  _fill.n = 0; _fill.kind = '';
+  if (!ttsOn || !_fill.on) return;
+  _fill.timer = setTimeout(_fillerTick, _FILL_FIRST_MS);
+  // Cached after the first time, so this costs a request only once per voice.
+  const L = _FILLERS[(typeof getLang === 'function' && getLang()) || 'en'] || _FILLERS.en;
+  L.ack.forEach(_fillerClip);
+}
+
+// What she is doing now — the tool name from cc_note / tool_start.
+function _fillerHint(tool) { const k = _fillerKind(tool); if (k) _fill.kind = k; }
+
+// The answer started, the turn ended, or it is waiting on a person: stop, and
+// cut off a filler mid-word rather than make the answer queue behind it.
+function _fillerStop() {
+  _fill.gen++;
+  clearTimeout(_fill.timer); _fill.timer = null;
+  if (_fill.playing) {
+    try { audioEl.pause(); } catch {}
+    if (_ttsResolve) { _ttsResolve(); _ttsResolve = null; }
+    _fill.playing = false;
+  }
+}
+
+// Waiting on an approval card: say so once, and hold the "still working" ones
+// until it is answered — she is not working, she is waiting for you.
+function _fillerApproval() { _fillerStop(); _fillerSay('approval'); }
+function _fillerResume() {
+  if (_fill.timer || !_isRunning || !ttsOn || !_fill.on || _fill.n >= _FILL_MAX) return;
+  _fill.timer = setTimeout(_fillerTick, _FILL_GAP_MS);
 }
 
 // Emit each complete sentence in `buf` to voice (TTS on) or straight to the
@@ -4156,6 +4286,7 @@ async function send() {
   if (_ttsResolve) { _ttsResolve(); _ttsResolve = null; }  // unblock any parked play so the old drain bails
   clearInterval(_waitDrainTimer);   // stop a previous reply's idle-poll so it can't fire during this one
   _stageFinal = false;              // a new turn: the stage is free to fill again
+  _fillerStart();                   // after the reset above, which would silence it
 
   try {
     const res = await _apiFetch('/api/chat', {
@@ -4180,6 +4311,7 @@ async function send() {
           // Strip any file-serve URL so it's neither captioned nor spoken.
           const _tk = ev.text.includes('/api/files/serve') ? _stripServeUrls(ev.text) : ev.text;
           if (!_tk && ev.text.includes('/api/files/serve')) continue;
+          _fillerStop();     // the answer has started: no filler over it, none after it
           appendTok(suniWrap, _tk);
           // Extract complete sentences as they stream. TTS on → feed the audio
           // queue (_playUrl drives the synced caption). TTS off → show the sentence
@@ -4187,6 +4319,7 @@ async function send() {
           sentenceBuf += _tk;
           sentenceBuf = _emitSentences(sentenceBuf, () => { surfaced = true; });
         } else if (ev.type === 'done') {
+          _fillerStop();
           full = ev.text;
           // Extract media from the RAW reply (still has the serve URL) for the stage,
           // but display/enhance the CLEANED text (no URL to read aloud).
@@ -4222,10 +4355,13 @@ async function send() {
             if (_stageMode) _armStageClose();
           }
         } else if (ev.type === 'stopped') {
+          _fillerStop();
           setState('idle');
         } else if (ev.type === 'error') {
+          _fillerStop();
           finalMsg(suniWrap, `— ${ev.text}`); setState('idle');
         } else if (ev.type === 'tool_start') {
+          _fillerHint(ev.name);
           const isBrowser = ev.name && ev.name.startsWith('playwright');
           setState(isBrowser ? 'browsing' : 'working', ev.name);
         } else if (ev.type === 'tool_end') {
@@ -4239,7 +4375,10 @@ async function send() {
           // Progress while Claude Code works. Subtitle only: it never enters the
           // caption buffer and never reaches the speech queue.
           const n = (ev.text || '').trim();
-          if (n) showSub(n.length > 90 ? n.slice(0, 90) + '…' : n);
+          // "· Read" is a tool starting; anything else is narration, which
+          // only shows — it never chooses or becomes a spoken filler.
+          if (n.startsWith('·')) _fillerHint(n);
+          if (n && !_fill.playing) showSub(n.length > 90 ? n.slice(0, 90) + '…' : n);
         } else if (ev.type === 'approval_request') {
           // Without this the Face interface cannot answer, so every gated tool
           // — send_email, write_file, run_shell, claude_task — waited five
@@ -4248,8 +4387,9 @@ async function send() {
           // PDF, asked to send, and timed out while the face sat on 'thinking'.
           showApprovalPrompt(ev, {
             onWaiting:  () => { setState('idle');
-                                showSub(t('chat.approval_required')); },
-            onAnswered: () => { hideSub(); setState('thinking'); },
+                                showSub(t('chat.approval_required'));
+                                _fillerApproval(); },
+            onAnswered: () => { hideSub(); setState('thinking'); _fillerResume(); },
           });
         } else if (ev.type === 'net_view') {
           /* SUNI took the view somewhere. Asked which devices are on the
@@ -4286,6 +4426,7 @@ async function send() {
     finalMsg(suniWrap, `Connection error: ${e.message}`);
     setState('idle');
   } finally {
+    _fillerStop();
     _isRunning = false; sendBtn.disabled = false;
     sendBtn.textContent = t('chat.send'); sendBtn.title = '';
     sendBtn.classList.remove('stopping');

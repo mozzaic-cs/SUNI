@@ -23,6 +23,9 @@ DEFAULTS: dict[str, Any] = {
     # admin panel (Configuration → Model).
     "model":                  "",
     "tts_voice":              "en-GB-SoniaNeural",
+    # /face says a short fixed line ("Still working on this.") during a long
+    # turn when the voice is on, instead of being silent for a minute or two.
+    "voice_fillers":          True,
     "num_ctx":                8192,
     "email_poll_interval":    1800,
     "memory_top_k":           5,
