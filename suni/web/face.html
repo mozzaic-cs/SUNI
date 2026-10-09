@@ -3100,6 +3100,39 @@ function _agfEvent(ev){
   else _agfEnd(ev.slug, ev.name, ev.phase === 'error');
 }
 
+/* A rehearsal, entirely in the browser: no server call, no real agent, nothing
+   runs. Open /face?demo=agents, or call _agfDemo() from the console. It plays
+   the same events the server sends, through the same handlers, so what you
+   see is what a real fan-out looks like. */
+function _agfDemo(){
+  const pt = (typeof getLang === 'function' && getLang() === 'pt');
+  const A = [{slug:'demo-revisor', name:'Revisor'},
+             {slug:'demo-investigador', name: pt ? 'Investigador' : 'Researcher'},
+             {slug:'demo-contabilista', name: pt ? 'Contabilista' : 'Bookkeeper'}];
+  const steps = [
+    [0,     () => showSub(pt ? 'Demonstração: três agentes simulados. Nada é executado.'
+                             : 'Demo: three simulated agents. Nothing runs.')],
+    [600,   () => _agfEvent({phase:'start', ...A[0]})],
+    [1300,  () => _agfEvent({phase:'start', ...A[1]})],
+    [2000,  () => _agfEvent({phase:'start', ...A[2]})],
+    [4000,  () => { _agfWaiting(A[0].slug, true);
+                    showSub(pt ? 'O Revisor aguarda a sua aprovação (simulado).'
+                               : 'Revisor is waiting for your approval (simulated).'); }],
+    [7500,  () => { _agfWaiting(A[0].slug, false); hideSub(); }],
+    [9000,  () => _agfEvent({phase:'done', ...A[1]})],
+    [10200, () => _agfEvent({phase:'error', ...A[2]})],
+    [11800, () => _agfEvent({phase:'done', ...A[0]})],
+    [13600, () => showSub(pt ? 'Fim da demonstração. _agfDemo() repete.' : 'Demo over. _agfDemo() runs it again.')],
+    [17000, hideSub],
+  ];
+  steps.forEach(([ms, fn]) => setTimeout(fn, ms));
+}
+window._agfDemo = _agfDemo;
+try {
+  if (new URLSearchParams(location.search).get('demo') === 'agents')
+    setTimeout(_agfDemo, 3500);    // after the head has materialised
+} catch {}
+
 // Emit each complete sentence in `buf` to voice (TTS on) or straight to the
 // caption (muted). Returns the trailing incomplete remainder. `onEmit` fires
 // once per surfaced sentence (used to mark that the reply reached the face).
