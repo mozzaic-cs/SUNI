@@ -66,7 +66,9 @@ def test_the_lip_crease_shows_only_when_the_lips_meet():
     line = next(l for l in FACE.splitlines() if l.strip().startswith("fres *= 1.0 - 0.92"))
     # By the mouth as a whole: per point, the still-touching corners of a
     # round mouth glinted.
-    assert "v_mopen" in line, "the crease glow is not tied to the mouth being open"
+    assert "u_mFx.z" in line, "the crease glow is not tied to the lips meeting"
+    # faded over time: judged per frame it snapped on between two frames
+    assert "cdt * 6" in FACE
 
 
 def test_the_lips_part_at_their_junction_not_through_the_lower_lip():
@@ -79,3 +81,17 @@ def test_the_lips_part_at_their_junction_not_through_the_lower_lip():
 
 def test_only_the_gap_between_the_lips_is_darkened():
     assert "abs(v_ms)" in FACE and "v_ms = 1.0 - 2.0 * m_below" in FACE
+
+
+def test_the_jaw_drops_below_the_lips_only():
+    """Height alone gave the upper lip 0.62 of the jaw: the chin hardly moved."""
+    assert "jw = mix(a_jaw, m_below," in FACE and "vec3 p=jr(pm,jw);" in FACE
+
+
+def test_open_mouths_show_teeth_and_no_cup_rim():
+    assert "float teeth =" in FACE
+    assert "* edge * clamp(v_gap" not in FACE, "the light rim under the lower lip read as a cup"
+
+
+def test_f_and_v_have_their_own_shape():
+    assert "u_mB.w * (0.016 * lipLo" in FACE and "window._mouthPose = (open, wide, fv)" in FACE
