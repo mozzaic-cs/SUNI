@@ -1212,7 +1212,7 @@ function audioLevel(){
    full open (was 0.34 — the puppet). lip/up: lower-lip drop, upper-lip lift.
    wide/push: corner pull, lip push for round. gap: how dark the open seam
    goes. dbg: tint the lip regions. Freeze a pose with _mouthPose(open, wide). */
-const MOUTH = { y:-0.58, w:0.19, z:0.64, jaw:0.10, lip:0.045, up:0.022,
+const MOUTH = { y:-0.58, w:0.19, z:0.64, jaw:0.10, lip:0.045, up:0.014,
                 wide:0.17, push:0.03, gap:1.6, dbg:0 };
 window.MOUTH = MOUTH;
 const _mouthLocs = { wire:null, solid:null };
@@ -1224,9 +1224,7 @@ function _mouthUniforms(pr){
 }
 function _mouthSet(L){
   if (!L) return;
-  // Eased so small openings read as openings: speech sits mostly at 0.1-0.3,
-  // where a linear map parted the lips by a pixel or two — a line, not a mouth.
-  const o = Math.pow(Math.max(0, _mouthFreeze ? _mouthFreeze[0] : mouthOpen), 0.7);
+  const o = (_mouthFreeze ? _mouthFreeze[0] : mouthOpen);
   const w = _mouthFreeze ? _mouthFreeze[1] : mouthWide;
   gl.uniform4f(L.A, MOUTH.y, MOUTH.w, MOUTH.lip, MOUTH.up);
   gl.uniform4f(L.B, MOUTH.wide, MOUTH.push, MOUTH.z, 0);
@@ -1615,8 +1613,9 @@ void main(){
      the lips, whose faces point up and down: it drew a bright line where the
      lips meet, closed or open, and the underside of the upper lip became a
      glowing stripe as she spoke. Limited to the mouth (v_mreg) so the head's
-     outline keeps its rim. */
-  fres *= 1.0 - 0.92 * (1.0 - smoothstep(0.012, 0.045, abs(v_mdy))) * smoothstep(0.15, 0.45, v_mreg);
+     outline keeps its rim, and to parted lips (v_gap): closed, the bright
+     crease is where they meet and is wanted — open, it is gone. */
+  fres *= 1.0 - 0.92 * (1.0 - smoothstep(0.012, 0.045, abs(v_mdy))) * smoothstep(0.15, 0.45, v_mreg) * smoothstep(0.0, 0.05, v_gap);
   /* holographic shading: low ambient, cool body, strong glowing fresnel rim */
   vec3 col=u_color*(0.12+0.50*diff) + vec3(0.50,0.85,1.0)*fres*1.5;
   /* fine static scanlines (holographic texture, no sweeping bar) */
@@ -1637,15 +1636,11 @@ void main(){
     col += band * vec3(1.0, 0.92, 1.05) * jitter * 2.6;
   }
   /* not black: a dim interior in her own light, so the lip edges stay legible */
-  /* The band reaches up over the upper lip's inner curl (rest dy +0.009 to
-     +0.015 on this mesh): its faces point down and drew a crisp dark line
-     ABOVE a half-darkened gap — the seam still showing as its own line while
-     she spoke. The band covers the curl so it merges into the opening;
-     closed (v_gap 0) it is untouched and the crease shows only when the lips
-     actually meet. Soft-edged and capped at 0.65: a hard band at 0.9 painted
-     the inside of both lips near-black — a black bar, not a mouth. */
-  float inner = 1.0 - smoothstep(0.004, 0.018, abs(v_mdy - 0.0025));
-  col = mix(col, col * 0.14 + vec3(0.010, 0.030, 0.050), clamp(v_gap * inner * u_mFx.x * 1.8, 0.0, 0.65));
+  /* The opening, dimmed. Tried and rejected (2026-10-11): a wider, harder
+     band to swallow the upper lip's curl read as a black bar; a softer one
+     as a blur. The user preferred this one, the original look. */
+  float inner = 1.0 - smoothstep(0.005, 0.014, abs(v_mdy + 0.002));
+  col = mix(col, col * 0.14 + vec3(0.010, 0.030, 0.050), clamp(v_gap * inner * u_mFx.x, 0.0, 0.85));
   /* the lower lip's top edge catches the light once the mouth is open */
   float edge = 1.0 - smoothstep(0.0, 0.007, abs(v_mdy + 0.021));
   col += vec3(0.20, 0.42, 0.55) * edge * clamp(v_gap * v_gap * 2.5, 0.0, 1.0);   /* squared: gone before the corners */

@@ -60,9 +60,8 @@ def test_a_closure_fires_once_per_dip():
     assert "!_lip.low && _lip.peak" in _fn("_lipTarget")
 
 
-def test_the_opening_is_dim_not_a_black_bar():
-    """A hard-edged band darkened to 0.9 drew a black slab over both lips."""
-    m = re.search(r"float inner = 1\.0 - smoothstep\(([\d.]+), ([\d.]+),", FACE)
-    assert m and float(m.group(2)) - float(m.group(1)) >= 0.01, "hard-edged interior band"
-    cap = re.search(r"clamp\(v_gap \* inner \* u_mFx\.x[^,]*, 0\.0, ([\d.]+)\)", FACE)
-    assert cap and float(cap.group(1)) <= 0.7
+def test_the_lip_crease_shows_only_when_the_lips_meet():
+    """The bright line where the lips meet was wanted, but it showed all the
+    time; hiding it everywhere (or painting the opening dark) was worse."""
+    line = next(l for l in FACE.splitlines() if l.strip().startswith("fres *= 1.0 - 0.92"))
+    assert "v_gap" in line, "the crease glow is not tied to the lips being parted"
