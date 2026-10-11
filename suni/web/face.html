@@ -3024,9 +3024,14 @@ function _enqueueSentence(s) {
    Clips are cached as blobs per voice, so after the first time a filler plays
    at once instead of waiting on /api/tts while the server is busy. */
 const _FILL_FIRST_MS = 6000, _FILL_GAP_MS = 22000, _FILL_MAX = 4;
+/* A plain chat turn ("Olá Suni.") takes 7-11s through Claude Code, so at 6s
+   every greeting got "Um momento, vou ver isso." — a task phrase for no task.
+   At 6s she speaks only if a tool or agent has started (and then says what it
+   is doing); otherwise she waits until PLAIN_MS and says a neutral line. */
+const _FILL_PLAIN_MS = 15000;
 const _FILLERS = {
   pt: {
-    ack:      ['Um momento, vou ver isso.', 'Já estou a tratar disso.', 'Vou analisar isso, um momento.'],
+    ack:      ['Um momento.', 'Só um instante.', 'Já lhe respondo.'],
     read:     ['Estou a ler os ficheiros.', 'Estou a ver o código.', 'Estou a percorrer os ficheiros.'],
     web:      ['Estou a consultar a web.', 'Estou a ver a página.', 'Estou a pesquisar isso.'],
     run:      ['Estou a fazer umas verificações.', 'Estou a correr uns comandos.'],
@@ -3036,7 +3041,7 @@ const _FILLERS = {
     agent:    ['{name} está a tratar disso.', '{name} está a trabalhar nisto.'],
   },
   en: {
-    ack:      ['One moment, let me look into that.', 'On it.', 'Let me check that, one moment.'],
+    ack:      ['One moment.', 'Just a moment.', 'Bear with me a second.'],
     read:     ['Reading through the files.', 'Looking at the code.', 'Going through the files.'],
     web:      ['Checking the web.', 'Looking at the page.', 'Searching for that.'],
     run:      ['Running a few checks.', 'Running some commands.'],
@@ -3046,7 +3051,7 @@ const _FILLERS = {
     agent:    ['{name} is on it.', '{name} is working on this.'],
   },
 };
-const _fill = { on: true, timer: null, n: 0, kind: '', last: '', playing: false, gen: 0, clips: {}, agent: '' };
+const _fill = { on: true, timer: null, n: 0, kind: '', last: '', playing: false, gen: 0, clips: {}, agent: '', t0: 0 };
 
 function _fillerKind(tool) {
   const n = String(tool || '').replace(/^[·\s]+/, '').toLowerCase();
@@ -3102,7 +3107,12 @@ async function _fillerSay(kind) {
 function _fillerTick() {
   _fill.timer = null;
   if (!_isRunning || _fill.n >= _FILL_MAX) return;
-  const kind = _fill.n === 0 ? 'ack' : (_fill.kind || 'work');
+  if (_fill.n === 0 && !_fill.kind) {
+    // Nothing started yet: likely just a slow chat reply. Wait, then stay neutral.
+    const left = _FILL_PLAIN_MS - (performance.now() - _fill.t0);
+    if (left > 50) { _fill.timer = setTimeout(_fillerTick, left); return; }
+  }
+  const kind = _fill.kind || (_fill.n === 0 ? 'ack' : 'work');
   _fill.n++; _fill.kind = '';      // a hint is used once; then "still working"
   _fillerSay(kind);
   if (_fill.n < _FILL_MAX) _fill.timer = setTimeout(_fillerTick, _FILL_GAP_MS);
@@ -3111,7 +3121,7 @@ function _fillerTick() {
 // A new turn: arm the first filler, and warm the cache for the opening line.
 function _fillerStart() {
   _fillerStop();
-  _fill.n = 0; _fill.kind = ''; _fill.agent = '';
+  _fill.n = 0; _fill.kind = ''; _fill.agent = ''; _fill.t0 = performance.now();
   if (!ttsOn || !_fill.on) return;
   _fill.timer = setTimeout(_fillerTick, _FILL_FIRST_MS);
   // Cached after the first time, so this costs a request only once per voice.
