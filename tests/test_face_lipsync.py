@@ -64,7 +64,9 @@ def test_the_lip_crease_shows_only_when_the_lips_meet():
     """The bright line where the lips meet was wanted, but it showed all the
     time; hiding it everywhere (or painting the opening dark) was worse."""
     line = next(l for l in FACE.splitlines() if l.strip().startswith("fres *= 1.0 - 0.92"))
-    assert "v_gap" in line, "the crease glow is not tied to the lips being parted"
+    # By the mouth as a whole: per point, the still-touching corners of a
+    # round mouth glinted.
+    assert "v_mopen" in line, "the crease glow is not tied to the mouth being open"
 
 
 def test_the_lips_part_at_their_junction_not_through_the_lower_lip():
