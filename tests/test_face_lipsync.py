@@ -46,3 +46,15 @@ def test_loudness_keeps_the_window_its_timing_was_tuned_on():
     """The FFT needs 1024 samples; the closure thresholds were tuned on 256."""
     assert "analyser.fftSize = 1024" in FACE
     assert "_wave.length-256" in _fn("audioLevel")
+
+
+def test_lips_stay_parted_while_talking():
+    """They meet on "m", "b", "p" and in a real pause, not between every
+    syllable: closing on every quiet moment left only the seam line moving."""
+    assert "Math.max(mT, 0.14)" in FACE
+    assert "_lip.quiet < 0.25" in FACE
+
+
+def test_a_closure_fires_once_per_dip():
+    """In a pause it re-fired every 70 ms and the mouth saw-toothed."""
+    assert "!_lip.low && _lip.peak" in _fn("_lipTarget")

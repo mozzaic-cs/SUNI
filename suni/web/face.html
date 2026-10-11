@@ -1212,7 +1212,7 @@ function audioLevel(){
    full open (was 0.34 — the puppet). lip/up: lower-lip drop, upper-lip lift.
    wide/push: corner pull, lip push for round. gap: how dark the open seam
    goes. dbg: tint the lip regions. Freeze a pose with _mouthPose(open, wide). */
-const MOUTH = { y:-0.58, w:0.19, z:0.64, jaw:0.10, lip:0.045, up:0.014,
+const MOUTH = { y:-0.58, w:0.19, z:0.64, jaw:0.10, lip:0.045, up:0.022,
                 wide:0.17, push:0.03, gap:1.6, dbg:0 };
 window.MOUTH = MOUTH;
 const _mouthLocs = { wire:null, solid:null };
@@ -1224,7 +1224,9 @@ function _mouthUniforms(pr){
 }
 function _mouthSet(L){
   if (!L) return;
-  const o = _mouthFreeze ? _mouthFreeze[0] : mouthOpen;
+  // Eased so small openings read as openings: speech sits mostly at 0.1-0.3,
+  // where a linear map parted the lips by a pixel or two — a line, not a mouth.
+  const o = Math.pow(Math.max(0, _mouthFreeze ? _mouthFreeze[0] : mouthOpen), 0.7);
   const w = _mouthFreeze ? _mouthFreeze[1] : mouthWide;
   gl.uniform4f(L.A, MOUTH.y, MOUTH.w, MOUTH.lip, MOUTH.up);
   gl.uniform4f(L.B, MOUTH.wide, MOUTH.push, MOUTH.z, 0);
@@ -1251,7 +1253,11 @@ function _lipTarget(amp, dt, hiss){
   }
   // A hiss is quiet too, but "s" is teeth, not lips: measured, every "s"
   // was being closed like an "m".
-  if (_lip.peak > 0.06 && amp < _lip.peak * 0.22 && !(hiss > 0.3)) {   // a sharp drop inside speech
+  // Deep dips only: at 0.22 nearly every syllable boundary counted, and the
+  // lips snapped shut ~2.5 times a second (18 in one test sentence).
+  // Once per dip (!_lip.low): in a pause it re-fired every 70ms and the mouth
+  // saw-toothed shut, open, shut.
+  if (!_lip.low && _lip.peak > 0.06 && amp < _lip.peak * 0.12 && !(hiss > 0.3)) {   // a sharp drop inside speech
     _lip.hold = 0.07; _lip.low = true; return 0;
   }
   if (_lip.low && amp > 0.03) {                             // onset of a new syllable
@@ -1631,8 +1637,14 @@ void main(){
     col += band * vec3(1.0, 0.92, 1.05) * jitter * 2.6;
   }
   /* not black: a dim interior in her own light, so the lip edges stay legible */
-  float inner = 1.0 - smoothstep(0.005, 0.014, abs(v_mdy + 0.002));
-  col = mix(col, col * 0.14 + vec3(0.010, 0.030, 0.050), clamp(v_gap * inner * u_mFx.x, 0.0, 0.85));
+  /* The band reaches up over the upper lip's inner curl (rest dy +0.009 to
+     +0.015 on this mesh): its faces point down and drew a crisp dark line
+     ABOVE a half-darkened gap — the seam still showing as its own line while
+     she spoke. Fully dark from small openings, so the curl merges into the
+     opening; closed (v_gap 0) it is untouched and the crease shows only when
+     the lips actually meet. */
+  float inner = 1.0 - smoothstep(0.012, 0.0165, abs(v_mdy - 0.0025));
+  col = mix(col, col * 0.14 + vec3(0.010, 0.030, 0.050), clamp(v_gap * inner * u_mFx.x * 2.2, 0.0, 0.9));
   /* the lower lip's top edge catches the light once the mouth is open */
   float edge = 1.0 - smoothstep(0.0, 0.007, abs(v_mdy + 0.021));
   col += vec3(0.20, 0.42, 0.55) * edge * clamp(v_gap * v_gap * 2.5, 0.0, 1.0);   /* squared: gone before the corners */
@@ -2223,6 +2235,12 @@ function renderHead(dt){
     if(_audioSeen){
       const sh=_lipShape(amp, dt);
       mT = Math.min(1, _lipTarget(amp, dt, sh.sib)*sh.open);
+      // While talking the lips stay parted; they meet on "m", "b", "p" (the
+      // closure hold) and when she stops. Without this floor every quiet
+      // moment closed the mouth to the seam line, which then read as the
+      // only thing moving. A real pause (~quarter second) still closes.
+      _lip.quiet = amp < 0.02 ? (_lip.quiet||0) + dt : 0;
+      if (_lip.hold <= 0 && _lip.quiet < 0.25) mT = Math.max(mT, 0.14);
       mouthWide = sh.wide;
     } else mT = 0.25+0.35*Math.abs(Math.sin(T*10));
   } else {
