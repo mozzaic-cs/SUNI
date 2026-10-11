@@ -1640,11 +1640,12 @@ void main(){
   /* The band reaches up over the upper lip's inner curl (rest dy +0.009 to
      +0.015 on this mesh): its faces point down and drew a crisp dark line
      ABOVE a half-darkened gap — the seam still showing as its own line while
-     she spoke. Fully dark from small openings, so the curl merges into the
-     opening; closed (v_gap 0) it is untouched and the crease shows only when
-     the lips actually meet. */
-  float inner = 1.0 - smoothstep(0.012, 0.0165, abs(v_mdy - 0.0025));
-  col = mix(col, col * 0.14 + vec3(0.010, 0.030, 0.050), clamp(v_gap * inner * u_mFx.x * 2.2, 0.0, 0.9));
+     she spoke. The band covers the curl so it merges into the opening;
+     closed (v_gap 0) it is untouched and the crease shows only when the lips
+     actually meet. Soft-edged and capped at 0.65: a hard band at 0.9 painted
+     the inside of both lips near-black — a black bar, not a mouth. */
+  float inner = 1.0 - smoothstep(0.004, 0.018, abs(v_mdy - 0.0025));
+  col = mix(col, col * 0.14 + vec3(0.010, 0.030, 0.050), clamp(v_gap * inner * u_mFx.x * 1.8, 0.0, 0.65));
   /* the lower lip's top edge catches the light once the mouth is open */
   float edge = 1.0 - smoothstep(0.0, 0.007, abs(v_mdy + 0.021));
   col += vec3(0.20, 0.42, 0.55) * edge * clamp(v_gap * v_gap * 2.5, 0.0, 1.0);   /* squared: gone before the corners */

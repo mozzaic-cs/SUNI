@@ -58,3 +58,11 @@ def test_lips_stay_parted_while_talking():
 def test_a_closure_fires_once_per_dip():
     """In a pause it re-fired every 70 ms and the mouth saw-toothed."""
     assert "!_lip.low && _lip.peak" in _fn("_lipTarget")
+
+
+def test_the_opening_is_dim_not_a_black_bar():
+    """A hard-edged band darkened to 0.9 drew a black slab over both lips."""
+    m = re.search(r"float inner = 1\.0 - smoothstep\(([\d.]+), ([\d.]+),", FACE)
+    assert m and float(m.group(2)) - float(m.group(1)) >= 0.01, "hard-edged interior band"
+    cap = re.search(r"clamp\(v_gap \* inner \* u_mFx\.x[^,]*, 0\.0, ([\d.]+)\)", FACE)
+    assert cap and float(cap.group(1)) <= 0.7
