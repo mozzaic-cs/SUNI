@@ -132,6 +132,9 @@ def _lang_instruction(response_language: str = "") -> str | None:
     return f"Always reply in the language with BCP-47 code '{lang}'."
 
 _log = get_logger(__name__)
+# SYSTEM notes written fresh for each turn (see run()): cleared before they
+# are re-added, or every turn adds another copy to the session's context.
+_PER_TURN_NOTES = frozenset({"lang", "agent-profile", "skills", "router"})
 _NL = chr(10)      # newline as a constant, so hint-building needs no escapes
 
 # How a tool result announces that it failed.
@@ -810,6 +813,18 @@ class Orchestrator:
             elapsed = time.perf_counter() - t_start
             trace.append((label, elapsed, note))
             return time.perf_counter()
+
+        # ── per-turn notes: this turn's, not every turn's so far ───────
+        # These are re-added below on every turn, into a context that lives as
+        # long as the session — and Context.add never trims SYSTEM messages.
+        # Nothing removed the previous turn's copy, so they piled up: the
+        # Claude Code path forwards every "lang" message it finds, and SUNI
+        # herself reported the Portuguese instruction arriving four times on
+        # the fourth turn. A stale router hint is worse than a duplicate: it
+        # steers a turn it was never written for. (memory and desktop already
+        # replace themselves where they are added.)
+        context.history = [m for m in context.history
+                           if not (m.role == Role.SYSTEM and m.agent in _PER_TURN_NOTES)]
 
         # ── language override ─────────────────────────────────────────
         lang_hint = _lang_instruction(response_language)
