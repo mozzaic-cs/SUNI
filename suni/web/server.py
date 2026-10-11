@@ -2713,6 +2713,13 @@ def create_app() -> FastAPI:
             "webhook_url": f"{os.environ.get('SUNI_PUBLIC_URL', 'http://localhost:8765')}/telegram",
         })
 
+    # When the cloud voice refuses (Microsoft has answered 403 to every request
+    # from this machine for hours at a time), skip it for a while instead of
+    # paying the failed round trip before every sentence of every reply.
+    _cloud_tts = {"down_until": 0.0}
+    app.state.cloud_tts = _cloud_tts
+    _CLOUD_TTS_RETRY_S = 300
+
     @app.post("/api/tts")
     @_limiter.limit("40/minute")
     async def tts(request: Request, user: dict = Depends(get_current_user)):
@@ -2775,11 +2782,13 @@ def create_app() -> FastAPI:
         # "piper" in the config pins it regardless.
         _chose_edge = _saved_voice in _EDGE_TTS_VOICE_SET
         _chose_local = _saved_voice.startswith("local:")
+        _tried_local = False
         if _chose_local or (_tts_backend in ("piper", "local")) or (
                 _tts_backend == "auto" and not _chose_edge):
             try:
                 from .. import tts_local as _local
                 if _local.available():
+                    _tried_local = True
                     _wav = await _local.speak(clean)
                     if _wav:
                         return Response(content=_wav, media_type="audio/wav")
@@ -2796,17 +2805,39 @@ def create_app() -> FastAPI:
             voice = (_voice_for_lang(_settings.get("response_language")
                                      or _settings.get("stt_language"))
                      or TTS_VOICE)
-        try:
-            buf = io.BytesIO()
-            communicate = edge_tts.Communicate(clean, voice)
-            async with asyncio.timeout(15):
-                async for chunk in communicate.stream():
-                    if chunk["type"] == "audio":
-                        buf.write(chunk["data"])
-            buf.seek(0)
-            return StreamingResponse(buf, media_type="audio/mpeg")
-        except Exception:
-            return Response(status_code=503)
+        if time.monotonic() >= _cloud_tts["down_until"]:
+            try:
+                buf = io.BytesIO()
+                communicate = edge_tts.Communicate(clean, voice)
+                async with asyncio.timeout(15):
+                    async for chunk in communicate.stream():
+                        if chunk["type"] == "audio":
+                            buf.write(chunk["data"])
+                if buf.tell():
+                    buf.seek(0)
+                    return StreamingResponse(buf, media_type="audio/mpeg")
+                raise RuntimeError("no audio received")
+            except Exception as exc:      # noqa: BLE001
+                _cloud_tts["down_until"] = time.monotonic() + _CLOUD_TTS_RETRY_S
+                _log.warning("[TTS] cloud voice %s failed (%s) — speaking with the "
+                             "local voice for the next %ds", voice,
+                             str(exc)[:160], _CLOUD_TTS_RETRY_S)
+
+        # The cloud voice is unavailable. Silence is worse than a different
+        # voice: no speech also means no mouth movement and no progress updates
+        # during long tasks. The chosen voice stays first; this only covers for
+        # it while it is down. Not for self-hosted TTS above, which returns
+        # before here on purpose (no text may leave the box there).
+        if not _tried_local:
+            try:
+                from .. import tts_local as _local
+                if _local.available():
+                    _wav = await _local.speak(clean)
+                    if _wav:
+                        return Response(content=_wav, media_type="audio/wav")
+            except Exception as exc:      # noqa: BLE001
+                _log.warning("[TTS] local fallback failed too: %s", exc)
+        return Response(status_code=503)
 
     @app.post("/api/stt/transcribe")
     @_limiter.limit("30/minute")

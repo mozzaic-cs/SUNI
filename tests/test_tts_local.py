@@ -218,3 +218,78 @@ def test_detection_is_not_trusted_over_a_stated_language():
     assert '_cfg.get("stt_language"' in block, "nothing to fall back to"
     assert block.index("language or") < block.index('_cfg.get("stt_language"'), (
         "the instance default is consulted before the speaker's own language")
+
+
+# ── when the cloud voice refuses ────────────────────────────────────────────
+class _Refused:
+    """edge_tts.Communicate as it behaves here today: Microsoft answers 403."""
+    calls = 0
+
+    def __init__(self, text, voice):
+        type(self).calls += 1
+
+    async def stream(self):
+        raise RuntimeError("403, message='Invalid response status'")
+        yield  # pragma: no cover
+
+
+def _cloud_only(monkeypatch, app, spoken):
+    from suni import config as C
+    from suni.web import server as S
+    real_get = C.get
+    # A backend that is neither auto nor local: the cloud is tried first.
+    monkeypatch.setattr(C, "get", lambda k, d=None: "edge" if k == "tts_backend"
+                        else real_get(k, d))
+    _Refused.calls = 0
+    monkeypatch.setattr(S.edge_tts, "Communicate", _Refused)
+
+    async def speak(text):
+        spoken.append(text)
+        return b"RIFFfakewav"
+    monkeypatch.setattr(T, "available", lambda: True)
+    monkeypatch.setattr(T, "speak", speak)
+    app.state.cloud_tts["down_until"] = 0.0
+
+
+def test_a_refused_cloud_voice_falls_back_to_the_local_one(client, app, std_headers,
+                                                            monkeypatch):
+    """Her chosen voice is a cloud one; when Microsoft refuses it she went
+    silent — no speech, no mouth, no progress updates. A different voice is
+    better than none."""
+    spoken = []
+    _cloud_only(monkeypatch, app, spoken)
+    try:
+        r = client.post("/api/tts", json={"text": "Olá."}, headers=std_headers)
+        assert r.status_code == 200, r.status_code
+        assert r.headers["content-type"] == "audio/wav"
+        assert spoken == ["Olá."]
+        assert _Refused.calls == 1
+    finally:
+        app.state.cloud_tts["down_until"] = 0.0
+
+
+def test_a_refused_cloud_voice_is_not_retried_before_every_sentence(client, app,
+                                                                    std_headers,
+                                                                    monkeypatch):
+    spoken = []
+    _cloud_only(monkeypatch, app, spoken)
+    try:
+        for t in ("Um.", "Dois.", "Três."):
+            assert client.post("/api/tts", json={"text": t},
+                               headers=std_headers).status_code == 200
+        assert _Refused.calls == 1, "the refused cloud is paid for on every sentence"
+        assert spoken == ["Um.", "Dois.", "Três."]
+        # ...and is given another chance once the pause is over.
+        app.state.cloud_tts["down_until"] = 0.0
+        client.post("/api/tts", json={"text": "Quatro."}, headers=std_headers)
+        assert _Refused.calls == 2
+    finally:
+        app.state.cloud_tts["down_until"] = 0.0
+
+
+def test_self_hosted_tts_still_never_falls_back():
+    """A privacy deployment returns before the fallback: its 503 stays a 503."""
+    i = SERVER.index("if _tts.enabled():")
+    j = SERVER.index("_tts_backend = str(suni_config.get", i)
+    assert "return Response(status_code=503)" in SERVER[i:j]
+    assert SERVER.index("local fallback failed too") > j
