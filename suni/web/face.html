@@ -1199,8 +1199,11 @@ function audioLevel(){
   if(!analyser) return 0;
   if(!_wave||_wave.length!==analyser.fftSize) _wave=new Uint8Array(analyser.fftSize);
   try{ analyser.getByteTimeDomainData(_wave); }catch(e){ return 0; }
-  let s=0; for(let i=0;i<_wave.length;i++){ const v=(_wave[i]-128)/128; s+=v*v; }
-  return Math.sqrt(s/_wave.length);
+  // The newest 256 samples only: the buffer grew to 1024 for the spectrum
+  // (_lipShape), and the closure timing below was tuned on a 256 window.
+  const n0=Math.max(0,_wave.length-256);
+  let s=0; for(let i=n0;i<_wave.length;i++){ const v=(_wave[i]-128)/128; s+=v*v; }
+  return Math.sqrt(s/(_wave.length-n0));
 }
 
 /* ── the mouth: shape constants (live-tunable as window.MOUTH) ──
@@ -1237,10 +1240,18 @@ window._mouthPose = (open, wide) => { _mouthFreeze = (open == null) ? null : [op
    new syllable (a rise after a dip) also gets a slightly different size, so
    "ta-ta-ta" is not three identical pulses. */
 const _lip = { peak:0, hold:0, gain:1, low:true };
-function _lipTarget(amp, dt){
+function _lipTarget(amp, dt, hiss){
   _lip.peak = Math.max(amp, _lip.peak - 0.6*dt);           // recent peak, decays ~0.6/s
-  if (_lip.hold > 0) { _lip.hold -= dt; return 0; }
-  if (_lip.peak > 0.06 && amp < _lip.peak * 0.22) {         // a sharp drop inside speech
+  if (_lip.hold > 0) {
+    // The sound is back: the lips have parted. Holding the full 70ms kept
+    // them shut through the start of the next vowel (measured: ~80ms closed
+    // on a loud "é").
+    if (amp > _lip.peak * 0.45 && _lip.hold < 0.045) _lip.hold = 0;
+    else { _lip.hold -= dt; return 0; }
+  }
+  // A hiss is quiet too, but "s" is teeth, not lips: measured, every "s"
+  // was being closed like an "m".
+  if (_lip.peak > 0.06 && amp < _lip.peak * 0.22 && !(hiss > 0.3)) {   // a sharp drop inside speech
     _lip.hold = 0.07; _lip.low = true; return 0;
   }
   if (_lip.low && amp > 0.03) {                             // onset of a new syllable
@@ -1252,6 +1263,52 @@ function _lipTarget(amp, dt){
   // Quiet sounds still open clearly; loud ones top out near 70%.
   const x = Math.max(0, amp - 0.012);
   return Math.min(1, 0.75 * (1 - Math.exp(-4.5 * x)) * _lip.gain);
+}
+
+/* ── lip shape: what the sound says the mouth is doing ──
+   Loudness says how much, not which shape. Three cues from the spectrum,
+   checked on isolated Portuguese vowels and consonants from the local voice:
+     F1 (centroid of 250-1000 Hz)  "a" high, "i"/"u" low      → how open
+     F2 (centroid of 600-3000 Hz)  "i"/"e" high, "u"/"o" low  → wide vs round
+     hiss (share above 4 kHz)      "s" 0.93, "ch" 0.36, vowels < 0.04
+                                                              → teeth together
+   Formants differ by speaker (a female voice sits ~15% higher), so F1/F2 are
+   read against this voice's own running average, not fixed numbers. */
+let _spec = null;
+const _shape = { m1:400, m2:1000, open:1, wide:0, sib:0 };
+function _clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+function _lipShape(amp, dt){
+  const sh=_shape;
+  if(!analyser || !audioCtx || amp<0.02){             // silence: relax to neutral
+    sh.open=1; sh.wide+=(0-sh.wide)*Math.min(1,6*dt); sh.sib=0; return sh;
+  }
+  const n=analyser.frequencyBinCount;
+  if(!_spec||_spec.length!==n) _spec=new Float32Array(n);
+  try{ analyser.getFloatFrequencyData(_spec); }catch(e){ return sh; }
+  const hzBin=audioCtx.sampleRate/analyser.fftSize;
+  let lo=0,c1=0,mid=0,c2=0,hi=0,tot=0;
+  for(let i=1;i<n;i++){
+    const hz=i*hzBin; if(hz<80) continue; if(hz>=10000) break;
+    const p=Math.pow(10,_spec[i]/10);               // dB → power (-Inf → 0)
+    tot+=p;
+    if(hz>=250&&hz<1000){ lo+=p; c1+=p*hz; }
+    if(hz>=600&&hz<3000){ mid+=p; c2+=p*hz; }
+    if(hz>=4000) hi+=p;
+  }
+  if(tot<=0) return sh;
+  const sib=hi/tot, f1=lo>0?c1/lo:sh.m1, f2=mid>0?c2/mid:sh.m2;
+  const hiss=_clamp((sib-0.12)/0.23,0,1);
+  if(hiss<0.2){                                      // learn the voice on vowels only
+    const k=Math.min(1,0.6*dt); sh.m1+=(f1-sh.m1)*k; sh.m2+=(f2-sh.m2)*k;
+  }
+  const d1=_clamp((f1-sh.m1)/90,-1,1), d2=_clamp((f2-sh.m2)/400,-1,1);
+  // Round only when not also open: "a" has a low F2 too.
+  let w = d2>0 ? d2 : d2*1.5*(1-_clamp(d1,0,1));
+  w = _clamp(w,-1,1)*(1-hiss) + 0.5*hiss;            // hiss: lips spread, teeth close
+  sh.wide += (w-sh.wide)*Math.min(1,14*dt);
+  sh.open  = (1+0.35*d1)*(1-0.8*hiss);
+  sh.sib   = hiss;
+  return sh;
 }
 
 /* ── animation state ── */
@@ -1347,15 +1404,20 @@ float sq(float x){ return x*x; }   /* pow() is undefined for a negative base */
 float m_front(vec3 p){ return smoothstep(u_mB.z - 0.18, u_mB.z, p.z); }
 vec3 mouthDeform(vec3 p, out float gap, out float region, out float restDy){
   float dy = p.y - u_mA.x, ax = abs(p.x) / u_mA.y, fr = m_front(p);
-  float hx = 1.0 - smoothstep(0.75, 1.15, ax);
+  float rnd = max(0.0, -u_mWide), wid = max(0.0, u_mWide);
+  /* Round ("o", "u"): the opening gathers toward the middle and gets taller,
+     an O rather than a slot. Wide ("i", "e"): a longer, flatter slot. Pulling
+     the corners in alone was measured too faint to tell from neutral. */
+  float hx = 1.0 - smoothstep(0.75, 1.15, ax * (1.0 + 0.55 * rnd - 0.12 * wid));
+  float drop = 1.0 + 0.30 * rnd - 0.30 * wid;
   float below = smoothstep(0.004, -0.006, dy), above = 1.0 - below;
   float lipLo = below * exp(-sq((dy + 0.03) / 0.05));
   float lipUp = above * exp(-sq((dy - 0.03) / 0.04));
   float band  = exp(-sq(dy / 0.06));
   float corner = fr * band * smoothstep(0.35, 0.95, ax) * (1.0 - smoothstep(1.05, 1.5, ax));
   vec3 q = p;
-  q.y -= u_mOpen * u_mA.z * lipLo * hx * fr;
-  q.y += u_mOpen * u_mA.w * lipUp * hx * fr;
+  q.y -= u_mOpen * u_mA.z * drop * lipLo * hx * fr;
+  q.y += u_mOpen * u_mA.w * drop * lipUp * hx * fr;
   q.x *= 1.0 + u_mWide * u_mB.x * corner;
   q.z += max(0.0, -u_mWide) * u_mB.y * (lipLo + lipUp) * hx * fr;
   /* How open, at this point of the mouth. The darkness itself is decided per
@@ -2151,11 +2213,19 @@ function renderHead(dt){
     // Follow the waveform once an audio path is proven — so the jaw CLOSES on
     // pauses between words instead of flapping on a timer, which is what read
     // as bad lip-sync. The sine is now only the no-audio-at-all fallback.
-    mT = _audioSeen ? _lipTarget(amp, dt) : 0.25+0.35*Math.abs(Math.sin(T*10));
-  } else { _lip.hold = 0; _lip.peak = 0; }
+    if(_audioSeen){
+      const sh=_lipShape(amp, dt);
+      mT = Math.min(1, _lipTarget(amp, dt, sh.sib)*sh.open);
+      mouthWide = sh.wide;
+    } else mT = 0.25+0.35*Math.abs(Math.sin(T*10));
+  } else {
+    _lip.hold = 0; _lip.peak = 0;
+    mouthWide += (0-mouthWide)*Math.min(1,6*dt);
+  }
   /* Real mouths open fast and close a little slower; one symmetric smoothing
      made every syllable the same soft pulse. ~40ms to open, ~90ms to close. */
-  mouthOpen += (mT-mouthOpen)*Math.min(1,(mT>mouthOpen ? 25 : 11)*dt);
+  // Except a closure ("m", "b", "p"): lips snap together, they don't drift.
+  mouthOpen += (mT-mouthOpen)*Math.min(1,(mT>mouthOpen ? 25 : (_lip.hold>0 ? 24 : 11))*dt);
   if(_camGaze.active){
     // Webcam is driving the gaze — follow the user, skip the idle saccades.
     gazeTX=_camGaze.x; gazeTY=_camGaze.y; gazeRetarget=0;
@@ -2724,7 +2794,10 @@ function setupAudio(el) {
   try {
     audioCtx  = new (window.AudioContext || window.webkitAudioContext)();
     analyser  = audioCtx.createAnalyser();
-    analyser.fftSize = 256;
+    // 1024 for the spectrum the lip shapes read (~47 Hz bins); loudness still
+    // uses the newest 256 samples. Light smoothing: shapes change per phoneme.
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.3;
     const src = audioCtx.createMediaElementSource(el);
     src.connect(analyser);
     analyser.connect(audioCtx.destination);
