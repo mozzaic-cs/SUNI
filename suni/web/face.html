@@ -1604,6 +1604,13 @@ void main(){
   vec3 N=normalize(v_n);
   float diff=max(0.0,dot(N,normalize(vec3(-0.35,0.45,0.82))));
   float fres=pow(1.0-max(0.0,dot(N,vec3(0.0,0.0,1.0))),2.2);
+  /* Not along the lip seam. The rim glow lights every surface that turns away
+     from the camera — right for the silhouette, wrong for the crease between
+     the lips, whose faces point up and down: it drew a bright line where the
+     lips meet, closed or open, and the underside of the upper lip became a
+     glowing stripe as she spoke. Limited to the mouth (v_mreg) so the head's
+     outline keeps its rim. */
+  fres *= 1.0 - 0.92 * (1.0 - smoothstep(0.012, 0.045, abs(v_mdy))) * smoothstep(0.15, 0.45, v_mreg);
   /* holographic shading: low ambient, cool body, strong glowing fresnel rim */
   vec3 col=u_color*(0.12+0.50*diff) + vec3(0.50,0.85,1.0)*fres*1.5;
   /* fine static scanlines (holographic texture, no sweeping bar) */
