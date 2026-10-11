@@ -242,6 +242,7 @@ def _cloud_only(monkeypatch, app, spoken):
                         else real_get(k, d))
     _Refused.calls = 0
     monkeypatch.setattr(S.edge_tts, "Communicate", _Refused)
+    monkeypatch.delenv("AZURE_SPEECH_KEY", raising=False)   # edge-tts route
 
     async def speak(text):
         spoken.append(text)
@@ -340,3 +341,67 @@ def test_windows_voices_are_rendered_off_the_event_loop():
     assert "asyncio.to_thread(_synth_sync" in mod
     assert "CoInitialize" in mod, "COM used from a worker thread without initialising it"
     assert "SVSFIsNotXML" in mod, "reply text would be parsed as SAPI markup"
+
+
+# ── Azure Speech: the official route to the same neural voices ──────────────
+def _azure(monkeypatch, answer):
+    """httpx as Azure would answer: (status, body). Records what was sent."""
+    import httpx
+    sent = []
+
+    def handler(req):
+        sent.append(req)
+        return httpx.Response(answer[0], content=answer[1])
+    real = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient",
+                        lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
+    monkeypatch.setenv("AZURE_SPEECH_KEY", "k-test")
+    monkeypatch.setenv("AZURE_SPEECH_REGION", "WestEurope")
+    return sent
+
+
+def test_azure_speaks_the_chosen_voice_instead_of_edge_tts(client, app, std_headers,
+                                                          monkeypatch):
+    from suni.web import server as S
+    spoken = []
+    _cloud_only(monkeypatch, app, spoken)
+    sent = _azure(monkeypatch, (200, b"ID3mp3"))
+    monkeypatch.setattr(S, "_voice_for_lang", lambda lang: "pt-PT-RaquelNeural")
+    try:
+        r = client.post("/api/tts", json={"text": "Olá <b> & adeus."}, headers=std_headers)
+        assert r.status_code == 200 and r.content == b"ID3mp3"
+        assert r.headers["content-type"] == "audio/mpeg"
+        assert _Refused.calls == 0, "edge-tts still tried with Azure configured"
+        req = sent[0]
+        assert str(req.url) == ("https://westeurope.tts.speech.microsoft.com"
+                                "/cognitiveservices/v1")
+        assert req.headers["Ocp-Apim-Subscription-Key"] == "k-test"
+        body = req.content.decode()
+        assert "name='pt-PT-RaquelNeural'" in body.replace('"', "'")
+        assert "&lt;b&gt; &amp; adeus" in body, "reply text parsed as SSML markup"
+    finally:
+        app.state.cloud_tts["down_until"] = 0.0
+
+
+def test_azure_refusing_falls_back_and_never_logs_the_key(client, app, std_headers,
+                                                          monkeypatch, caplog):
+    """Free tier used up (429) or a wrong key (401): she keeps talking."""
+    spoken = []
+    _cloud_only(monkeypatch, app, spoken)
+    _azure(monkeypatch, (429, b""))
+    try:
+        r = client.post("/api/tts", json={"text": "Olá."}, headers=std_headers)
+        assert r.status_code == 200 and r.headers["content-type"] == "audio/wav"
+        assert app.state.cloud_tts["down_until"] > 0, "refused Azure retried every sentence"
+        assert "k-test" not in caplog.text
+    finally:
+        app.state.cloud_tts["down_until"] = 0.0
+
+
+def test_azure_is_off_until_both_values_are_set(monkeypatch):
+    from suni import tts_azure as A
+    monkeypatch.setenv("AZURE_SPEECH_KEY", "k")
+    monkeypatch.delenv("AZURE_SPEECH_REGION", raising=False)
+    assert not A.configured()
+    monkeypatch.setenv("AZURE_SPEECH_REGION", "westeurope")
+    assert A.configured()

@@ -2812,8 +2812,15 @@ def create_app() -> FastAPI:
             voice = (_voice_for_lang(_settings.get("response_language")
                                      or _settings.get("stt_language"))
                      or TTS_VOICE)
+        from .. import tts_azure as _azure
         if time.monotonic() >= _cloud_tts["down_until"]:
             try:
+                # The official, keyed route to the same voices when it is
+                # set up; edge-tts (unofficial, refused with 403 for days at a
+                # time) only when it is not.
+                if _azure.configured():
+                    _mp3 = await _azure.speak(clean, voice)
+                    return Response(content=_mp3, media_type="audio/mpeg")
                 buf = io.BytesIO()
                 communicate = edge_tts.Communicate(clean, voice)
                 async with asyncio.timeout(15):
