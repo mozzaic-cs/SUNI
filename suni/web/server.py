@@ -2771,6 +2771,13 @@ def create_app() -> FastAPI:
         # the first one and then raced against playback for every one after —
         # and it is a dependency on Microsoft being reachable, which has
         # returned 503 here merely because the box was busy.
+        # A Windows voice chosen on purpose ("win:Microsoft Helia - ..."):
+        # rendered here like any other clip, so the lip sync still sees it.
+        from .. import tts_windows as _win
+        if _saved_voice.startswith(_win.PREFIX):
+            _wav = await _win.speak(clean, _saved_voice)
+            if _wav:
+                return Response(content=_wav, media_type="audio/wav")
         _tts_backend = str(suni_config.get("tts_backend", "auto") or "auto").lower()
         # A VOICE THE USER CHOSE WINS. The first version of this ran the local
         # branch first and silently overrode an explicitly selected voice —
@@ -2828,6 +2835,14 @@ def create_app() -> FastAPI:
         # during long tasks. The chosen voice stays first; this only covers for
         # it while it is down. Not for self-hosted TTS above, which returns
         # before here on purpose (no text may leave the box there).
+        # A Windows voice in the same language first: when Raquel (pt-PT,
+        # female) is refused, Helia (pt-PT, female, local) is the nearest
+        # thing to what was chosen; the piper voice is male.
+        _win_id = _win.for_language(voice[:5])
+        if _win_id and _win_id != _saved_voice:
+            _wav = await _win.speak(clean, _win_id)
+            if _wav:
+                return Response(content=_wav, media_type="audio/wav")
         if not _tried_local:
             try:
                 from .. import tts_local as _local
@@ -4420,6 +4435,11 @@ def create_app() -> FastAPI:
             for p in sorted(_local.MODEL_DIR.glob("*.onnx")) if _local.MODEL_DIR.exists() else []:
                 voices.append(f"local:{p.stem}")
         except Exception:      # noqa: BLE001 — a missing local voice is not an error
+            pass
+        try:
+            from .. import tts_windows as _win
+            voices.extend(_win.voice_ids())
+        except Exception:      # noqa: BLE001 — not Windows, or no SAPI
             pass
         return JSONResponse({"voices": voices})
 

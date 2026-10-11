@@ -293,3 +293,50 @@ def test_self_hosted_tts_still_never_falls_back():
     j = SERVER.index("_tts_backend = str(suni_config.get", i)
     assert "return Response(status_code=503)" in SERVER[i:j]
     assert SERVER.index("local fallback failed too") > j
+
+
+# ── Windows' own voices (Helia, pt-PT, female, local) ───────────────────────
+def _fake_windows(monkeypatch, said):
+    from suni import tts_windows as Wn
+    monkeypatch.setattr(Wn, "voices", lambda: [("Microsoft Helia - Portuguese (Portugal)", "pt-PT"),
+                                               ("Microsoft Zira - English (United States)", "en-US")])
+
+    async def speak(text, vid):
+        said.append(vid)
+        return b"RIFFwinwav"
+    monkeypatch.setattr(Wn, "speak", speak)
+
+
+def test_a_refused_cloud_voice_falls_back_to_a_windows_voice_in_its_language(
+        client, app, std_headers, monkeypatch):
+    """Raquel is pt-PT and female; the piper voice is male. Helia is the
+    nearer substitute, so she goes first."""
+    from suni.web import server as S
+    spoken, said = [], []
+    _cloud_only(monkeypatch, app, spoken)
+    _fake_windows(monkeypatch, said)
+    monkeypatch.setattr(S, "_voice_for_lang", lambda lang: "pt-PT-RaquelNeural")
+    try:
+        r = client.post("/api/tts", json={"text": "Olá."}, headers=std_headers)
+        assert r.status_code == 200 and r.content == b"RIFFwinwav"
+        assert said == ["win:Microsoft Helia - Portuguese (Portugal)"]
+        assert spoken == [], "the male piper voice was used though Helia was there"
+    finally:
+        app.state.cloud_tts["down_until"] = 0.0
+
+
+def test_a_windows_voice_can_be_chosen_and_is_listed(client, std_headers, monkeypatch):
+    said = []
+    _fake_windows(monkeypatch, said)
+    voices = client.get("/api/tts/voices", headers=std_headers).json()["voices"]
+    assert "win:Microsoft Helia - Portuguese (Portugal)" in voices
+    # chosen on purpose → used, before any cloud or piper attempt
+    assert "_win.speak(clean, _saved_voice)" in SERVER
+    assert SERVER.index("_win.speak(clean, _saved_voice)") < SERVER.index("_local.speak(clean)")
+
+
+def test_windows_voices_are_rendered_off_the_event_loop():
+    mod = (ROOT / "suni/tts_windows.py").read_text(encoding="utf-8")
+    assert "asyncio.to_thread(_synth_sync" in mod
+    assert "CoInitialize" in mod, "COM used from a worker thread without initialising it"
+    assert "SVSFIsNotXML" in mod, "reply text would be parsed as SAPI markup"
