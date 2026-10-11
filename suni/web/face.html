@@ -1203,6 +1203,57 @@ function audioLevel(){
   return Math.sqrt(s/_wave.length);
 }
 
+/* ── the mouth: shape constants (live-tunable as window.MOUTH) ──
+   y/w: the lip seam's height and the mouth's half width, in the mesh's
+   normalised space (seam measured at y=-0.58 on persona_b). jaw: radians at
+   full open (was 0.34 — the puppet). lip/up: lower-lip drop, upper-lip lift.
+   wide/push: corner pull, lip push for round. gap: how dark the open seam
+   goes. dbg: tint the lip regions. Freeze a pose with _mouthPose(open, wide). */
+const MOUTH = { y:-0.58, w:0.19, z:0.64, jaw:0.10, lip:0.045, up:0.014,
+                wide:0.17, push:0.03, gap:1.6, dbg:0 };
+window.MOUTH = MOUTH;
+const _mouthLocs = { wire:null, solid:null };
+let mouthWide = 0, _mouthFreeze = null;
+function _mouthUniforms(pr){
+  return { A:gl.getUniformLocation(pr,'u_mA'), B:gl.getUniformLocation(pr,'u_mB'),
+           open:gl.getUniformLocation(pr,'u_mOpen'), wide:gl.getUniformLocation(pr,'u_mWide'),
+           fx:gl.getUniformLocation(pr,'u_mFx') };
+}
+function _mouthSet(L){
+  if (!L) return;
+  const o = _mouthFreeze ? _mouthFreeze[0] : mouthOpen;
+  const w = _mouthFreeze ? _mouthFreeze[1] : mouthWide;
+  gl.uniform4f(L.A, MOUTH.y, MOUTH.w, MOUTH.lip, MOUTH.up);
+  gl.uniform4f(L.B, MOUTH.wide, MOUTH.push, MOUTH.z, 0);
+  gl.uniform1f(L.open, o); gl.uniform1f(L.wide, w);
+  if (L.fx) gl.uniform2f(L.fx, MOUTH.gap, MOUTH.dbg);
+}
+window._mouthPose = (open, wide) => { _mouthFreeze = (open == null) ? null : [open, wide || 0]; };
+
+/* ── lip timing: loudness → how open, with closures and variety ──
+   Loudness alone kept the mouth half open through "m", "b" and "p": the
+   level dips but never reaches silence, so the lips never met. A sharp drop
+   from a recent peak, inside speech, now closes them fully for ~70ms. Each
+   new syllable (a rise after a dip) also gets a slightly different size, so
+   "ta-ta-ta" is not three identical pulses. */
+const _lip = { peak:0, hold:0, gain:1, low:true };
+function _lipTarget(amp, dt){
+  _lip.peak = Math.max(amp, _lip.peak - 0.6*dt);           // recent peak, decays ~0.6/s
+  if (_lip.hold > 0) { _lip.hold -= dt; return 0; }
+  if (_lip.peak > 0.06 && amp < _lip.peak * 0.22) {         // a sharp drop inside speech
+    _lip.hold = 0.07; _lip.low = true; return 0;
+  }
+  if (_lip.low && amp > 0.03) {                             // onset of a new syllable
+    _lip.low = false; _lip.gain = 0.82 + Math.random()*0.32;
+  }
+  if (amp < 0.02) _lip.low = true;
+  // Compressive, not linear: a linear map clipped every loud syllable to
+  // fully open (measured on a real pt-PT sentence: flat tops on most vowels).
+  // Quiet sounds still open clearly; loud ones top out near 70%.
+  const x = Math.max(0, amp - 0.012);
+  return Math.min(1, 0.75 * (1 - Math.exp(-4.5 * x)) * _lip.gain);
+}
+
 /* ── animation state ── */
 let mouthOpen=0, gazeX=0, gazeY=0, gazeTX=0, gazeTY=0, gazeRetarget=0;
 // Latched once the analyser has EVER produced signal. Until then we cannot
@@ -1281,11 +1332,49 @@ function buildHead(){
 }
 
 /* ── WebGL setup ── */
+const MOUTH_GLSL=`/* ── The mouth ──────────────────────────────────────────────────────────
+   The lips move, not the face. A rigid jaw rotation of the whole lower face
+   read as a ventriloquist's dummy: the chin swung, the lips never changed
+   shape, and loud always meant wide. Here the jaw turns a little and the lips
+   do the work: the lower lip drops, the upper lip lifts, the corners pull out
+   (wide) or in with the lips pushed forward (round). All of it fades to
+   nothing at the corners and off the front of the face.
+   u_mA = (seam y, half width, lower-lip drop, upper-lip lift)
+   u_mB = (corner pull, lip push, front z, unused)
+   u_mOpen 0..1, u_mWide -1 (round) .. +1 (wide). */
+uniform vec4 u_mA, u_mB; uniform float u_mOpen, u_mWide;
+float sq(float x){ return x*x; }   /* pow() is undefined for a negative base */
+float m_front(vec3 p){ return smoothstep(u_mB.z - 0.18, u_mB.z, p.z); }
+vec3 mouthDeform(vec3 p, out float gap, out float region, out float restDy){
+  float dy = p.y - u_mA.x, ax = abs(p.x) / u_mA.y, fr = m_front(p);
+  float hx = 1.0 - smoothstep(0.75, 1.15, ax);
+  float below = smoothstep(0.004, -0.006, dy), above = 1.0 - below;
+  float lipLo = below * exp(-sq((dy + 0.03) / 0.05));
+  float lipUp = above * exp(-sq((dy - 0.03) / 0.04));
+  float band  = exp(-sq(dy / 0.06));
+  float corner = fr * band * smoothstep(0.35, 0.95, ax) * (1.0 - smoothstep(1.05, 1.5, ax));
+  vec3 q = p;
+  q.y -= u_mOpen * u_mA.z * lipLo * hx * fr;
+  q.y += u_mOpen * u_mA.w * lipUp * hx * fr;
+  q.x *= 1.0 + u_mWide * u_mB.x * corner;
+  q.z += max(0.0, -u_mWide) * u_mB.y * (lipLo + lipUp) * hx * fr;
+  /* How open, at this point of the mouth. The darkness itself is decided per
+     PIXEL from restDy (fragment shader): the triangles that stretch open map
+     a thin band of rest positions onto the whole opening, so a narrow window
+     in rest space gives a crisp opening on screen. Per-vertex darkness was
+     blended across those same big triangles and smeared into a shadow. */
+  gap = fr * hx * u_mOpen;
+  restDy = dy;
+  region = fr * max(max(lipLo, lipUp) * hx, corner);
+  return q;
+}
+`;
 const VS=`attribute vec3 a_pos; attribute float a_jaw;
 uniform mat4 u_mvp; uniform float u_jaw,u_hingeY,u_hingeZ,u_point;
 varying float v_depth;
+${MOUTH_GLSL}
 void main(){
-  vec3 p=a_pos; float ja=u_jaw*a_jaw;
+  float g_, r_, d_; vec3 p=mouthDeform(a_pos, g_, r_, d_); float ja=u_jaw*a_jaw;
   vec3 piv=vec3(0.0,u_hingeY,u_hingeZ); vec3 r=p-piv;
   float c=cos(ja), s=sin(ja);
   r=vec3(r.x, c*r.y - s*r.z, s*r.y + c*r.z);
@@ -1344,6 +1433,7 @@ try{
     uHY=gl.getUniformLocation(prog,'u_hingeY'); uHZ=gl.getUniformLocation(prog,'u_hingeZ');
     uCol=gl.getUniformLocation(prog,'u_color'); uBri=gl.getUniformLocation(prog,'u_bright');
     uPt=gl.getUniformLocation(prog,'u_point'); uRound=gl.getUniformLocation(prog,'u_round');
+    _mouthLocs.wire = _mouthUniforms(prog);
     buildHead();
     // The field she sits in front of. Built here because it shares this
     // context; it stays empty and invisible until the graph arrives.
@@ -1373,10 +1463,11 @@ const EXCLUDE = {'Group16029':1,'Group64944':1};   /* dense eyeball geometry (wi
 /* ── lit shader program for solid mode ── */
 const VS2=`attribute vec3 a_pos; attribute vec3 a_nrm; attribute float a_jaw;
 uniform mat4 u_mvp,u_model; uniform float u_jaw,u_hingeY,u_hingeZ;
-varying vec3 v_n; varying float v_y; varying vec3 v_p;
+varying vec3 v_n; varying float v_y; varying vec3 v_p; varying float v_gap, v_mreg, v_mdy;
+${MOUTH_GLSL}
 vec3 jr(vec3 p,float w){ float ja=u_jaw*w; vec3 pv=vec3(0.0,u_hingeY,u_hingeZ); vec3 r=p-pv; float c=cos(ja),s=sin(ja); return pv+vec3(r.x,c*r.y-s*r.z,s*r.y+c*r.z); }
 vec3 jn(vec3 n,float w){ float ja=u_jaw*w; float c=cos(ja),s=sin(ja); return vec3(n.x,c*n.y-s*n.z,s*n.y+c*n.z); }
-void main(){ vec3 p=jr(a_pos,a_jaw); vec3 n=jn(a_nrm,a_jaw); gl_Position=u_mvp*vec4(p,1.0); v_n=mat3(u_model)*n;
+void main(){ vec3 p=jr(mouthDeform(a_pos, v_gap, v_mreg, v_mdy),a_jaw); vec3 n=jn(a_nrm,a_jaw); gl_Position=u_mvp*vec4(p,1.0); v_n=mat3(u_model)*n;
   /* object-space height and position — the materialise sweep uses the height,
      the noise that breaks up its edge uses the full position */
   v_y=p.y; v_p=p; }`;
@@ -1389,6 +1480,10 @@ uniform vec3 u_color; uniform float u_bright; uniform float u_time; varying vec3
    solid while the animation kept running, which is part of why the eyes felt
    late. Keep CUT_LO/CUT_HI in the JS in sync with these numbers. */
 uniform float u_reveal; varying float v_y; varying vec3 v_p;
+/* The open mouth: the stretched band along the lip seam goes dark, so an open
+   mouth reads as a mouth and not as a split in the hologram. u_mFx.x = how
+   dark, u_mFx.y > 0 tints the lip regions for tuning (MOUTH.dbg). */
+varying float v_gap, v_mreg, v_mdy; uniform vec2 u_mFx;
 /* Ghost pass: > 0 draws the WHOLE head as a translucent fresnel shell before
    any of it has solidified — the hologram acquiring its target. Fragment-stage
    only, so no cross-stage precision agreement is required (a shared uniform
@@ -1466,6 +1561,13 @@ void main(){
                      edgeBand(cutN - 0.014 - v_y));
     col += band * vec3(1.0, 0.92, 1.05) * jitter * 2.6;
   }
+  /* not black: a dim interior in her own light, so the lip edges stay legible */
+  float inner = 1.0 - smoothstep(0.005, 0.014, abs(v_mdy + 0.002));
+  col = mix(col, col * 0.14 + vec3(0.010, 0.030, 0.050), clamp(v_gap * inner * u_mFx.x, 0.0, 0.85));
+  /* the lower lip's top edge catches the light once the mouth is open */
+  float edge = 1.0 - smoothstep(0.0, 0.007, abs(v_mdy + 0.021));
+  col += vec3(0.20, 0.42, 0.55) * edge * clamp(v_gap * v_gap * 2.5, 0.0, 1.0);   /* squared: gone before the corners */
+  if (u_mFx.y > 0.0) col = mix(col, vec3(1.0, 0.25, 0.35), clamp(v_mreg, 0.0, 1.0) * 0.6);
   gl_FragColor=vec4(col*u_bright, 1.0);
 }`;
 let progS=null, aSp,aSn,aSj, uSmvp,uSmodel,uSjaw,uShy,uShz,uScol,uSbri,uStime,uSreveal,uSghost;
@@ -1494,6 +1596,7 @@ function ensureSolidProgram(){
   uScol=gl.getUniformLocation(progS,'u_color'); uSbri=gl.getUniformLocation(progS,'u_bright');
   uStime=gl.getUniformLocation(progS,'u_time'); uSreveal=gl.getUniformLocation(progS,'u_reveal');
   uSghost=gl.getUniformLocation(progS,'u_ghost');
+  _mouthLocs.solid = _mouthUniforms(progS);
 }
 
 function parseOBJ(text){
@@ -2048,9 +2151,11 @@ function renderHead(dt){
     // Follow the waveform once an audio path is proven — so the jaw CLOSES on
     // pauses between words instead of flapping on a timer, which is what read
     // as bad lip-sync. The sine is now only the no-audio-at-all fallback.
-    mT = _audioSeen ? Math.min(1,amp*3.2) : 0.25+0.35*Math.abs(Math.sin(T*10));
-  }
-  mouthOpen += (mT-mouthOpen)*Math.min(1,16*dt);
+    mT = _audioSeen ? _lipTarget(amp, dt) : 0.25+0.35*Math.abs(Math.sin(T*10));
+  } else { _lip.hold = 0; _lip.peak = 0; }
+  /* Real mouths open fast and close a little slower; one symmetric smoothing
+     made every syllable the same soft pulse. ~40ms to open, ~90ms to close. */
+  mouthOpen += (mT-mouthOpen)*Math.min(1,(mT>mouthOpen ? 25 : 11)*dt);
   if(_camGaze.active){
     // Webcam is driving the gaze — follow the user, skip the idle saccades.
     gazeTX=_camGaze.x; gazeTY=_camGaze.y; gazeRetarget=0;
@@ -2064,7 +2169,7 @@ function renderHead(dt){
 
   const yaw=Math.sin(T*0.22)*0.20+gazeX*0.12+(modelReady?MODEL_YAW:0);
   const pitch=Math.sin(T*0.18)*0.07+gazeY*0.08-0.03;
-  const jaw=mouthOpen*0.34;
+  const jaw=(_mouthFreeze ? _mouthFreeze[0] : mouthOpen)*MOUTH.jaw;
   const breath=1+Math.sin(T*0.9)*0.010;
 
   const asp=canvas.width/canvas.height;
@@ -2135,6 +2240,7 @@ function renderHead(dt){
   gl.useProgram(prog);
   gl.uniformMatrix4fv(uMVP,false,mvp);
   gl.uniform1f(uJaw,jaw); gl.uniform1f(uHY,-0.08); gl.uniform1f(uHZ,-0.25);
+  _mouthSet(_mouthLocs.wire);
   gl.uniform3f(uCol,col[0]/255,col[1]/255,col[2]/255);
   gl.uniform1f(uBri, 0.85+act*0.5+(speaking?mouthOpen*0.25:0));
 
@@ -2152,6 +2258,7 @@ function renderHead(dt){
     gl.uniformMatrix4fv(uSmvp,false,mvp);
     gl.uniformMatrix4fv(uSmodel,false,m4mul(m4rotX(pitch),m4rotY(yaw)));
     gl.uniform1f(uSjaw,jaw); gl.uniform1f(uShy,-0.08); gl.uniform1f(uShz,-0.25);
+    _mouthSet(_mouthLocs.solid);
     gl.uniform3f(uScol,col[0]/255,col[1]/255,col[2]/255);
     gl.uniform1f(uSbri, 0.72+act*0.4+(speaking?mouthOpen*0.2:0));
     gl.uniform1f(uStime, T);
@@ -3013,7 +3120,7 @@ function _agfSlots(n, w, h){
     const sc = _agfScale(n), pitch = 94 * sc;
     // The network's legend is the other thing on that side: rows stop above
     // it, packing closer if they have to rather than covering it.
-    const lg = document.getElementById('net-legend');
+    const lg = _netLegend;            // declared further down; this only runs after load
     const lb = (lg && lg.classList.contains('on')) ? lg.getBoundingClientRect() : null;
     const floor = Math.min(lb ? lb.top - 44 : h, db ? db.y0 - 44 : h);
     const cx = (hb.x0 + hb.x1) / 2;
