@@ -1212,7 +1212,12 @@ function audioLevel(){
    full open (was 0.34 — the puppet). lip/up: lower-lip drop, upper-lip lift.
    wide/push: corner pull, lip push for round. gap: how dark the open seam
    goes. dbg: tint the lip regions. Freeze a pose with _mouthPose(open, wide). */
-const MOUTH = { y:-0.58, w:0.19, z:0.64, jaw:0.10, lip:0.045, up:0.014,
+/* y is the lip junction: the deepest point of the crease, where the mesh folds
+   in under the upper lip. It was -0.58, which is 0.013 down the lower lip's
+   front: the split ran through the lower lip, its top strip rose with the upper
+   lip (a straight top edge), and its stretched skin was what got darkened —
+   the "rectangle smudge over the lips". */
+const MOUTH = { y:-0.567, w:0.19, z:0.64, jaw:0.10, lip:0.06, up:0.022,
                 wide:0.17, push:0.03, gap:1.6, dbg:0 };
 window.MOUTH = MOUTH;
 const _mouthLocs = { wire:null, solid:null };
@@ -1405,6 +1410,7 @@ const MOUTH_GLSL=`/* ── The mouth ──────────────
    u_mOpen 0..1, u_mWide -1 (round) .. +1 (wide). */
 uniform vec4 u_mA, u_mB; uniform float u_mOpen, u_mWide;
 float sq(float x){ return x*x; }   /* pow() is undefined for a negative base */
+float m_ny = 0.0, m_below = 0.0, m_hx = 0.0;
 float m_front(vec3 p){ return smoothstep(u_mB.z - 0.18, u_mB.z, p.z); }
 vec3 mouthDeform(vec3 p, out float gap, out float region, out float restDy){
   float dy = p.y - u_mA.x, ax = abs(p.x) / u_mA.y, fr = m_front(p);
@@ -1412,11 +1418,25 @@ vec3 mouthDeform(vec3 p, out float gap, out float region, out float restDy){
   /* Round ("o", "u"): the opening gathers toward the middle and gets taller,
      an O rather than a slot. Wide ("i", "e"): a longer, flatter slot. Pulling
      the corners in alone was measured too faint to tell from neutral. */
-  float hx = 1.0 - smoothstep(0.75, 1.15, ax * (1.0 + 0.55 * rnd - 0.12 * wid));
+  /* Lens-shaped: deepest in the middle, tapering to the corners. A flat
+     profile cut off near the corners gave square ends — a slot. */
+  float e = ax * (1.0 + 0.55 * rnd - 0.12 * wid) / 1.1;
+  float hx = pow(max(0.0, 1.0 - e * e), 0.8);
   float drop = 1.0 + 0.30 * rnd - 0.30 * wid;
-  float below = smoothstep(0.004, -0.006, dy), above = 1.0 - below;
-  float lipLo = below * exp(-sq((dy + 0.03) / 0.05));
-  float lipUp = above * exp(-sq((dy - 0.03) / 0.04));
+  /* Which lip a vertex belongs to. In the crease the two interleave in
+     height (the upper lip overhangs), so there the surface decides: the
+     underside of the upper lip faces down, the top of the lower lip faces up.
+     Only where the lips really part (hx), or the corners tear. m_ny is 0 in the
+     wire pass, which has no normals: height alone there. */
+  float below = smoothstep(0.004, -0.006, dy);
+  if (m_ny != 0.0 && abs(dy) < 0.009 && hx * fr > 0.3) below = m_ny > 0.0 ? 1.0 : 0.0;
+  float above = 1.0 - below;
+  m_below = below; m_hx = hx * fr;
+  /* Each lip moves whole near the seam, fading only further out: the old
+     falloff moved the lower lip's edge less than its body, tipping it toward
+     the camera instead of opening a gap. */
+  float lipLo = below * exp(-sq(min(0.0, dy + 0.03) / 0.05));
+  float lipUp = above * exp(-sq(max(0.0, dy - 0.03) / 0.04));
   float band  = exp(-sq(dy / 0.06));
   float corner = fr * band * smoothstep(0.35, 0.95, ax) * (1.0 - smoothstep(1.05, 1.5, ax));
   vec3 q = p;
@@ -1529,11 +1549,11 @@ const EXCLUDE = {'Group16029':1,'Group64944':1};   /* dense eyeball geometry (wi
 /* ── lit shader program for solid mode ── */
 const VS2=`attribute vec3 a_pos; attribute vec3 a_nrm; attribute float a_jaw;
 uniform mat4 u_mvp,u_model; uniform float u_jaw,u_hingeY,u_hingeZ;
-varying vec3 v_n; varying float v_y; varying vec3 v_p; varying float v_gap, v_mreg, v_mdy;
+varying vec3 v_n; varying float v_y; varying vec3 v_p; varying float v_gap, v_mreg, v_mdy, v_ms, v_mhx;
 ${MOUTH_GLSL}
 vec3 jr(vec3 p,float w){ float ja=u_jaw*w; vec3 pv=vec3(0.0,u_hingeY,u_hingeZ); vec3 r=p-pv; float c=cos(ja),s=sin(ja); return pv+vec3(r.x,c*r.y-s*r.z,s*r.y+c*r.z); }
 vec3 jn(vec3 n,float w){ float ja=u_jaw*w; float c=cos(ja),s=sin(ja); return vec3(n.x,c*n.y-s*n.z,s*n.y+c*n.z); }
-void main(){ vec3 p=jr(mouthDeform(a_pos, v_gap, v_mreg, v_mdy),a_jaw); vec3 n=jn(a_nrm,a_jaw); gl_Position=u_mvp*vec4(p,1.0); v_n=mat3(u_model)*n;
+void main(){ m_ny = a_nrm.y; vec3 p=jr(mouthDeform(a_pos, v_gap, v_mreg, v_mdy),a_jaw); v_ms = 1.0 - 2.0 * m_below; v_mhx = m_hx; vec3 n=jn(a_nrm,a_jaw); gl_Position=u_mvp*vec4(p,1.0); v_n=mat3(u_model)*n;
   /* object-space height and position — the materialise sweep uses the height,
      the noise that breaks up its edge uses the full position */
   v_y=p.y; v_p=p; }`;
@@ -1549,7 +1569,7 @@ uniform float u_reveal; varying float v_y; varying vec3 v_p;
 /* The open mouth: the stretched band along the lip seam goes dark, so an open
    mouth reads as a mouth and not as a split in the hologram. u_mFx.x = how
    dark, u_mFx.y > 0 tints the lip regions for tuning (MOUTH.dbg). */
-varying float v_gap, v_mreg, v_mdy; uniform vec2 u_mFx;
+varying float v_gap, v_mreg, v_mdy, v_ms, v_mhx; uniform vec2 u_mFx;
 /* Ghost pass: > 0 draws the WHOLE head as a translucent fresnel shell before
    any of it has solidified — the hologram acquiring its target. Fragment-stage
    only, so no cross-stage precision agreement is required (a shared uniform
@@ -1615,7 +1635,7 @@ void main(){
      glowing stripe as she spoke. Limited to the mouth (v_mreg) so the head's
      outline keeps its rim, and to parted lips (v_gap): closed, the bright
      crease is where they meet and is wanted — open, it is gone. */
-  fres *= 1.0 - 0.92 * (1.0 - smoothstep(0.012, 0.045, abs(v_mdy))) * smoothstep(0.15, 0.45, v_mreg) * smoothstep(0.0, 0.05, v_gap);
+  fres *= 1.0 - 0.92 * (1.0 - smoothstep(0.012, 0.045, abs(v_mdy + 0.013))) * smoothstep(0.15, 0.45, v_mreg) * smoothstep(0.0, 0.05, v_gap);
   /* holographic shading: low ambient, cool body, strong glowing fresnel rim */
   vec3 col=u_color*(0.12+0.50*diff) + vec3(0.50,0.85,1.0)*fres*1.5;
   /* fine static scanlines (holographic texture, no sweeping bar) */
@@ -1636,13 +1656,14 @@ void main(){
     col += band * vec3(1.0, 0.92, 1.05) * jitter * 2.6;
   }
   /* not black: a dim interior in her own light, so the lip edges stay legible */
-  /* The opening, dimmed. Tried and rejected (2026-10-11): a wider, harder
-     band to swallow the upper lip's curl read as a black bar; a softer one
-     as a blur. The user preferred this one, the original look. */
-  float inner = 1.0 - smoothstep(0.005, 0.014, abs(v_mdy + 0.002));
-  col = mix(col, col * 0.14 + vec3(0.010, 0.030, 0.050), clamp(v_gap * inner * u_mFx.x, 0.0, 0.85));
+  /* The opening, dimmed: only the faces stretched BETWEEN the lips. v_ms is
+     +1 on upper-lip vertices and -1 on lower ones, so it passes through 0
+     only across the gap and never on a lip. Judging by rest height instead
+     darkened lip skin too, with a jagged edge where the crease interleaves. */
+  float inner = (1.0 - smoothstep(0.0, 0.9, abs(v_ms))) * smoothstep(0.25, 0.6, v_mhx) * smoothstep(0.0, 0.08, v_gap);
+  col = mix(col, col * 0.14 + vec3(0.010, 0.030, 0.050), clamp(inner * u_mFx.x, 0.0, 0.85));
   /* the lower lip's top edge catches the light once the mouth is open */
-  float edge = 1.0 - smoothstep(0.0, 0.007, abs(v_mdy + 0.021));
+  float edge = 1.0 - smoothstep(0.0, 0.007, abs(v_mdy + 0.034));
   col += vec3(0.20, 0.42, 0.55) * edge * clamp(v_gap * v_gap * 2.5, 0.0, 1.0);   /* squared: gone before the corners */
   if (u_mFx.y > 0.0) col = mix(col, vec3(1.0, 0.25, 0.35), clamp(v_mreg, 0.0, 1.0) * 0.6);
   gl_FragColor=vec4(col*u_bright, 1.0);

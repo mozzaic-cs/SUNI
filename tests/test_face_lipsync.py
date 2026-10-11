@@ -65,3 +65,15 @@ def test_the_lip_crease_shows_only_when_the_lips_meet():
     time; hiding it everywhere (or painting the opening dark) was worse."""
     line = next(l for l in FACE.splitlines() if l.strip().startswith("fres *= 1.0 - 0.92"))
     assert "v_gap" in line, "the crease glow is not tied to the lips being parted"
+
+
+def test_the_lips_part_at_their_junction_not_through_the_lower_lip():
+    """At y -0.58 the split ran 0.013 down the lower lip: its skin was
+    stretched and darkened into a rectangle over the lips."""
+    y = float(re.search(r"const MOUTH = \{ y:(-?[\d.]+)", FACE).group(1))
+    assert abs(y - (-0.567)) < 0.003
+    assert "m_ny = a_nrm.y" in FACE, "the crease is split by height alone"
+
+
+def test_only_the_gap_between_the_lips_is_darkened():
+    assert "abs(v_ms)" in FACE and "v_ms = 1.0 - 2.0 * m_below" in FACE
