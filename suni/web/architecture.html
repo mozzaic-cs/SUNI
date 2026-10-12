@@ -252,7 +252,7 @@ body.simple .section-gap{height:6px!important}
         <span>WebGL orb · 6 Gaussian blobs · Lissajous paths</span>
         States: idle / thinking / speaking / <span style="color:var(--teal);display:inline">working</span> / <span style="color:var(--cyan);display:inline">browsing</span><br>
         SSE: token · done · error · tool_start · tool_end · skill_used · cc_note · fanout<br>
-        STT Web Speech API · streaming TTS edge-tts · mode selector<br>
+        STT Web Speech API · streaming TTS (Azure Speech when keyed, else edge-tts) · mode selector<br>
         Drag-drop upload · opt-in webcam presence (orb wakes) · snapshot
       </div>
     </div>
@@ -272,7 +272,9 @@ body.simple .section-gap{height:6px!important}
       <div class="node-detail">
         <span>Raw-WebGL holographic 3D head · Cortana-style</span>
         Voice-first: retractable dock + stream-driven live caption<br>
-        Solid mesh hologram · jaw driven by TTS amplitude · procedural eyes<br>
+        Solid mesh hologram · procedural eyes<br>
+        Lip-sync from the voice: loudness + spectrum (F1/F2/hiss) → open/round/spread/f-v · damped-spring timing · jaw lags the lips<br>
+        Shader mouth: lips part at the junction · opening drawn per pixel between analytic lip edges<br>
         Opt-in webcam head/eye-tracking · vision snapshot · colour picker<br>
         Drag-drop upload · shares orb SSE/TTS/STT/auth · ORB/CHAT/FACE nav
       </div>
@@ -681,7 +683,7 @@ body.simple .section-gap{height:6px!important}
           <span>1 SUNI → N specialized model endpoints (config map)</span>
           STT: browser | self-hosted Whisper (stt.py)<br>
           Vision: OpenAI-compatible VLM · image → answer (vision.py)<br>
-          TTS: edge-tts | self-hosted /v1/audio/speech (tts.py)<br>
+          TTS: Azure Speech (tts_azure.py, keyed in .env) | edge-tts | self-hosted /v1/audio/speech (tts.py) · fallback to local Helia/Piper<br>
           <span style="color:var(--muted)">No router — config convention IS the map · ClaudeCodeAgent T5</span>
         </div>
       </div>
