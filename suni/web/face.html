@@ -2078,11 +2078,18 @@ uniform vec4  u_vp;   /* the viewport the head would be drawn in (stage view shr
 uniform float u_t, u_ss, u_cam, u_R, u_amp;
 uniform vec3  u_col;
 uniform vec2  u_oc, u_mouse;
-uniform float u_spec[16];
+uniform vec4  u_rings, u_ringS;   /* speaking: when each ring was born (u_t), and how strong */
 float hash(vec2 p){p=fract(p*vec2(127.1,311.7));p+=dot(p,p.yx+19.19);return fract((p.x+p.y)*p.x);}
 float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);
   return mix(mix(hash(i),hash(i+vec2(1.0,0.0)),f.x),mix(hash(i+vec2(0.0,1.0)),hash(i+vec2(1.0,1.0)),f.x),f.y);}
 float fbm(vec2 p){float v=0.0,a=0.5;for(int i=0;i<4;i++){v+=a*noise(p);p=p*2.03+3.1;a*=0.5;}return v;}
+/* one ring of light rising from the core to the surface, fading at the rim */
+float riseRing(float r, float born, float k){
+  float age = u_t - born;
+  if (age < 0.0 || age > 2.2) return 0.0;
+  float rr = age * 0.6;
+  return k * exp(-pow((r - rr) / (0.03 + 0.045 * rr), 2.0)) * (1.0 - smoothstep(0.75, 1.05, rr)) * smoothstep(0.0, 0.15, age);
+}
 mat3 rotY(float a){ float c=cos(a),s=sin(a); return mat3(c,0.0,-s, 0.0,1.0,0.0, s,0.0,c); }
 mat3 rotX(float a){ float c=cos(a),s=sin(a); return mat3(1.0,0.0,0.0, 0.0,c,s, 0.0,-s,c); }
 void main(){
@@ -2112,7 +2119,7 @@ void main(){
   vec3 N = vec3(p, z);
   vec3 q = Rm * N;
   /* speaking: the surface swells in slow waves with her voice */
-  float wave = sin(r * 5.0 - u_t * 2.2) * u_amp * spk;
+  float wave = sin(r * 4.0 - u_t * 1.6) * u_amp * spk * 0.5;
   vec3 Nl = normalize(N + vec3(p * wave * 0.18, 0.0));
   /* the light follows the pointer: move and she catches it */
   vec3 L = normalize(vec3(-0.35 + u_mouse.x * 0.55, 0.45 + u_mouse.y * 0.45, 0.82));
@@ -2154,6 +2161,11 @@ void main(){
   vec3 Rf = reflect(vec3(0.0, 0.0, -1.0), Nl);
   float rfl = fbm(Rf.xy * 1.6 + u_mouse * 0.3 + vec2(u_t * 0.02, 0.0) + 2.0);
   body += mix(u_col, vec3(0.95, 0.75, 0.45), 0.25) * smoothstep(0.45, 0.8, rfl) * (0.08 + 0.35 * fres);
+  /* speaking: on each syllable a ring of light rises from the core to the
+     surface, like sound seen from inside */
+  float rings = riseRing(r, u_rings.x, u_ringS.x) + riseRing(r, u_rings.y, u_ringS.y)
+              + riseRing(r, u_rings.z, u_ringS.z) + riseRing(r, u_rings.w, u_ringS.w);
+  body += mix(u_col, vec3(0.85, 0.97, 1.0), 0.5) * rings * spk * (0.35 + 0.65 * z) * 1.0;
   /* thinking: a scan line sweeps her */
   float scanY = sin(u_t * 1.6) * 0.92;
   body += u_col * exp(-pow((p.y - scanY) / 0.03, 2.0)) * clamp(1.0 - abs(ss - 1.0), 0.0, 1.0) * 0.9 * (0.3 + 0.7 * z);
@@ -2170,27 +2182,16 @@ void main(){
   col += vec3(smoothstep(e, 0.0, abs(r - 1.0 - e * 0.5)), smoothstep(e, 0.0, abs(r - 1.0)),
               smoothstep(e, 0.0, abs(r - 1.0 + e * 0.5))) * (u_col * 0.5 + 0.5) * (0.35 + 0.3 * act + 0.4 * u_amp);
 
-  /* ── speaking: a glowing outline that bends with her voice ── */
-  if (spk > 0.01) {
-    float a2 = atan(p.x, p.y);                      /* 0 at the top, mirrored */
-    float fb = abs(a2) / 3.14159265 * 15.0, sv = 0.0;
-    float sw = 0.0;
-    for (int i = 0; i < 16; i++) { float w = exp(-pow(fb - float(i), 2.0) / 1.4); sv += u_spec[i] * w; sw += w; }
-    sv /= sw;
-    float rr = 1.05 + sv * 0.20;
-    float d = r - rr;
-    float line = exp(-pow(d / (0.006 + px), 2.0));
-    float haze = exp(-max(d, 0.0) * 9.0) * smoothstep(1.0, 1.04, r) * step(0.0, rr - r + 0.5);
-    vec3 vc = mix(u_col, vec3(0.941, 0.753, 0.251), smoothstep(0.25, 0.8, sv));
-    col += vc * (line * 1.1 + haze * 0.18 * sv) * spk * (1.0 - inside);
-  }
-
   /* premultiplied: the body covers what is behind it, the glow adds */
   gl_FragColor = vec4(bodyOut + (1.0 - exp(-col * 1.35)), inside);
 }
 `;
 let progOrb = null, _orbU = null, bOrbQuad = null, aOrbP = -1;
 const _orbSpec = new Float32Array(16);
+/* Speaking rings: birth time and strength of the last four, a new one on each
+   syllable (the voice rising after a dip), at most one every 250 ms. */
+const _orbRings = new Float32Array([-100, -100, -100, -100]), _orbRingS = new Float32Array(4);
+let _orbRingN = 0, _orbLow = true, _orbLastRing = -100;
 let _orbAmp = 0, _orbFbuf = null, _omx = 0, _omy = 0, _omtx = 0, _omty = 0;
 if (ORB_MODE) {
   window.addEventListener('pointermove', e => {
@@ -2211,7 +2212,7 @@ function _ensureOrb(){
     if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
     const u = n => gl.getUniformLocation(pr, n);
     _orbU = { vp: u('u_vp'), t: u('u_t'), ss: u('u_ss'), cam: u('u_cam'), R: u('u_R'), amp: u('u_amp'),
-              col: u('u_col'), oc: u('u_oc'), mouse: u('u_mouse'), spec: u('u_spec') };
+              col: u('u_col'), oc: u('u_oc'), mouse: u('u_mouse'), rings: u('u_rings'), ringS: u('u_ringS') };
     aOrbP = gl.getAttribLocation(pr, 'a_p');
     bOrbQuad = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, bOrbQuad);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,-1, 1,1, -1,1]), gl.STATIC_DRAW);
@@ -2219,7 +2220,9 @@ function _ensureOrb(){
   } catch (e) { console.warn('orb init:', e); progOrb = null; }
 }
 /* Her voice in 16 bands, 100 Hz to 5 kHz on a log scale. Eased slowly, both
-   ways: reacting within a frame or two, the speaking orb looked frantic. */
+   ways: reacting within a frame or two, the speaking orb looked frantic.
+   (The bands drove an outline that bent with her voice; the user preferred
+   rings rising on each syllable, 2026-10-12.) */
 function _orbVoice(dt){
   const on = analyser && audioCtx && state === 'speaking';
   if (on) {
@@ -2227,7 +2230,7 @@ function _orbVoice(dt){
     analyser.getByteFrequencyData(_orbFbuf);
   }
   const hz = on ? audioCtx.sampleRate / analyser.fftSize : 1;
-  let sum = 0;
+  let sum = 0, raw = 0;
   for (let i = 0; i < 16; i++) {
     let v = 0;
     if (on) {
@@ -2237,7 +2240,13 @@ function _orbVoice(dt){
       v = Math.min(1, Math.max(0, (v / ((b - a) * 255) - 0.15) / 0.6));
     }
     _orbSpec[i] += (v - _orbSpec[i]) * Math.min(1, (v > _orbSpec[i] ? 7 : 3) * dt);
-    sum += _orbSpec[i];
+    sum += _orbSpec[i]; raw += v;
+  }
+  raw /= 16;
+  if (raw < 0.06) _orbLow = true;
+  else if (_orbLow && raw > 0.14 && T - _orbLastRing > 0.25) {
+    _orbRings[_orbRingN] = T; _orbRingS[_orbRingN] = Math.min(1, 0.4 + raw * 1.5);
+    _orbRingN = (_orbRingN + 1) % 4; _orbLow = false; _orbLastRing = T;
   }
   _orbAmp += (Math.min(1, sum / 16 * 1.6) - _orbAmp) * Math.min(1, 4 * dt);
 }
@@ -2258,7 +2267,7 @@ function _drawOrb(dt, fovT){
   gl.uniform1f(_orbU.R, R); gl.uniform1f(_orbU.amp, _orbAmp);
   gl.uniform3f(_orbU.col, c[0] / 255, c[1] / 255, c[2] / 255);
   gl.uniform2f(_orbU.oc, 0.5, cy); gl.uniform2f(_orbU.mouse, _omx, _omy);
-  gl.uniform1fv(_orbU.spec, _orbSpec);
+  gl.uniform4fv(_orbU.rings, _orbRings); gl.uniform4fv(_orbU.ringS, _orbRingS);
   gl.bindBuffer(gl.ARRAY_BUFFER, bOrbQuad); gl.enableVertexAttribArray(aOrbP); gl.vertexAttribPointer(aOrbP, 2, gl.FLOAT, false, 0, 0);
   gl.drawArrays(gl.TRIANGLES, 0, 6);
   gl.disableVertexAttribArray(aOrbP);

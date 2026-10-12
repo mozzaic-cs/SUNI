@@ -25,3 +25,10 @@ def test_rejected_looks_stay_out():
     orb = FACE[FACE.index("const ORB_FS = `"):FACE.index("`;", FACE.index("const ORB_FS = `"))]
     for gone in ("float grid(", "vec3 ring(", "motes", "glitch"):
         assert gone not in orb
+
+
+def test_speaking_raises_rings_on_syllables():
+    """The user chose rings rising from the core on each syllable over an
+    outline bending with the voice (too fast-paced)."""
+    assert "float riseRing(" in FACE and "u_rings" in FACE
+    assert "T - _orbLastRing > 0.25" in FACE, "a ring per frame, not per syllable"
