@@ -2078,17 +2078,20 @@ uniform vec4  u_vp;   /* the viewport the head would be drawn in (stage view shr
 uniform float u_t, u_ss, u_cam, u_R, u_amp;
 uniform vec3  u_col;
 uniform vec2  u_oc, u_mouse;
-uniform vec4  u_rings, u_ringS;   /* speaking: when each ring was born (u_t), and how strong */
+uniform vec4  u_rings, u_ringS;   /* speaking: when each ripple started (u_t), and how strong */
 float hash(vec2 p){p=fract(p*vec2(127.1,311.7));p+=dot(p,p.yx+19.19);return fract((p.x+p.y)*p.x);}
 float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);
   return mix(mix(hash(i),hash(i+vec2(1.0,0.0)),f.x),mix(hash(i+vec2(0.0,1.0)),hash(i+vec2(1.0,1.0)),f.x),f.y);}
 float fbm(vec2 p){float v=0.0,a=0.5;for(int i=0;i<4;i++){v+=a*noise(p);p=p*2.03+3.1;a*=0.5;}return v;}
-/* one ring of light rising from the core to the surface, fading at the rim */
-float riseRing(float r, float born, float k){
+/* One ripple on the surface: a wave packet spreading from the point that
+   faces you out to the rim, th = angle from that point. Returns the slope of
+   the surface along th, which tilts the normal: the light shows the waves. */
+float rippleSlope(float th, float born, float k){
   float age = u_t - born;
-  if (age < 0.0 || age > 2.2) return 0.0;
-  float rr = age * 0.6;
-  return k * exp(-pow((r - rr) / (0.03 + 0.045 * rr), 2.0)) * (1.0 - smoothstep(0.75, 1.05, rr)) * smoothstep(0.0, 0.15, age);
+  if (age < 0.0 || age > 2.6) return 0.0;
+  float d = th - age * 0.75;                      /* reaches the rim at ~2.1 s */
+  float env = k * exp(-d * d / 0.05) * (1.0 - smoothstep(1.25, 1.62, age * 0.75)) * smoothstep(0.0, 0.25, age);
+  return -env * 18.0 * sin(18.0 * d);
 }
 mat3 rotY(float a){ float c=cos(a),s=sin(a); return mat3(c,0.0,-s, 0.0,1.0,0.0, s,0.0,c); }
 mat3 rotX(float a){ float c=cos(a),s=sin(a); return mat3(1.0,0.0,0.0, 0.0,c,s, 0.0,-s,c); }
@@ -2118,9 +2121,13 @@ void main(){
   mat3 Rm = rotX(0.30 - u_mouse.y * 0.30) * rotY(spin + u_mouse.x * 0.50);
   vec3 N = vec3(p, z);
   vec3 q = Rm * N;
-  /* speaking: the surface swells in slow waves with her voice */
-  float wave = sin(r * 4.0 - u_t * 1.6) * u_amp * spk * 0.5;
-  vec3 Nl = normalize(N + vec3(p * wave * 0.18, 0.0));
+  /* speaking: each syllable sends a ripple across the surface. The waves are
+     in the normals, so the shading, highlight and reflections all ripple. */
+  float th = asin(min(r, 1.0));
+  float slope = rippleSlope(th, u_rings.x, u_ringS.x) + rippleSlope(th, u_rings.y, u_ringS.y)
+              + rippleSlope(th, u_rings.z, u_ringS.z) + rippleSlope(th, u_rings.w, u_ringS.w);
+  vec3 tTh = vec3(p / max(r, 1e-4) * z, -r);      /* along th, on the sphere */
+  vec3 Nl = normalize(N - tTh * slope * 0.012 * spk);
   /* the light follows the pointer: move and she catches it */
   vec3 L = normalize(vec3(-0.35 + u_mouse.x * 0.55, 0.45 + u_mouse.y * 0.45, 0.82));
   float diff = max(0.0, dot(Nl, L));
@@ -2161,14 +2168,7 @@ void main(){
   vec3 Rf = reflect(vec3(0.0, 0.0, -1.0), Nl);
   float rfl = fbm(Rf.xy * 1.6 + u_mouse * 0.3 + vec2(u_t * 0.02, 0.0) + 2.0);
   body += mix(u_col, vec3(0.95, 0.75, 0.45), 0.25) * smoothstep(0.45, 0.8, rfl) * (0.08 + 0.35 * fres);
-  /* speaking: on each syllable a ring of light rises from the core to the
-     surface, like sound seen from inside */
-  float rings = riseRing(r, u_rings.x, u_ringS.x) + riseRing(r, u_rings.y, u_ringS.y)
-              + riseRing(r, u_rings.z, u_ringS.z) + riseRing(r, u_rings.w, u_ringS.w);
-  body += mix(u_col, vec3(0.85, 0.97, 1.0), 0.5) * rings * spk * (0.35 + 0.65 * z) * 1.0;
-  /* thinking: a scan line sweeps her */
-  float scanY = sin(u_t * 1.6) * 0.92;
-  body += u_col * exp(-pow((p.y - scanY) / 0.03, 2.0)) * clamp(1.0 - abs(ss - 1.0), 0.0, 1.0) * 0.9 * (0.3 + 0.7 * z);
+  /* (no scan line while thinking: removed at the user's request) */
   /* browsing: a radar sweep across the face of it */
   float ang = atan(p.y, p.x);
   body += u_col * exp(-mod(u_t * 2.2 - ang, 6.2831853) * 2.0) * brw * 0.35 * z;

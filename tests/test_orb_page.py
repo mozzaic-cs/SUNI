@@ -27,8 +27,13 @@ def test_rejected_looks_stay_out():
         assert gone not in orb
 
 
-def test_speaking_raises_rings_on_syllables():
-    """The user chose rings rising from the core on each syllable over an
-    outline bending with the voice (too fast-paced)."""
-    assert "float riseRing(" in FACE and "u_rings" in FACE
+def test_speaking_ripples_the_surface_on_syllables():
+    """Each syllable sends a ripple across the surface, in the normals (3D),
+    chosen over an outline bending with the voice and rings of inner light."""
+    assert "float rippleSlope(" in FACE and "vec3 Nl = normalize(N - tTh * slope" in FACE
     assert "T - _orbLastRing > 0.25" in FACE, "a ring per frame, not per syllable"
+
+
+def test_no_scan_line_while_thinking():
+    orb = FACE[FACE.index("const ORB_FS = `"):FACE.index("`;", FACE.index("const ORB_FS = `"))]
+    assert "scanY" not in orb
