@@ -80,7 +80,11 @@ def test_the_lips_part_at_their_junction_not_through_the_lower_lip():
 
 
 def test_only_the_gap_between_the_lips_is_darkened():
-    assert "abs(v_ms)" in FACE and "v_ms = 1.0 - 2.0 * m_below" in FACE
+    """Per pixel between two smooth edge curves: per vertex, the edge followed
+    the stretched triangles (steps, a point at the top, threads at the corners)."""
+    assert "vec3 gapEdges(float x)" in FACE and "gapEdges(v_p.x)" in FACE
+    assert "smoothstep(0.0, 0.85, depth)" in FACE, "a flat interior"
+    assert "gl.uniform4f(L.gB, o, w," in FACE and "_mouthSet.jaw = jaw;" in FACE
 
 
 def test_the_jaw_drops_below_the_lips_only():

@@ -1228,7 +1228,8 @@ let mouthWide = 0, mouthFV = 0, _mouthFreeze = null;
 function _mouthUniforms(pr){
   return { A:gl.getUniformLocation(pr,'u_mA'), B:gl.getUniformLocation(pr,'u_mB'),
            open:gl.getUniformLocation(pr,'u_mOpen'), wide:gl.getUniformLocation(pr,'u_mWide'),
-           fx:gl.getUniformLocation(pr,'u_mFx') };
+           fx:gl.getUniformLocation(pr,'u_mFx'),
+           gA:gl.getUniformLocation(pr,'u_gA'), gB:gl.getUniformLocation(pr,'u_gB') };
 }
 function _mouthSet(L){
   if (!L) return;
@@ -1243,6 +1244,10 @@ function _mouthSet(L){
   _mouthSet.t = now;
   _mouthSet.crease = (_mouthSet.crease ?? 1) + ((o < 0.03 ? 1 : 0) - (_mouthSet.crease ?? 1)) * Math.min(1, cdt * 6);
   if (L.fx) gl.uniform3f(L.fx, MOUTH.gap, MOUTH.dbg, _mouthSet.crease);
+  if (L.gA) {
+    gl.uniform4f(L.gA, MOUTH.y, MOUTH.w, MOUTH.lip, MOUTH.up);
+    gl.uniform4f(L.gB, o, w, _mouthFreeze ? (_mouthFreeze[2] || 0) : mouthFV, _mouthSet.jaw || 0);
+  }
 }
 window._mouthPose = (open, wide, fv) => { _mouthFreeze = (open == null) ? null : [open, wide || 0, fv || 0]; };
 
@@ -1607,6 +1612,23 @@ uniform float u_reveal; varying float v_y; varying vec3 v_p;
    mouth reads as a mouth and not as a split in the hologram. u_mFx.x = how
    dark, u_mFx.y > 0 tints the lip regions for tuning (MOUTH.dbg). */
 varying float v_gap, v_mreg, v_mdy, v_ms, v_mhx, v_mopen; uniform vec3 u_mFx;
+/* The opening's edges, rebuilt per pixel (FS-only copies of the mouth
+   uniforms: one shared with the vertex stage at another precision will not
+   link). u_gA = (seam y, half width, lip, up), u_gB = (open, wide, f/v, jaw). */
+uniform vec4 u_gA, u_gB;
+vec3 gapEdges(float x){
+  float ax = abs(x) / u_gA.y, rnd = max(0.0, -u_gB.y), wid = max(0.0, u_gB.y);
+  float e = ax * (1.0 + 0.30 * rnd - 0.12 * wid) / 0.80;
+  float hx = pow(max(0.0, 1.0 - e * e), 0.8);
+  float drop = 1.0 + 0.30 * rnd - 0.30 * wid;
+  float up = (u_gB.x * u_gA.w * (drop + 0.8 * wid) + u_gB.z * 0.014) * hx;
+  float lo = (u_gB.x * u_gA.z * drop - u_gB.z * 0.016) * hx;
+  float xs = smoothstep(0.03, 0.12, abs(x));
+  float ry = u_gA.x + 0.08, rz = 0.666 - 2.6 * x * x + 0.25;
+  float au = u_gB.w * 0.5 * xs, al = u_gB.w * mix(1.0, 0.5, xs);
+  return vec3(-0.08 + cos(au) * (ry + up) - sin(au) * rz,
+              -0.08 + cos(al) * (ry - lo) - sin(al) * rz, hx);
+}
 /* > 0.5 when the hair is on (a varying: a uniform shared by both stages
    with different precision will not link in WebGL 1) */
 varying float v_hair;
@@ -1753,12 +1775,19 @@ void main(){
     col += band * vec3(1.0, 0.92, 1.05) * jitter * 2.6;
   }
   /* not black: a dim interior in her own light, so the lip edges stay legible */
-  /* The opening, dimmed: only the faces stretched BETWEEN the lips. v_ms is
-     +1 on upper-lip vertices and -1 on lower ones, so it passes through 0
-     only across the gap and never on a lip. Judging by rest height instead
-     darkened lip skin too, with a jagged edge where the crease interleaves. */
-  float inner = (1.0 - smoothstep(0.0, 0.9, abs(v_ms))) * smoothstep(0.25, 0.6, v_mhx) * smoothstep(0.0, 0.08, v_gap);
-  col = mix(col, col * 0.14 + vec3(0.010, 0.030, 0.050), clamp(inner * u_mFx.x, 0.0, 0.85));
+  /* The opening, between two smooth curves computed for this pixel from the
+     same formulas that move the lips. Judged per vertex (v_ms), the edge ran
+     along the stretched triangles, which span most of the mouth: a stepped,
+     diamond-shaped hole with a point at the top and threads at the corners.
+     Inset from the lips' edges (12% top, 30% bottom) so their inner faces stay
+     lip; graded from a dim blue at the edge to black, not a flat sticker. */
+  vec3 ge = gapEdges(v_p.x); float gh = ge.x - ge.y;
+  float gu = ge.x - v_p.y - 0.12 * gh, gl = v_p.y - ge.y - 0.30 * gh;
+  float inner = smoothstep(0.0, 0.003, gu) * smoothstep(0.0, 0.003, gl) * smoothstep(0.15, 0.5, ge.z)
+              * step(0.001, gh) * smoothstep(0.45, 0.55, v_p.z);
+  float depth = clamp(min(gu, gl) / max(0.002, 0.5 * (1.0 - 0.12 - 0.30) * gh), 0.0, 1.0);
+  vec3 cav = mix(u_color * 0.20 + vec3(0.010, 0.030, 0.050), vec3(0.004, 0.008, 0.014), smoothstep(0.0, 0.85, depth));
+  col = mix(col, cav, inner * clamp(u_mFx.x * 0.6, 0.0, 0.95));
   /* No teeth: painted on the gap they read as a band, not as teeth (judged
      2026-10-12). */
   if (u_mFx.y > 0.0) col = mix(col, vec3(1.0, 0.25, 0.35), clamp(v_mreg, 0.0, 1.0) * 0.6);
@@ -2496,7 +2525,7 @@ function renderHead(dt){
     gl.uniformMatrix4fv(uSmvp,false,mvp);
     gl.uniformMatrix4fv(uSmodel,false,m4mul(m4rotX(pitch),m4rotY(yaw)));
     gl.uniform1f(uSjaw,jaw); gl.uniform1f(uShy,-0.08); gl.uniform1f(uShz,-0.25);
-    _mouthSet(_mouthLocs.solid);
+    _mouthSet.jaw = jaw; _mouthSet(_mouthLocs.solid);
     gl.uniform3f(uScol,col[0]/255,col[1]/255,col[2]/255);
     gl.uniform1f(uSbri, 0.72+act*0.4+(speaking?mouthOpen*0.2:0));
     gl.uniform1f(uStime, T);
