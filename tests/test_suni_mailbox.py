@@ -18,9 +18,9 @@ from suni.notifications import email_notify, mail_guard, mail_outbox, email_read
 
 # ── fixtures ─────────────────────────────────────────────────────────────────
 
-SUNI = {"account": "suni", "host": "smtp.test", "port": 587, "user": "suni@suniverse.online",
-        "password": "pw", "to": "boss@suniverse.online", "imap_host": "imap.test", "imap_port": 993}
-OWN = {**SUNI, "account": "user", "user": "ana@suniverse.online"}
+SUNI = {"account": "suni", "host": "smtp.test", "port": 587, "user": "suni@acme.test",
+        "password": "pw", "to": "boss@acme.test", "imap_host": "imap.test", "imap_port": 993}
+OWN = {**SUNI, "account": "user", "user": "ana@acme.test"}
 
 
 class FakeSMTP:
@@ -52,7 +52,7 @@ def mail(tmp_path, monkeypatch):
     monkeypatch.setattr(mail_outbox, "_audit", lambda *a, **k: None)
     monkeypatch.setattr(email_notify, "_cfg", lambda user_id="": SUNI)
     from suni import auth
-    monkeypatch.setattr(auth, "internal_addresses", lambda: {"ana@suniverse.online", "rui@suniverse.online"})
+    monkeypatch.setattr(auth, "internal_addresses", lambda: {"ana@acme.test", "rui@acme.test"})
     monkeypatch.setattr(email_notify, "setting", lambda k, e, d="": "")
     return FakeSMTP
 
@@ -60,34 +60,34 @@ def mail(tmp_path, monkeypatch):
 # ── rule 1: the outbox ───────────────────────────────────────────────────────
 
 def test_mail_to_an_outsider_is_queued_not_sent(mail):
-    r = email_notify.send_email("someone@else.com", "Hi", "body", user_id="u1")
+    r = email_notify.send_email("someone@else.test", "Hi", "body", user_id="u1")
     assert "NOT SENT YET" in r
     assert mail.sent == []
     items = mail_outbox.list_items("pending")
-    assert len(items) == 1 and items[0]["to_addr"] == "someone@else.com"
+    assert len(items) == 1 and items[0]["to_addr"] == "someone@else.test"
 
 
 def test_mail_to_system_users_goes_directly(mail):
-    r = email_notify.send_email("Ana <ana@suniverse.online>, rui@suniverse.online", "Hi", "b", user_id="u1")
+    r = email_notify.send_email("Ana <ana@acme.test>, rui@acme.test", "Hi", "b", user_id="u1")
     assert r.startswith("Email sent")
     assert len(mail.sent) == 1
-    assert sorted(mail.sent[0][1]) == ["ana@suniverse.online", "rui@suniverse.online"]
+    assert sorted(mail.sent[0][1]) == ["ana@acme.test", "rui@acme.test"]
     assert mail_outbox.pending_count() == 0
 
 
 def test_one_outsider_in_the_list_queues_the_whole_message(mail):
-    r = email_notify.send_email("ana@suniverse.online, x@evil.com", "Hi", "b")
+    r = email_notify.send_email("ana@acme.test, x@evil.test", "Hi", "b")
     assert "NOT SENT YET" in r and mail.sent == []
 
 
 def test_a_users_own_account_is_not_held(mail, monkeypatch):
     monkeypatch.setattr(email_notify, "_cfg", lambda user_id="": OWN)
-    r = email_notify.send_email("someone@else.com", "Hi", "b", user_id="u1")
+    r = email_notify.send_email("someone@else.test", "Hi", "b", user_id="u1")
     assert r.startswith("Email sent") and len(mail.sent) == 1
 
 
 def test_approval_sends_once_with_a_message_id(mail):
-    email_notify.send_email("someone@else.com", "Hi", "<b>body</b>", user_id="u1")
+    email_notify.send_email("someone@else.test", "Hi", "<b>body</b>", user_id="u1")
     did = mail_outbox.list_items("pending")[0]["id"]
     d = mail_outbox.approve(did, "admin1")
     assert d["status"] == "sent" and d["message_id"]
@@ -100,8 +100,8 @@ def test_approval_sends_once_with_a_message_id(mail):
 
 
 def test_reject_and_edit(mail):
-    email_notify.send_email("a@x.com", "S", "B")
-    email_notify.send_email("b@x.com", "S", "B")
+    email_notify.send_email("a@x.test", "S", "B")
+    email_notify.send_email("b@x.test", "S", "B")
     first, second = sorted(mail_outbox.list_items("pending"), key=lambda d: d["to_addr"])
     mail_outbox.edit(first["id"], "adm", body="Edited")
     assert mail_outbox.get(first["id"])["body"] == "Edited"
@@ -112,7 +112,7 @@ def test_reject_and_edit(mail):
 
 
 def test_a_reply_keeps_the_thread(mail):
-    email_notify.send_email("someone@else.com", "Re: x", "b", in_reply_to="<abc@x>", refs="<root@x>")
+    email_notify.send_email("someone@else.test", "Re: x", "b", in_reply_to="<abc@x>", refs="<root@x>")
     did = mail_outbox.list_items("pending")[0]["id"]
     mail_outbox.approve(did, "adm")
     msg = email.message_from_string(mail.sent[0][2])
@@ -121,7 +121,7 @@ def test_a_reply_keeps_the_thread(mail):
 
 
 def test_scheduled_delivery_from_suni_is_queued(mail):
-    r = email_notify.send_email("client@else.com", "SUNI — daily", "report", user_id="owner", source="schedule")
+    r = email_notify.send_email("client@else.test", "SUNI — daily", "report", user_id="owner", source="schedule")
     assert "NOT SENT YET" in r
     assert mail_outbox.list_items("pending")[0]["source"] == "schedule"
 
@@ -172,7 +172,7 @@ def test_reading_an_email_taints_the_rest_of_the_request(monkeypatch):
     monkeypatch.setattr(approval, "request_approval", fake_request)
     monkeypatch.setattr(orch._cfg, "get", lambda k, d=None: False if k in ("intent_judge", "output_guard") else d)
 
-    args = {"to": "a@b.com", "subject": "s", "body": "b"}
+    args = {"to": "a@b.test", "subject": "s", "body": "b"}
     res, ran, _ = asyncio.run(o._gated_call("send_email", args, user_id="u", user_role="admin",
                                             user_input="", event_cb=None))
     assert ran and asked == []                                            # trusted: no card
@@ -195,22 +195,22 @@ def test_suni_mailbox_is_admins_only(monkeypatch):
 def test_a_reply_goes_to_from_not_reply_to(mail, monkeypatch):
     from suni.tools import email_tool
     m = EmailMessage()
-    m["From"] = "Client <client@corp.com>"
-    m["Reply-To"] = "thief@evil.com"
+    m["From"] = "Client <client@corp.test>"
+    m["Reply-To"] = "thief@evil.test"
     m["Subject"] = "Question"
-    m["Message-ID"] = "<q1@corp.com>"
+    m["Message-ID"] = "<q1@corp.test>"
     m.set_content("hello")
     monkeypatch.setattr(email_tool, "_fetch", lambda uid, user_id: (m, SUNI, ""))
     r = email_tool._reply_sync("7", "Answer", "u1")
     assert "NOT SENT YET" in r
     d = mail_outbox.list_items("pending")[0]
-    assert d["to_addr"] == "client@corp.com" and d["subject"] == "Re: Question"
-    assert d["in_reply_to"] == "<q1@corp.com>"
+    assert d["to_addr"] == "client@corp.test" and d["subject"] == "Re: Question"
+    assert d["in_reply_to"] == "<q1@corp.test>"
 
 
 # ── rule 3: strange activity ─────────────────────────────────────────────────
 
-def _msg(frm="Client <client@corp.com>", subject="Hello", body="Hi there", **hdrs) -> EmailMessage:
+def _msg(frm="Client <client@corp.test>", subject="Hello", body="Hi there", **hdrs) -> EmailMessage:
     m = EmailMessage()
     m["From"] = frm
     m["Subject"] = subject
@@ -221,16 +221,19 @@ def _msg(frm="Client <client@corp.com>", subject="Hello", body="Hi there", **hdr
 
 
 def _codes(m, **k):
-    k.setdefault("own_address", "suni@suniverse.online")
-    k.setdefault("admin_addresses", ["owner@gmail.com"])
+    k.setdefault("own_address", "suni@acme.test")
+    k.setdefault("admin_addresses", ["owner@acme.test"])
     k.setdefault("sent_message_ids", set())
     return {f["code"] for f in mail_guard.assess(m, body_text=m.get_body(("plain",)).get_content(), **k)}
 
 
 def test_ordinary_mail_is_quiet():
     assert _codes(_msg(body="Could you please send me the report by Friday?")) == set()
-    assert _codes(_msg(frm="x@mail.suniverse.online")) == set()          # a subdomain is not a lookalike
-    assert _codes(_msg(frm="pal@ymail.com")) == set()                    # admin on gmail ≠ ymail is suspect
+    assert _codes(_msg(frm="x@mail.acme.test")) == set()          # a subdomain is not a lookalike
+    # An admin on a webmail domain trusts nothing there, and a domain one
+    # letter away from a webmail one is not reported as a lookalike.
+    assert mail_guard._trusted_domains({"acme.test", "gmail.com", ""}) == {"acme.test"}
+    assert mail_guard._lookalike("ymail.com", mail_guard._trusted_domains({"gmail.com"})) == ""
 
 
 @pytest.mark.parametrize("text", [
@@ -245,11 +248,11 @@ def test_instructions_aimed_at_an_ai_are_reported(text):
 
 
 def test_lookalikes_forgeries_and_attachments():
-    assert "lookalike" in _codes(_msg(frm="x@suniverse-online.com"))
-    assert "lookalike" in _codes(_msg(frm="x@sunlverse.online"))
-    assert "spoof_self" in _codes(_msg(frm="suni@suniverse.online"))
-    assert "display_name" in _codes(_msg(frm="SUNI <help@other.com>"))
-    assert "reply_to" in _codes(_msg(Reply_To="thief@evil.com"))
+    assert "lookalike" in _codes(_msg(frm="x@acme-mail.test"))
+    assert "lookalike" in _codes(_msg(frm="x@acrne.test"))
+    assert "spoof_self" in _codes(_msg(frm="suni@acme.test"))
+    assert "display_name" in _codes(_msg(frm="SUNI <help@other.test>"))
+    assert "reply_to" in _codes(_msg(Reply_To="thief@evil.test"))
     m = _msg()
     m.add_attachment(b"MZ", maintype="application", subtype="octet-stream", filename="invoice.pdf.exe")
     assert "attachment" in _codes(m)
@@ -257,11 +260,11 @@ def test_lookalikes_forgeries_and_attachments():
 
 def test_only_the_receiving_servers_verdict_counts():
     m = _msg()
-    m["Authentication-Results"] = "mx.suniverse.online; spf=fail smtp.mailfrom=corp.com; dkim=pass"
+    m["Authentication-Results"] = "mx.acme.test; spf=fail smtp.mailfrom=corp.com; dkim=pass"
     m["Authentication-Results"] = "forged; spf=pass dkim=pass dmarc=pass"
     assert "auth_fail" in _codes(m)
     ok = _msg()
-    ok["Authentication-Results"] = "mx.suniverse.online; spf=pass; dkim=pass; dmarc=pass"
+    ok["Authentication-Results"] = "mx.acme.test; spf=pass; dkim=pass; dmarc=pass"
     ok["Authentication-Results"] = "forged; spf=fail"
     assert "auth_fail" not in _codes(ok)
 
@@ -287,10 +290,10 @@ def test_the_alert_email_escapes_what_the_sender_wrote(monkeypatch):
         "uid": "1", "from": "<img src=x onerror=alert(1)>", "subject": "<script>x</script>\r\nBcc: a@b",
         "date": "today", "preview": "hi",
         "flags": [{"code": "instructions", "detail": "contains <b>instructions</b>"}]}],
-        "boss@x.com", "suni@suniverse.online")
+        "boss@x.test", "suni@acme.test")
     assert "<script>" not in sent["h"] and "<img" not in sent["h"] and "<b>instructions" not in sent["h"]
     assert "\n" not in sent["s"] and sent["s"].startswith("⚠")
-    assert "suni@suniverse.online" in sent["h"]
+    assert "suni@acme.test" in sent["h"]
 
 
 # ── EU AI Act Art. 50: every message says it came from an AI ─────────────────
@@ -302,8 +305,8 @@ def _parts(raw):
 
 
 def test_every_delivered_message_discloses_the_ai(mail):
-    email_notify.send_email("ana@suniverse.online", "Hi", "body")            # direct
-    email_notify.send_email("x@corp.com", "Hi", "body")                      # via the outbox
+    email_notify.send_email("ana@acme.test", "Hi", "body")            # direct
+    email_notify.send_email("x@corp.test", "Hi", "body")                      # via the outbox
     did = mail_outbox.list_items("pending")[0]["id"]
     mail_outbox.edit(did, "adm", body="An admin rewrote all of it")          # an edit cannot drop it
     mail_outbox.approve(did, "adm")
@@ -330,11 +333,11 @@ def test_the_disclosure_follows_the_organisation_language(monkeypatch):
 
 def test_the_watcher_will_not_alert_its_own_inbox(monkeypatch):
     monkeypatch.setattr(email_notify, "setting", lambda k, e, d="": {
-        "smtp_user": "suni@suniverse.online", "smtp_pass": "pw",
-        "notify_to": "SUNI@suniverse.online"}.get(k, d))
+        "smtp_user": "suni@acme.test", "smtp_pass": "pw",
+        "notify_to": "SUNI@acme.test"}.get(k, d))
     asyncio.run(email_reader.watch(asyncio.Event()))
     assert email_reader.status() == {"state": "not_configured", "missing": "notify_to",
-                                     "account": "suni@suniverse.online"}
+                                     "account": "suni@acme.test"}
 
 
 def test_only_the_admin_route_can_set_a_users_email():
@@ -349,3 +352,41 @@ def test_only_the_admin_route_can_set_a_users_email():
     src = (root / "web" / "server.py").read_text(encoding="utf-8-sig").splitlines()
     window = "\n".join(src[max(0, callers[0][1] - 6):callers[0][1]])
     assert "require_admin" in window
+
+
+# ── "send me" means the asker's admin-set address ────────────────────────────
+
+def test_the_turn_says_who_is_asking_and_their_address(monkeypatch):
+    from suni.core import orchestrator as orch
+    from suni import auth
+    monkeypatch.setattr(auth, "get_user", lambda uid: {"username": "ana", "email": "ana@corp.test"})
+    note = orch._whoami_note("u1")
+    assert "ana@corp.test" in note and "send me" in note
+    monkeypatch.setattr(auth, "get_user", lambda uid: {"username": "rui", "email": ""})
+    assert "ask which address" in orch._whoami_note("u2")
+    assert orch._whoami_note("") == ""
+    assert "whoami" in orch._PER_TURN_NOTES                      # replaced each turn, never piled up
+
+
+def test_claude_code_receives_the_note():
+    import inspect
+    from suni.models import claude_code_agent
+    assert '"whoami"' in inspect.getsource(claude_code_agent)
+
+
+def test_email_me_uses_the_askers_address(monkeypatch):
+    from suni.core import orchestrator as orch
+    from suni.core.context import Context
+    sent = []
+
+    class Reg:
+        async def execute(self, name, args):
+            sent.append(args["to"]); return "Email sent."
+
+    o = orch.Orchestrator.__new__(orch.Orchestrator)
+    o.registry = Reg()
+    o.primary = type("P", (), {"name": "suni"})()
+    asyncio.run(o._handle_email_direct("send me a test email", Context(), [], user_email="ana@corp.test"))
+    asyncio.run(o._handle_email_direct("envia-me um email de teste", Context(), [], user_email="ana@corp.test"))
+    asyncio.run(o._handle_email_direct("email bob@x.test the notes", Context(), [], user_email="ana@corp.test"))
+    assert sent == ["ana@corp.test", "ana@corp.test", "bob@x.test"]

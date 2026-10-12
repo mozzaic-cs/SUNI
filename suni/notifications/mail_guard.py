@@ -76,6 +76,12 @@ def _domain(addr: str) -> str:
     return addr.rsplit("@", 1)[-1].strip().lower() if "@" in addr else ""
 
 
+def _trusted_domains(domains) -> set[str]:
+    """Domains whose lookalikes are worth reporting: SUNI's and the admins',
+    minus webmail (see _FREEMAIL)."""
+    return {d for d in domains if d and d not in _FREEMAIL}
+
+
 def _levenshtein(a: str, b: str) -> int:
     if a == b:
         return 0
@@ -103,7 +109,7 @@ def _lookalike(dom: str, trusted: set[str]) -> str:
                                           and _levenshtein(base_d, base_t) <= 1):
             return t
         if base_t in dom and dom != t and len(base_t) >= 4:
-            return t                       # suniverse.online.evil.com, suniverse-online.com
+            return t                       # acme.test.evil.example, acme-mail.example
     return ""
 
 
@@ -172,8 +178,7 @@ def assess(msg: Message, *, own_address: str, admin_addresses: list[str] | None 
     own = (own_address or "").lower()
     own_dom = _domain(own)
     admins = [a.lower() for a in (admin_addresses or []) if a]
-    trusted_doms = {d for d in [own_dom, *(_domain(a) for a in admins)]
-                    if d and d not in _FREEMAIL}
+    trusted_doms = _trusted_domains({own_dom, *(_domain(a) for a in admins)})
 
     for f in _auth_failures(msg):
         add("auth_fail", f"sender authentication failed ({f})")

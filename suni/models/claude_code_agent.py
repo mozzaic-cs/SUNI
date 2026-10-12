@@ -197,7 +197,7 @@ class ClaudeCodeAgent(BaseAgent):
         # local tiers is background that usually reaches nothing.
         for m in messages:
             if (m.role == Role.SYSTEM
-                    and m.agent in ("memory", "lang", "desktop", "ancestry")
+                    and m.agent in ("memory", "lang", "desktop", "ancestry", "whoami")
                     and m.content):
                 prefix_parts.append(m.content)
 

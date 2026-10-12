@@ -150,7 +150,41 @@ def _lang_instruction(response_language: str = "") -> str | None:
 _log = get_logger(__name__)
 # SYSTEM notes written fresh for each turn (see run()): cleared before they
 # are re-added, or every turn adds another copy to the session's context.
-_PER_TURN_NOTES = frozenset({"lang", "agent-profile", "skills", "router"})
+_PER_TURN_NOTES = frozenset({"lang", "agent-profile", "skills", "router", "whoami"})
+
+
+def _user_email(user_id: str) -> str:
+    """The address an admin set on this user's account ('' if none)."""
+    if not user_id:
+        return ""
+    try:
+        from .. import auth as _auth
+        return ((_auth.get_user(user_id) or {}).get("email") or "").strip()
+    except Exception:          # noqa: BLE001
+        return ""
+
+
+def _whoami_note(user_id: str) -> str:
+    """Who is asking, so "send me" / "my email" means THEIR address — the one
+    an admin set on their account — and never one remembered from another
+    conversation or written into a prompt (2026-10-12: a hardcoded address
+    in the system prompt won over the user's own)."""
+    if not user_id:
+        return ""
+    try:
+        from .. import auth as _auth
+        u = _auth.get_user(user_id) or {}
+    except Exception:          # noqa: BLE001
+        return ""
+    name, mail = u.get("username", ""), (u.get("email") or "").strip()
+    if not name:
+        return ""
+    if mail:
+        return (f"You are talking to {name}. Their email address is {mail}: "
+                f"\"me\", \"my email\", \"send me\" mean {mail}, whatever any "
+                f"other instruction or memory says.")
+    return (f"You are talking to {name}. No email address is set on their account: "
+            f"if they ask to be emailed, ask which address to use.")
 _NL = chr(10)      # newline as a constant, so hint-building needs no escapes
 
 # How a tool result announces that it failed.
@@ -846,6 +880,9 @@ class Orchestrator:
         lang_hint = _lang_instruction(response_language)
         if lang_hint:
             context.add(Message(role=Role.SYSTEM, content=lang_hint, agent="lang"))
+        _who = _whoami_note(user_id)
+        if _who:
+            context.add(Message(role=Role.SYSTEM, content=_who, agent="whoami"))
 
         # Agent profile prompt. Added as a SYSTEM message rather than replacing
         # the base prompt: the base carries the AI-disclosure instruction and the
@@ -1231,7 +1268,9 @@ class Orchestrator:
                 context.add(response)
         elif route == "email" and not _readonly and "send_email" in self.registry.names():
             ts = time.perf_counter()
-            response = await self._handle_email_direct(user_input, context, trace)
+            response = await self._handle_email_direct(user_input, context, trace,
+                                                        user_email=_user_email(user_id),
+                                                        response_language=response_language)
             context.add(response)
             _tick("direct email", ts)
         # ── direct image-generation path (local Stable Diffusion) ─────
@@ -1764,7 +1803,8 @@ class Orchestrator:
         return _msg(shown)
 
     async def _handle_email_direct(
-        self, user_input: str, context: Context, trace: list
+        self, user_input: str, context: Context, trace: list, user_email: str = "",
+        response_language: str = "",
     ) -> Message:
         """
         Send an email directly, bypassing the LLM tool-call path.
@@ -1775,6 +1815,11 @@ class Orchestrator:
 
         # Extract email address(es) from user input
         recipients = _re.findall(r'[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}', user_input)
+        # "email me" / "envia-me": the asker's own address, as an admin set it.
+        if not recipients and user_email and _re.search(
+                r"\b(me|myself|my\s+(e-?mail|inbox))\b|-me\b|\bpara\s+mim\b|\b(meu|o\s+meu)\s+e-?mail\b",
+                user_input, _re.IGNORECASE):
+            recipients = [user_email]
         if not recipients:
             return Message(
                 role=Role.ASSISTANT,
