@@ -770,7 +770,8 @@
       "mail_guard.py: SPF/DKIM/DMARC, spoofed SUNI/admin, lookalike domains, Reply-To diversion, risky attachments, unknown threads, floods, AI-injection phrasing (EN+PT) → alert email · admin Mail tab · audit",
       "Outbox (mail_outbox.py): from SUNI's address, mail to non-users waits for an admin (approve · edit · reject); users' admin-set email = internal, sent directly",
       "read_email admin-only for SUNI's mailbox; after it runs the request is tainted (no trust rule skips a card)",
-      "Per-turn \"whoami\" note (both paths, incl. Claude Code): the asker's name + admin-set email, so \"send me\" means THEIR address — never one from a prompt or memory"
+      "Per-turn \"whoami\" note (both paths, incl. Claude Code): the asker's name + admin-set email, so \"send me\" means THEIR address — never one from a prompt or memory",
+      "Mail on the Claude Code path = a locked-down mail turn: only list/read/reply/send_email lent, the CLI's own tools denied (no Bash, web or files), a throwaway session never resumed or saved, every call tainted (card even under \"always allow\")"
      ],
      "phase": "",
      "icon": ""

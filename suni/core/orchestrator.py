@@ -179,11 +179,19 @@ def _whoami_note(user_id: str) -> str:
     name, mail = u.get("username", ""), (u.get("email") or "").strip()
     if not name:
         return ""
+    own = ""
+    try:
+        from ..user_settings import resolve_email
+        acct = resolve_email("")
+        own = acct["user"] if acct else ""
+    except Exception:          # noqa: BLE001
+        pass
+    yours = f" Your own email address (SUNI's mailbox) is {own}." if own else ""
     if mail:
-        return (f"You are talking to {name}. Their email address is {mail}: "
+        return (f"You are talking to {name}.{yours} Their email address is {mail}: "
                 f"\"me\", \"my email\", \"send me\" mean {mail}, whatever any "
                 f"other instruction or memory says.")
-    return (f"You are talking to {name}. No email address is set on their account: "
+    return (f"You are talking to {name}.{yours} No email address is set on their account: "
             f"if they ask to be emailed, ask which address to use.")
 _NL = chr(10)      # newline as a constant, so hint-building needs no escapes
 

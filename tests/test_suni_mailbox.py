@@ -390,3 +390,103 @@ def test_email_me_uses_the_askers_address(monkeypatch):
     asyncio.run(o._handle_email_direct("envia-me um email de teste", Context(), [], user_email="ana@corp.test"))
     asyncio.run(o._handle_email_direct("email bob@x.test the notes", Context(), [], user_email="ana@corp.test"))
     assert sent == ["ana@corp.test", "ana@corp.test", "bob@x.test"]
+
+
+# ── the Claude Code path: a locked-down mail turn ────────────────────────────
+
+class _Orch:
+    """Enough of an orchestrator for tool_bridge.open_turn."""
+    def __init__(self):
+        self.calls = []
+        names = ["look_at_screen", "generate_image", "send_email",
+                 "list_emails", "read_email", "reply_email"]
+        self.registry = type("R", (), {"names": lambda s: names, "_schemas": {}})()
+
+    def _tool_permissions(self, role, mode, grants):
+        return None, []
+
+    async def _gated_call(self, name, args, **k):
+        self.calls.append((name, k.get("tainted")))
+        return "ok", True, 1
+
+
+def _turn(text):
+    from suni.core import tool_bridge as tb
+    return tb.open_turn(_Orch(), user_id="u", user_role="admin", conv_mode="assistant",
+                        grants=None, user_input=text, event_cb=lambda e: None, timeout_s=300)
+
+
+@pytest.mark.parametrize("text", ["recebeste um email meu?", "check my inbox",
+                                  "any new emails?", "lê o último email",
+                                  "responde ao email do Rui a dizer que sim"])
+def test_inbox_questions_get_a_mail_turn(text):
+    t = _turn(text)
+    assert t.mail and set(t.tools) == {"list_emails", "read_email", "reply_email", "send_email"}
+
+
+def test_other_turns_cannot_read_mail():
+    t = _turn("send an email to bob@x.test with the notes")
+    assert not t.mail
+    assert "read_email" not in t.tools and "list_emails" not in t.tools
+    assert "send_email" in t.tools
+
+
+def test_a_mail_turn_gives_the_cli_none_of_its_own_tools():
+    from suni.core import tool_bridge as tb
+    t = _turn("check my inbox")
+    allowed = tb.cli_allowed(t, "Read,Glob,Grep,WebFetch,WebSearch,Bash").split(",")
+    assert all(a.startswith("mcp__") for a in allowed)
+    denied = tb.cli_disallowed(t).split(",")
+    for tool in ("Bash", "WebFetch", "WebSearch", "Read", "Glob", "Grep", "Write", "Edit"):
+        assert tool in denied
+    other = _turn("draw me a cat")
+    assert tb.cli_disallowed(other) == ""
+    assert "Bash" in tb.cli_allowed(other, "Read,Bash")
+
+
+def test_every_call_on_a_mail_turn_is_tainted():
+    from suni.core import tool_bridge as tb
+    t = _turn("check my inbox")
+    asyncio.run(tb.call_tool(t, "list_emails", {}))
+    asyncio.run(tb.call_tool(t, "send_email", {"to": "a@b.test", "subject": "s", "body": "b"}))
+    assert t.orch.calls == [("list_emails", True), ("send_email", True)]
+    o = _turn("draw me a cat")
+    asyncio.run(tb.call_tool(o, "generate_image", {}))
+    assert o.orch.calls == [("generate_image", False)]
+
+
+def test_a_mail_turn_neither_resumes_nor_saves_a_session(monkeypatch):
+    from suni.core import tool_bridge as tb
+    from suni.core.context import Context
+    from suni.core.message import Message, Role
+    from suni.models import claude_code_agent as cca
+    from suni.tools.claude_code_advanced import EVENT_CB_CTX
+    seen = {}
+
+    async def fake_stream(args, cb, timeout, task, extra_env=None):
+        seen["args"] = list(args)
+        return 0, '{"result": "ok"}', "", {"result": "Nada novo.", "session_id": "NEW"}
+
+    monkeypatch.setattr(cca, "_stream_run", fake_stream)
+    import suni.conversations as conv
+    monkeypatch.setattr(conv, "get_cc_session", lambda cid: "OLD")
+    saved = []
+    monkeypatch.setattr(conv, "set_cc_session", lambda cid, sid: saved.append(sid))
+
+    for text, mail in (("recebeste um email meu?", True), ("olá", False)):
+        seen.clear(); saved.clear()
+        t = _turn(text)
+        assert t.mail is mail
+        ctx = Context(); ctx.set("conversation_id", "c1")
+        tok, etok = tb.CURRENT.set(t), EVENT_CB_CTX.set(lambda e: None)
+        try:
+            asyncio.run(cca.ClaudeCodeAgent().chat([Message(role=Role.USER, content=text)], ctx))
+        finally:
+            tb.CURRENT.reset(tok); EVENT_CB_CTX.reset(etok)
+        a = seen["args"]
+        if mail:
+            assert "--resume" not in a and saved == []
+            assert "--disallowedTools" in a and "Bash" in a[a.index("--disallowedTools") + 1]
+            assert "Bash" not in a[a.index("--allowedTools") + 1]
+        else:
+            assert a[a.index("--resume") + 1] == "OLD" and saved == ["NEW"]

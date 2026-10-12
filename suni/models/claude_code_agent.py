@@ -182,7 +182,14 @@ class ClaudeCodeAgent(BaseAgent):
 
         conversation_id = context.get("conversation_id")
         cc_session_id = context.get("cc_session_id")
-        if not cc_session_id and conversation_id:
+        # A mail turn reads text written by outsiders: it runs in a throwaway
+        # session, neither resuming the conversation's session nor saved as it
+        # (see tool_bridge.MAIL_TOOLS).
+        from ..core import tool_bridge as _tb0
+        _mail_turn = bool(getattr(_tb0.CURRENT.get(), "mail", False))
+        if _mail_turn:
+            cc_session_id = None
+        elif not cc_session_id and conversation_id:
             from .. import conversations as _conversations
             cc_session_id = _conversations.get_cc_session(conversation_id)
             if cc_session_id:
@@ -287,7 +294,9 @@ class ClaudeCodeAgent(BaseAgent):
             _mcp_cfg = _tb.write_mcp_config(_turn)
             args += ["--mcp-config", _mcp_cfg]
             _i = args.index("--allowedTools") + 1
-            args[_i] = ",".join([args[_i]] + _tb.allowed_tools(_turn))
+            args[_i] = _tb.cli_allowed(_turn, args[_i])
+            if _tb.cli_disallowed(_turn):
+                args += ["--disallowedTools", _tb.cli_disallowed(_turn)]
             _extra_env = _tb.cli_env(_cc_timeout)
 
         if _event_cb:
@@ -329,7 +338,7 @@ class ClaudeCodeAgent(BaseAgent):
                     f"Claude Code stopped before it finished (exit {rc})"
                     + (f": {stderr.strip()[:300]}" if stderr.strip() else ".")
                 )
-            new_sid = parsed.get("session_id", "")
+            new_sid = "" if _mail_turn else parsed.get("session_id", "")
             if new_sid:
                 context.set("cc_session_id", new_sid)
                 if conversation_id and new_sid != cc_session_id:

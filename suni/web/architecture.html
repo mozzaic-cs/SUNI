@@ -1107,6 +1107,7 @@ body.simple .section-gap{height:6px!important}
         <span style="color:var(--gold)">Outbox (mail_outbox.py): from SUNI's address, mail to non-users waits for an admin (approve · edit · reject); users' admin-set email = internal, sent directly</span> <span class="new-badge" style="font-size:7.5px">new</span><br>
         <span style="color:var(--teal)">read_email admin-only for SUNI's mailbox; after it runs the request is tainted (no trust rule skips a card)</span>
         <br><span style="color:var(--gold)">Per-turn "whoami" note (both paths, incl. Claude Code): the asker's name + admin-set email, so "send me" means THEIR address — never one from a prompt or memory</span> <span class="new-badge" style="font-size:7.5px">new</span>
+        <br><span style="color:var(--purple)">Mail on the Claude Code path = a locked-down mail turn: only list/read/reply/send_email lent, the CLI's own tools denied (no Bash, web or files), a throwaway session never resumed or saved, every call tainted (card even under "always allow")</span> <span class="new-badge" style="font-size:7.5px">new</span>
       </div>
     </div>
     <div class="svc" id="n-scanner">
