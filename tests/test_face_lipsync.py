@@ -119,3 +119,13 @@ def test_the_jaw_opens_the_mouth_not_the_lips_alone():
 
 def test_the_crease_does_not_run_on_past_the_corners():
     assert "float cstrip =" in FACE and "cstrip * mopen" in FACE
+
+
+def test_the_mouth_eases_instead_of_jumping():
+    """Measured frame by frame (Suni, 30 fps): closed to wide open in one
+    frame, a half-open mouth shut in one frame, pauses sealed and dead."""
+    body = _fn("renderHead")
+    assert "mouthVel +=" in body and "2 * kS * mouthVel" in body, "not a damped spring"
+    assert "jawOpen += (mouthOpen - jawOpen)" in body, "the jaw moves in step with the lips"
+    assert "_lip.after < 0.12" in body, "closes the instant she stops"
+    assert "0.045 + 0.01 * Math.sin(" in body, "pauses seal the lips shut"

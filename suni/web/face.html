@@ -1329,7 +1329,7 @@ function _lipShape(amp, dt){
 }
 
 /* ── animation state ── */
-let mouthOpen=0, gazeX=0, gazeY=0, gazeTX=0, gazeTY=0, gazeRetarget=0;
+let mouthOpen=0, mouthVel=0, jawOpen=0, gazeX=0, gazeY=0, gazeTX=0, gazeTY=0, gazeRetarget=0;
 // Latched once the analyser has EVER produced signal. Until then we cannot
 // tell "silence between words" from "no audio path at all" (analyser failed,
 // or autoplay left the element mute), and a permanently shut mouth during a
@@ -2362,16 +2362,34 @@ function renderHead(dt){
       // only thing moving. A real pause (~quarter second) still closes.
       _lip.quiet = amp < 0.02 ? (_lip.quiet||0) + dt : 0;
       if (_lip.hold <= 0 && _lip.quiet < 0.25) mT = Math.max(mT, 0.14);
+      // A pause inside speech: lips just apart and barely moving, not sealed
+      // and dead (Suni, 2026-10-12). Stays above the 0.03 that lights the crease.
+      else if (_lip.hold <= 0) mT = Math.max(mT, 0.045 + 0.01 * Math.sin(T * 1.9) * Math.sin(T * 0.7));
       mouthWide = sh.wide;
     } else mT = 0.25+0.35*Math.abs(Math.sin(T*10));
+    _lip.after = 0; _lip.lastT = mT;
   } else {
     _lip.hold = 0; _lip.peak = 0;
+    // Hold ~120 ms before closing when she stops: a gap between two replies
+    // or sentences no longer slaps the lips shut.
+    _lip.after = (_lip.after || 0) + dt;
+    if (_lip.after < 0.12) mT = Math.min(_lip.lastT || 0, 0.3);
     mouthWide += (0-mouthWide)*Math.min(1,6*dt);
   }
-  /* Real mouths open fast and close a little slower; one symmetric smoothing
-     made every syllable the same soft pulse. ~40ms to open, ~90ms to close. */
-  // Except a closure ("m", "b", "p"): lips snap together, they don't drift.
-  mouthOpen += (mT-mouthOpen)*Math.min(1,(mT>mouthOpen ? 25 : (_lip.hold>0 ? 24 : 11))*dt);
+  /* A critically damped spring: it eases in and out instead of starting at
+     full speed. The old chase (25/s) covered 83% of an opening in one 30 fps
+     frame, measured frame by frame on a recording: closed to wide open in
+     33 ms. Now ~100 ms to open, ~300 ms to close when she stops, slowing near
+     the end; a closure ("m", "b", "p") stays quick, ~70 ms, but not one frame.
+     Substepped: k*dt near 1 at 30 fps would overshoot. */
+  const kS = mT > mouthOpen ? 28 : (_lip.hold > 0 ? 45 : (speaking ? 18 : 12));
+  for (let i = 0, h = Math.min(dt, 0.1) / 4; i < 4; i++) {
+    mouthVel += (kS * kS * (mT - mouthOpen) - 2 * kS * mouthVel) * h;
+    mouthOpen += mouthVel * h;
+  }
+  if (mouthOpen < 0) { mouthOpen = 0; mouthVel = 0; }
+  // The jaw follows the lips ~40 ms late: in step, the movement read mechanical.
+  jawOpen += (mouthOpen - jawOpen) * (1 - Math.exp(-dt / 0.04));
   if(_camGaze.active){
     // Webcam is driving the gaze — follow the user, skip the idle saccades.
     gazeTX=_camGaze.x; gazeTY=_camGaze.y; gazeRetarget=0;
@@ -2387,7 +2405,7 @@ function renderHead(dt){
   const pitch=Math.sin(T*0.18)*0.07+gazeY*0.08-0.03;
   /* The jaw carries most of an open vowel; a spread "i"/"e" opens less at the
      jaw and more at the lips, and "f"/"v" barely parts it. */
-  const _jo=_mouthFreeze ? _mouthFreeze[0] : mouthOpen, _jw=_mouthFreeze ? _mouthFreeze[1] : mouthWide;
+  const _jo=_mouthFreeze ? _mouthFreeze[0] : jawOpen, _jw=_mouthFreeze ? _mouthFreeze[1] : mouthWide;
   const _jf=_mouthFreeze ? (_mouthFreeze[2]||0) : mouthFV;
   const jaw=_jo*MOUTH.jaw*(1-0.45*Math.max(0,_jw))*(1-0.6*_jf);
   const breath=1+Math.sin(T*0.9)*0.010;
