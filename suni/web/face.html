@@ -1217,7 +1217,10 @@ function audioLevel(){
    front: the split ran through the lower lip, its top strip rose with the upper
    lip (a straight top edge), and its stretched skin was what got darkened —
    the "rectangle smudge over the lips". */
-const MOUTH = { y:-0.567, w:0.19, z:0.64, jaw:0.15, lip:0.045, up:0.024,
+/* The jaw does the opening, the lips only add a little: each lip moving on
+   its own (lip 0.045, up 0.024) slid over the skin round it, and the mouth
+   wore a dark outline, a piece glued on the face (2026-10-12). */
+const MOUTH = { y:-0.567, w:0.19, z:0.64, jaw:0.21, lip:0.018, up:0.008,
                 wide:0.42, push:0.07, gap:1.6, dbg:0 };
 window.MOUTH = MOUTH;
 const _mouthLocs = { wire:null, solid:null };
@@ -1441,9 +1444,10 @@ vec3 mouthDeform(vec3 p, out float gap, out float region, out float restDy){
   m_below = below; m_hx = hx * fr;
   /* Each lip moves whole near the seam, fading only further out: the old
      falloff moved the lower lip's edge less than its body, tipping it toward
-     the camera instead of opening a gap. */
-  float lipLo = below * exp(-sq(min(0.0, dy + 0.03) / 0.05));
-  float lipUp = above * exp(-sq(max(0.0, dy - 0.03) / 0.04));
+     the camera instead of opening a gap. The fade is long: a short one made
+     a step in the skin round the lips. */
+  float lipLo = below * exp(-sq(min(0.0, dy + 0.015) / 0.10));
+  float lipUp = above * exp(-sq(max(0.0, dy - 0.015) / 0.08));
   float band  = exp(-sq(dy / 0.06));
   float corner = fr * band * smoothstep(0.35, 0.95, ax) * (1.0 - smoothstep(1.05, 1.5, ax));
   vec3 q = p;
@@ -1668,6 +1672,11 @@ void main(){
      the corners. Lit as if facing forward, it reads as lip. Only on upper-lip
      vertices (v_ms > 0) at the seam: wider, it lit a pale box round the mouth. */
   float mopen = 1.0 - u_mFx.z;
+  float cstrip = (1.0 - smoothstep(0.006, 0.014, abs(v_mdy - 0.004)))
+               * (1.0 - smoothstep(0.15, 0.17, abs(v_p.x))) * smoothstep(0.02, 0.12, v_mreg) * (1.0 - smoothstep(0.2, 0.5, v_mhx));
+  /* Past the opening the crease is still there, faces up and down: unlit,
+     a cut running on beyond the corner. Turned like the skin round it. */
+  N = normalize(mix(N, normalize(vec3(N.x, 0.0, max(N.z, 0.25))), cstrip * mopen));
   N = normalize(mix(N, normalize(vec3(N.x * 0.5, 0.15, 1.0)),
         (1.0 - smoothstep(0.0, 0.03, abs(v_mdy))) * smoothstep(0.0, 0.5, v_ms)
         * smoothstep(0.0, 0.3, v_mhx) * mopen * smoothstep(0.05, -0.35, N.y)));

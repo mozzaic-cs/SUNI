@@ -104,3 +104,15 @@ def test_no_dark_patches_beside_the_corners():
     underside drew a black band with dark wedges at the corners."""
     assert "max(sx * smoothstep(0.0, 0.2, v_mhx)," in FACE
     assert "smoothstep(0.0, 0.5, v_ms)" in FACE, "the underside of the upper lip is left unlit"
+
+
+def test_the_jaw_opens_the_mouth_not_the_lips_alone():
+    """Each lip moving on its own (lip 0.045, up 0.024) slid over the skin
+    round it: the mouth wore a dark outline, like a piece glued on."""
+    m = re.search(r"jaw:([\d.]+), lip:([\d.]+), up:([\d.]+)", FACE)
+    jaw, lip, up = map(float, m.groups())
+    assert lip <= 0.025 and up <= 0.012 and jaw >= 0.18
+
+
+def test_the_crease_does_not_run_on_past_the_corners():
+    assert "float cstrip =" in FACE and "cstrip * mopen" in FACE
