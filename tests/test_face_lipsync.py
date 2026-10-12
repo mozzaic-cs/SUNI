@@ -102,7 +102,10 @@ def test_no_dark_patches_beside_the_corners():
     """Cutting the rim glow over the whole mouth region (v_mreg) darkened a
     rectangle of cheek beside each corner, and the lifted upper lip's
     underside drew a black band with dark wedges at the corners."""
-    assert "max(sx * smoothstep(0.0, 0.2, v_mhx)," in FACE
+    rim = FACE[FACE.index("float rimCut ="):FACE.index("fres *= 1.0 - 0.92 * rimCut")]
+    # By the surface: a zone (|dy| < 0.06 over the lips' span) drew a
+    # rectangle round the opening mouth.
+    assert "ny0" in rim and "exp(" in rim and "smoothstep(0.03, 0.06" not in rim
     assert "smoothstep(0.0, 0.5, v_ms)" in FACE, "the underside of the upper lip is left unlit"
 
 

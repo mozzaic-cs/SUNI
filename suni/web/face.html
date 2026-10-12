@@ -1615,6 +1615,7 @@ varying float v_hair;
    only, so no cross-stage precision agreement is required (a shared uniform
    whose precision differs between stages will not link in WebGL 1). */
 uniform float u_ghost;
+float sq3(float x){ return x * x; }
 float hash(float n){ return fract(sin(n)*43758.5453); }
 
 /* 3D value noise, used to break the sweep's edge into organic patches instead
@@ -1666,7 +1667,7 @@ void main(){
   /* Above the line the surface has not formed yet — leave the wireframe
      showing through rather than drawing an unlit shell over it. */
   if (v_y > cutN) discard;
-  vec3 N=normalize(v_n);
+  vec3 N=normalize(v_n); float ny0 = abs(N.y);
   /* Open, the lifted upper lip shows its underside. It faces down, away from
      the light, and drew a near-black band that narrowed into dark wedges at
      the corners. Lit as if facing forward, it reads as lip. Only on upper-lip
@@ -1693,10 +1694,14 @@ void main(){
      Only within the lips' span (v_mhx): v_mreg also covers the cheek beside
      each corner, and cutting the rim there left a dark rectangle next to the
      corners as she spoke, worst on the right, the side away from the light.
-     The corners themselves get just a thin strip along the crease. */
-  float sx = 1.0 - smoothstep(0.03, 0.06, abs(v_mdy - 0.004));
-  float rimCut = max(sx * smoothstep(0.0, 0.2, v_mhx),
-                     (1.0 - smoothstep(0.006, 0.014, abs(v_mdy - 0.004)))
+     The corners themselves get just a thin strip along the crease, at half
+     strength: full, it left a dark notch; none, a pale spot.
+     Judged by the surface, not by a zone: only faces turned up or down
+     (ny0), fading gently away from the seam. A box (|dy| < 0.06 across the
+     lips' span) drew a rectangle round her mouth as it opened, its top edge
+     halfway to the nose, the skin inside smoother than outside. */
+  float rimCut = max(smoothstep(0.15, 0.5, ny0) * exp(-sq3((v_mdy - 0.004) / 0.045)) * smoothstep(0.0, 0.5, v_mhx),
+                     0.5 * (1.0 - smoothstep(0.006, 0.014, abs(v_mdy - 0.004)))
                      * (1.0 - smoothstep(0.15, 0.17, abs(v_p.x))) * smoothstep(0.02, 0.12, v_mreg));
   fres *= 1.0 - 0.92 * rimCut * mopen;
   /* holographic shading: low ambient, cool body, strong glowing fresnel rim */
