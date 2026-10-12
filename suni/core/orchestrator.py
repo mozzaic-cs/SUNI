@@ -51,6 +51,22 @@ _LANG_MAP: dict[str, tuple[str, str]] = {
 # English is the fallback for a language with no entry, so an unsupported
 # locale degrades to English rather than to a missing key.
 _CANNED: dict[str, dict[str, str]] = {
+    # Mail from SUNI's own address to someone outside the organisation waits
+    # for an admin (notifications.mail_outbox); the reply must not say "sent".
+    "email_queued": {
+        "en": "Not sent yet: it is waiting for an administrator's approval, "
+              "as every message from my address to someone outside the "
+              "organisation does.",
+        "pt-PT": "Ainda não foi enviado: aguarda a aprovação de um "
+                 "administrador, como todas as mensagens do meu endereço "
+                 "para fora da organização.",
+        "pt-BR": "Ainda não foi enviado: aguarda a aprovação de um "
+                 "administrador, como todas as mensagens do meu endereço "
+                 "para fora da organização.",
+        "es-ES": "Aún no se ha enviado: espera la aprobación de un "
+                 "administrador, como todos los mensajes desde mi dirección "
+                 "a alguien de fuera de la organización.",
+    },
     "no_email_address": {
         "en": "I could not find an email address in your request. "
               "Please specify who to send it to.",
@@ -1813,7 +1829,12 @@ class Orchestrator:
         trace.append(("send_email (direct)", elapsed, "; ".join(results)[:80]))
 
         attach_note = f" with attachment `{attachment.split(chr(92))[-1]}`" if attachment else ""
-        reply = "Email sent" + attach_note + ".\n\n" + "\n".join(results)
+        if any("NOT SENT YET" in r for r in results):
+            sent = [r for r in results if "NOT SENT YET" not in r]
+            reply = _say("email_queued", response_language) + (
+                "\n\n" + "\n".join(sent) if sent else "")
+        else:
+            reply = "Email sent" + attach_note + ".\n\n" + "\n".join(results)
         return Message(role=Role.ASSISTANT, content=reply, agent=self.primary.name)
 
     async def _safe_run(
@@ -1897,7 +1918,8 @@ class Orchestrator:
 
     async def _gated_call(self, name: str, args: dict, *, user_id: str,
                           user_role: str, user_input: str, event_cb,
-                          approval_deadline: float | None = None
+                          approval_deadline: float | None = None,
+                          tainted: bool = False,
                           ) -> tuple[str, bool, int]:
         """Run one tool call through SUNI's floors: policy, the security review,
         a person's approval, then the output guard on what it returned.
@@ -1914,7 +1936,10 @@ class Orchestrator:
         _judge_on    = _cfg.get("intent_judge", False)
         _judge_model = _cfg.get("intent_judge_model") or _cfg.get("model") or ""
         _guard_on    = _cfg.get("output_guard", False)
-        _trusted = _approval.is_trusted(user_id, name, args)
+        # tainted: an email was read earlier in this request. Its text is now
+        # in the model's context, so nothing it prompts may skip a person's
+        # card — no trust rule, no policy-allow (rule 2: email never instructs).
+        _trusted = (not tainted) and _approval.is_trusted(user_id, name, args)
 
         # ── Admin tool policy (approval-time; distinct from RBAC) ──
         # First-match-wins glob+arg rule → allow | deny | ask. Precedence
@@ -1967,7 +1992,7 @@ class Orchestrator:
         # NEVER_TRUSTED tools (code_task) are approved every time: no
         # trust rule or policy-allow collapses the card for them.
         _always_ask = name in _approval.NEVER_TRUSTED
-        _allow_bypass = (_trusted or _pol_action == "allow") and not _always_ask
+        _allow_bypass = (_trusted or (_pol_action == "allow" and not tainted)) and not _always_ask
         _need_gate = _always_ask or (
             # registry= lets MCP tools be classified; without it they are
             # all treated as safe, which let an MCP shell bypass the gate.
@@ -2137,6 +2162,7 @@ class Orchestrator:
         # letting each tier have two more attempts just spreads the same
         # unanswerable permission prompts over more tiers.
         _tool_fail_total: dict[str, int] = {}    # tool name -> failures for the whole request
+        _mail_read = False   # read_email ran: the rest of the request is tainted
         _tool_last_error: dict[str, str] = {}    # tool name -> what it said last time
 
         # ── Language, pinned to the end of the prompt ────────────────────────
@@ -2324,7 +2350,10 @@ class Orchestrator:
 
                 result, _ran, elapsed_ms = await self._gated_call(
                     tc.name, tc.args, user_id=user_id, user_role=user_role,
-                    user_input=user_input, event_cb=event_cb)
+                    user_input=user_input, event_cb=event_cb,
+                    tainted=_mail_read)
+                if tc.name == "read_email" and _ran:
+                    _mail_read = True
                 if not _ran:
                     tool_results.append((tc, result))
                     continue

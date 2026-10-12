@@ -723,6 +723,7 @@ input,textarea{caret-color:var(--cyan)}
     <button class="tab" onclick="switchTab('skills',this)"    data-i18n="admin.nav_skills">Skills</button>
     <button class="tab" onclick="switchTab('mcp',this)"       data-i18n="admin.nav_mcp">MCP</button>
     <button class="tab" onclick="switchTab('schedules',this)" data-i18n="admin.nav_schedules">Schedules</button>
+    <button class="tab" onclick="switchTab('mail',this)" data-i18n="admin.nav_mail">Mail</button>
     <div class="nav-group" data-i18n="admin.navgrp_data">Data</div>
     <button class="tab" onclick="switchTab('memory',this)"    data-i18n="admin.nav_memory">Memory</button>
     <button class="tab" onclick="switchTab('backup',this)"    data-i18n="admin.nav_backup">Backup</button>
@@ -1244,9 +1245,9 @@ input,textarea{caret-color:var(--cyan)}
         <div class="field">
           <label data-i18n="admin.cfg_email_poll">Email poll interval (minutes)</label>
           <div class="range-wrap">
-            <input type="range" name="email_poll_interval_min" min="5" max="120" step="5"
+            <input type="range" name="email_poll_interval_min" min="1" max="60" step="1"
                    oninput="this.nextElementSibling.textContent=this.value+'m'">
-            <span class="range-val">30m</span>
+            <span class="range-val">2m</span>
           </div>
         </div>
         <div class="field">
@@ -1325,7 +1326,7 @@ input,textarea{caret-color:var(--cyan)}
         </div>
         <div class="field">
           <label data-i18n="admin.cfg_smtp_user">SMTP username</label>
-          <input type="text" name="smtp_user" id="smtp_user" autocomplete="off" placeholder="you@example.com">
+          <input type="text" name="smtp_user" id="smtp_user" autocomplete="off" placeholder="suni@yourcompany.com">
         </div>
         <div class="field">
           <label data-i18n="admin.cfg_smtp_pass">SMTP password</label>
@@ -1507,10 +1508,10 @@ input,textarea{caret-color:var(--cyan)}
   <div class="card" style="padding:0;overflow:hidden">
     <table class="data-table" id="users-table">
       <thead><tr>
-        <th data-i18n="common.username">Username</th><th data-i18n="common.role">Role</th><th data-i18n="common.status">Status</th>
+        <th data-i18n="common.username">Username</th><th data-i18n="admin.users_col_email">Email</th><th data-i18n="common.role">Role</th><th data-i18n="common.status">Status</th>
         <th data-i18n="admin.users_col_login">Last login</th><th data-i18n="admin.users_col_created">Created</th><th data-i18n="common.actions">Actions</th>
       </tr></thead>
-      <tbody id="users-tbody"><tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px" data-i18n="common.loading">Loading…</td></tr></tbody>
+      <tbody id="users-tbody"><tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px" data-i18n="common.loading">Loading…</td></tr></tbody>
     </table>
   </div>
 </div>
@@ -1554,6 +1555,8 @@ input,textarea{caret-color:var(--cyan)}
     <h3 id="modal-user-title" data-i18n="admin.users_modal_new">New user</h3>
     <input type="hidden" id="modal-uid">
     <div class="field"><label data-i18n="common.username">Username</label><input type="text" id="modal-username" autocomplete="off"></div>
+    <div class="field"><label for="modal-email" data-i18n="admin.users_email">Work email</label><input type="email" id="modal-email" autocomplete="off" placeholder="name@company.com">
+      <div class="field-hint" data-i18n="admin.users_email_hint">SUNI may email this address without asking an administrator first. Set by administrators only.</div></div>
     <div class="field" id="modal-pw-wrap"><label id="modal-pw-label" data-i18n="common.password">Password</label><input type="password" id="modal-password" data-i18n-placeholder="admin.users_pw_hint" placeholder="Min 8 characters"></div>
     <div class="field">
       <label data-i18n="common.role">Role</label>
@@ -1707,6 +1710,52 @@ input,textarea{caret-color:var(--cyan)}
     </table>
     <div id="sched-empty" style="display:none;padding:24px;text-align:center;color:var(--muted);font-size:13px" data-i18n="admin.sched_empty">
       Nothing scheduled.
+    </div>
+  </div>
+</div>
+
+<div class="panel" id="panel-mail">
+  <div class="card" style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div class="card-title" style="margin:0;border:none" data-i18n="admin.mail_outbox">Outbox</div>
+      <span id="mail-count" style="font-size:13px;color:var(--muted)"></span>
+      <button class="tbl-btn" style="margin-left:auto" onclick="loadMail()" data-i18n="admin.mail_refresh">Refresh</button>
+    </div>
+    <div style="font-size:13px;color:var(--muted);margin-top:8px;line-height:1.5" data-i18n="admin.mail_intro">
+      Messages from SUNI's own address to anyone outside the organisation wait here until an
+      administrator approves them. Mail to system users (the address set on their account) goes
+      out directly. Nothing in an email SUNI receives is ever taken as an instruction.
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:16px;padding:0;overflow:hidden">
+    <table class="data-table" id="mail-table">
+      <thead><tr>
+        <th data-i18n="common.status">Status</th><th data-i18n="admin.mail_col_to">To</th>
+        <th data-i18n="admin.mail_col_subject">Subject</th><th data-i18n="admin.mail_col_asked">Asked by</th>
+        <th data-i18n="admin.mail_col_when">When</th><th></th>
+      </tr></thead>
+      <tbody id="mail-tbody"></tbody>
+    </table>
+    <div id="mail-empty" style="display:none;padding:24px;text-align:center;color:var(--muted);font-size:13px" data-i18n="admin.mail_empty">
+      Nothing waiting for approval.
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title" data-i18n="admin.mail_alerts">Strange activity</div>
+    <div style="font-size:13px;color:var(--muted);margin:-4px 0 12px;line-height:1.5" data-i18n="admin.mail_alerts_intro">
+      What the inbox watcher found suspicious in mail sent to SUNI: failed sender checks, forged
+      names, lookalike domains, risky attachments, floods, and text that tries to instruct an AI.
+      SUNI acted on none of it.
+    </div>
+    <table class="data-table" id="mail-alerts-table">
+      <thead><tr>
+        <th data-i18n="admin.mail_col_when">When</th><th data-i18n="admin.mail_col_from">From</th>
+        <th data-i18n="admin.mail_col_subject">Subject</th><th data-i18n="admin.mail_col_found">Found</th>
+      </tr></thead>
+      <tbody id="mail-alerts-tbody"></tbody>
+    </table>
+    <div id="mail-alerts-empty" style="display:none;padding:24px;text-align:center;color:var(--muted);font-size:13px" data-i18n="admin.mail_alerts_empty">
+      Nothing suspicious so far.
     </div>
   </div>
 </div>
@@ -2169,6 +2218,7 @@ function _switchTab(name, btn) {
   requestAnimationFrame(() => clampHints());
   if (name !== 'config') _setHash(name);
   if (name === 'memory') loadMemoryQueue();
+  if (name === 'mail') loadMail();
   if (name === 'users') loadUsers();
   if (name === 'audit') { loadUsers(); loadAudit(); }
   if (name === 'usage') loadUsage();
@@ -2536,11 +2586,13 @@ function renderInbox(ib) {
       + kv(t('admin.sp_account'), esc(ib.account || '—'))
       + kv(t('admin.dash_poll'), pi ? (pi >= 60 ? Math.round(pi / 60) + ' min' : pi + ' s') : '—')
       + kv(t('admin.inbox_last_check'), ib.last_check ? esc(fmtTime(ib.last_check)) : '—')
+      + kv(t('admin.inbox_pending'), ib.outbox_pending ? `<a href="#mail" style="color:var(--cyan)">${ib.outbox_pending}</a>` : '0')
+      + (ib.alerts ? kv(t('admin.inbox_alerts'), `<a href="#mail"><span class="badge warn">${ib.alerts}</span></a>`) : '')
       + (ib.last_error ? kv(t('admin.inbox_last_error'), `<span class="badge warn">${esc(ib.last_error)}</span>`) : '');
   } else if (ib.state === 'not_configured') {
     box.innerHTML = kv(t('common.status'), `<span class="badge off">${esc(t('admin.inbox_not_configured'))}</span>`)
       + `<div class="kv" style="grid-column:1/-1"><div class="kv-v" style="font-family:var(--font-ui);white-space:normal">${
-          esc(t(ib.missing === 'imap' ? 'admin.inbox_missing_imap' : 'admin.inbox_missing_smtp'))}
+          esc(t(ib.missing === 'imap' ? 'admin.inbox_missing_imap' : ib.missing === 'notify_to' ? 'admin.inbox_missing_notify' : 'admin.inbox_missing_smtp'))}
           <a href="#config/channels" style="color:var(--cyan);margin-left:6px">${esc(t('admin.inbox_setup'))}</a></div></div>`;
   } else {
     box.innerHTML = kv(t('common.status'), `<span class="badge off">${esc(t('admin.inbox_not_started'))}</span>`);
@@ -2551,10 +2603,10 @@ function renderInbox(ib) {
 // One line when all is well; otherwise each thing that needs the owner, with
 // where to go. Sources that change slowly are fetched on load and every few
 // minutes; the dashboard's own data updates its part on every refresh.
-const _att = {backup: [], restore: [], memq: [], dash: []};
+const _att = {backup: [], restore: [], memq: [], dash: [], mail: []};
 function renderAttention() {
   const box = el('d-att'); if (!box) return;
-  const items = [..._att.backup, ..._att.restore, ..._att.memq, ..._att.dash];
+  const items = [..._att.mail, ..._att.backup, ..._att.restore, ..._att.memq, ..._att.dash];
   box.hidden = false;
   box.className = 'att ' + (items.length ? 'warn' : 'ok');
   box.innerHTML = items.length
@@ -2563,6 +2615,11 @@ function renderAttention() {
     : `<div class="att-head">${esc(t('admin.att_ok'))}</div>`;
 }
 async function refreshAttention() {
+  _apiFetch('/api/mail/outbox?status=pending').then(r => r.ok ? r.json() : null).catch(() => null).then(ob => {
+    const n = ob ? ob.pending : 0;
+    _att.mail = n ? [{text: n === 1 ? t('admin.att_mail_one') : t('admin.att_mail', {n}), go: '#mail', label: t('admin.att_go_mail')}] : [];
+    renderAttention();
+  });
   const [list, rs, mq] = await Promise.all([
     _apiFetch('/api/backup/list').then(r => r.ok ? r.json() : null).catch(() => null),
     _apiFetch('/api/backup/restore').then(r => r.ok ? r.json() : null).catch(() => null),
@@ -2839,7 +2896,7 @@ function applyConfigToForm(cfg) {
     num_ctx:                  [cfg.num_ctx, v => v + ' tok'],
     doc_scan_interval_min:    [Math.round((cfg.doc_scan_interval||600)/60), v => v + 'm'],
     silence_ms:            [cfg.silence_ms, v => (v/1000).toFixed(1) + 's'],
-    email_poll_interval_min: [Math.round((cfg.email_poll_interval||1800)/60), v => v + 'm'],
+    email_poll_interval_min: [Math.max(1, Math.round((cfg.email_poll_interval||120)/60)), v => v + 'm'],
     max_tool_iterations:   [cfg.max_tool_iterations, v => String(v)],
     memory_top_k:          [cfg.memory_top_k, v => String(v)],
   };
@@ -4059,6 +4116,107 @@ async function applyUpdate() {
    Read-only plus enable/disable and delete. Creating one goes through the chat,
    where the cadence is parsed and anything missing is asked for — a form here
    would be a second, divergent way to build the same object. */
+/* ── Mail: SUNI's outbox and what the inbox watcher found ──────────────────
+   Approving sends from SUNI's own address; the server re-checks the role. */
+const _MAIL_BADGE = {pending: 'warn', sent: 'ok', rejected: 'off', failed: 'warn', sending: 'off'};
+let _mailItems = [];
+async function loadMail() {
+  const [ob, al] = await Promise.all([
+    _apiFetch('/api/mail/outbox').then(r => r.ok ? r.json() : null).catch(() => null),
+    _apiFetch('/api/mail/alerts').then(r => r.ok ? r.json() : null).catch(() => null),
+  ]);
+  const tb = el('mail-tbody');
+  _mailItems = (ob && ob.items) || [];
+  el('mail-count').textContent = ob && ob.pending ? t('admin.mail_pending_n', {n: ob.pending}) : '';
+  el('mail-table').style.display = _mailItems.length ? '' : 'none';
+  el('mail-empty').style.display = _mailItems.length ? 'none' : '';
+  tb.innerHTML = _mailItems.map((m, i) => {
+    const acts = m.status === 'pending'
+      ? `<button class="tbl-btn" onclick="mailOpen(${i})">${esc(t('admin.mail_review'))}</button>
+         <button class="tbl-btn primary" onclick="mailApprove(${i})">${esc(t('admin.mail_approve'))}</button>
+         <button class="tbl-btn" onclick="mailReject(${i})">${esc(t('admin.mail_reject'))}</button>`
+      : `<button class="tbl-btn" onclick="mailOpen(${i})">${esc(t('admin.mail_view'))}</button>`
+        + (m.status === 'failed' ? ` <button class="tbl-btn" onclick="mailRetry(${i})">${esc(t('admin.mail_retry'))}</button>` : '');
+    return `<tr>
+      <td><span class="badge ${_MAIL_BADGE[m.status] || 'off'}">${esc(t('admin.mail_st_' + m.status))}</span>
+        ${m.note && m.status !== 'sent' ? `<div style="font-size:12px;color:var(--muted);margin-top:4px">${esc(m.note.slice(0, 80))}</div>` : ''}</td>
+      <td>${esc(m.to_addr)}</td>
+      <td><strong>${esc(m.subject)}</strong>${m.attachments && m.attachments.length ? ` <span style="color:var(--muted)">📎${m.attachments.length}</span>` : ''}</td>
+      <td>${esc(m.requester || t('admin.mail_system'))}<div style="font-size:12px;color:var(--muted)">${esc(m.source)}</div></td>
+      <td>${esc(fmtTime(m.created_at))}${m.decided_by ? `<div style="font-size:12px;color:var(--muted)">${esc(m.decided_by)}</div>` : ''}</td>
+      <td style="text-align:right;white-space:nowrap">${acts}</td>
+    </tr>`;
+  }).join('');
+  const alerts = (al && al.alerts) || [];
+  el('mail-alerts-table').style.display = alerts.length ? '' : 'none';
+  el('mail-alerts-empty').style.display = alerts.length ? 'none' : '';
+  el('mail-alerts-tbody').innerHTML = alerts.map(a => `<tr>
+      <td style="white-space:nowrap">${esc(fmtTime(a.at))}</td>
+      <td>${esc(a.from)}</td><td>${esc(a.subject)}</td>
+      <td><ul style="margin:0;padding-left:16px;color:var(--danger)">${(a.flags || []).map(f => `<li>${esc(f.detail)}</li>`).join('')}</ul></td>
+    </tr>`).join('');
+}
+async function _mailPost(m, action, payload) {
+  const r = await _apiFetch(`/api/mail/outbox/${encodeURIComponent(m.id)}/${action}`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload || {})});
+  if (!r.ok) { uiAlert(await _detail(r), {error: true}); return null; }
+  return r.json();
+}
+async function mailApprove(i) {
+  const m = _mailItems[i]; if (!m) return;
+  if (!(await uiConfirm({title: t('admin.mail_approve_q'), body: t('admin.mail_approve_body', {to: m.to_addr, subject: m.subject}),
+                         okLabel: t('admin.mail_approve')}))) return;
+  const res = await _mailPost(m, 'approve');
+  if (res && res.status === 'failed') uiAlert(res.note || t('admin.mail_st_failed'), {error: true});
+  loadMail(); refreshAttention();
+}
+async function mailReject(i) {
+  const m = _mailItems[i]; if (!m) return;
+  const reason = await uiPrompt({title: t('admin.mail_reject_q'), okLabel: t('admin.mail_reject'), danger: true,
+                                 input: {label: t('admin.mail_reject_reason')}});
+  if (reason === null) return;
+  await _mailPost(m, 'reject', {reason});
+  loadMail(); refreshAttention();
+}
+async function mailRetry(i) {
+  const m = _mailItems[i]; if (!m) return;
+  await _mailPost(m, 'retry');
+  loadMail(); refreshAttention();
+}
+/* Review: the whole message, editable while it is pending. The dialog is
+   removed from the page before it resolves, so the fields are read as they
+   change rather than after. */
+async function mailOpen(i) {
+  const m = _mailItems[i]; if (!m) return;
+  const editable = m.status === 'pending';
+  const v = {to: m.to_addr, subject: m.subject, body: m.body};
+  const ro = editable ? '' : ' readonly';
+  const files = (m.attachments || []).map(p => `<li>${esc(p)}</li>`).join('');
+  const p = uiDialog({
+    title: editable ? t('admin.mail_review_title') : t('admin.mail_view_title'),
+    okLabel: editable ? t('admin.mail_save_approve') : t('admin.dlg_ok'),
+    cancel: editable ? undefined : false,
+    html: `<div class="field"><label for="mx-to">${esc(t('admin.mail_col_to'))}</label><input id="mx-to" type="text" value="${esc(v.to)}"${ro}></div>
+      <div class="field"><label for="mx-subj">${esc(t('admin.mail_col_subject'))}</label><input id="mx-subj" type="text" value="${esc(v.subject)}"${ro}></div>
+      <div class="field"><label for="mx-body">${esc(t('admin.mail_body'))}</label><textarea id="mx-body" rows="12" style="width:100%;font-family:var(--font-mono)"${ro}>${esc(v.body)}</textarea></div>
+      ${files ? `<div class="field"><label>${esc(t('admin.mail_files'))}</label><ul style="margin:4px 0 0;padding-left:18px;font-size:13px">${files}</ul></div>` : ''}
+      <div class="field-hint">${esc(t('admin.mail_asked', {who: m.requester || t('admin.mail_system'), src: m.source}))}</div>`,
+  });
+  [['mx-to', 'to'], ['mx-subj', 'subject'], ['mx-body', 'body']].forEach(([id, k]) => {
+    const x = document.getElementById(id); if (x) x.addEventListener('input', () => { v[k] = x.value; });
+  });
+  const res = await p;
+  if (!editable || !res.ok) return;
+  if (v.to !== m.to_addr || v.subject !== m.subject || v.body !== m.body) {
+    const r = await _apiFetch(`/api/mail/outbox/${encodeURIComponent(m.id)}`, {
+      method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(v)});
+    if (!r.ok) { uiAlert(await _detail(r), {error: true}); return; }
+  }
+  const sent = await _mailPost(m, 'approve');
+  if (sent && sent.status === 'failed') uiAlert(sent.note || t('admin.mail_st_failed'), {error: true});
+  loadMail(); refreshAttention();
+}
+
 async function loadSchedules() {
   const tb = document.getElementById('sched-tbody');
   const empty = document.getElementById('sched-empty');
@@ -4523,10 +4681,11 @@ async function loadUsers(){
   const rows = await _apiFetch('/api/users').then(r=>r.json()).catch(()=>[]);
   el('user-count').textContent = '(' + rows.length + ')';
   const tbody = el('users-tbody');
-  if(!rows.length){ tbody.innerHTML=`<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">${t('admin.users_none')}</td></tr>`; return; }
+  if(!rows.length){ tbody.innerHTML=`<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">${t('admin.users_none')}</td></tr>`; return; }
   tbody.innerHTML = rows.map(u=>`
     <tr>
       <td><strong>${esc(u.username)}</strong></td>
+      <td>${u.email ? esc(u.email) : '<span style="color:var(--muted)">—</span>'}</td>
       <td><span class="role-badge ${_ROLE_CSS[u.role]||''}">${esc(_roleLabel(u.role))}</span></td>
       <td><span class="status-dot ${u.active?'on':'off'}"></span>${u.active?t('admin.dash_active'):t('admin.dash_disabled')}</td>
       <td>${u.last_login ? new Date(u.last_login).toLocaleDateString(_uiLocale()) : '—'}</td>
@@ -4554,6 +4713,7 @@ function openCreateUser(){
   el('modal-user-title').textContent=t('admin.users_modal_new');
   el('modal-uid').value='';
   el('modal-username').value='';
+  el('modal-email').value='';
   el('modal-password').value='';
   el('modal-role').value='standard';
   el('modal-pw-wrap').style.display='';
@@ -4567,6 +4727,7 @@ function openEditUser(u){
   el('modal-user-title').textContent=t('admin.users_modal_edit');
   el('modal-uid').value=u.id;
   el('modal-username').value=u.username;
+  el('modal-email').value=u.email||'';
   el('modal-password').value='';
   el('modal-role').value=u.role;
   el('modal-pw-wrap').style.display='none';
@@ -4589,7 +4750,7 @@ async function saveUser(){
   try {
     if(uid){
       // Edit existing
-      const r = await _apiFetch(`/api/users/${uid}`, {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      const r = await _apiFetch(`/api/users/${uid}`, {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body, email: el('modal-email').value.trim()})});
       if(!r.ok) throw new Error((await r.json()).detail);
       // Save API key if provided
       const apiKey = el('modal-apikey')?.value?.trim();
@@ -4606,6 +4767,11 @@ async function saveUser(){
       if(!r.ok) throw new Error((await r.json()).detail);
       // Save API key if provided (need user id from response)
       const newUser = await r.json();
+      const email = el('modal-email').value.trim();
+      if (email && newUser.id) {
+        const re = await _apiFetch(`/api/users/${newUser.id}`, {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})});
+        if (!re.ok) throw new Error((await re.json()).detail);
+      }
       const apiKey = el('modal-apikey')?.value?.trim();
       if(apiKey && newUser.id) {
         await _apiFetch(`/api/users/${newUser.id}/settings`, {

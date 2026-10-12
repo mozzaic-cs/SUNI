@@ -105,6 +105,7 @@ def _audit_log(
 # tool_name → set of consequential argument keys whose values are shown in summary
 _CONSEQUENTIAL: dict[str, list[str]] = {
     "send_email":   ["to", "subject"],
+    "reply_email":  ["uid"],
     "run_shell":    ["command"],
     "write_file":   ["path", "filename"],
     "download_file": ["url", "path"],
@@ -573,6 +574,9 @@ def _build_preview(tool_name: str, args: dict) -> str | None:
             return cap(diff) if diff.strip() else f"No change to {path}."
         nlines = content.count("\n") + 1
         return cap(f"NEW FILE {path} ({nlines} lines):\n{content}")
+
+    if tool_name == "reply_email":
+        return cap(f"Reply to message {args.get('uid', '')}:\n\n{args.get('body', '')}")
 
     if tool_name == "send_email":
         to   = args.get("to", "")

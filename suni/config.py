@@ -27,7 +27,8 @@ DEFAULTS: dict[str, Any] = {
     # turn when the voice is on, instead of being silent for a minute or two.
     "voice_fillers":          True,
     "num_ctx":                8192,
-    "email_poll_interval":    1800,
+    "email_poll_interval":    120,     # seconds; SUNI's inbox is checked for strange mail this often
+    "mail_outbox_notify":     True,    # email the notification recipient when a message awaits approval
     "memory_top_k":           5,
     "max_tool_iterations":    8,
     "silence_ms":             2500,

@@ -150,6 +150,11 @@ def resolve_email(user_id: str = "") -> dict | None:
         return None
 
     return {
+        # "user" when this person set up their own account; "suni" for SUNI's
+        # own mailbox (admin config / environment). Mail from SUNI's mailbox
+        # goes out only with an admin's approval (notifications.mail_outbox),
+        # and only admins may read it.
+        "account":  "user" if str(us.get("smtp_user", "") or "").strip() else "suni",
         "host":     host,
         "port":     pick_port("smtp_port", "SUNI_SMTP_PORT", 587),
         "user":     user,

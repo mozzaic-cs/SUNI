@@ -187,9 +187,15 @@ def _set_auth_cookie(response: Response, refresh_token: str) -> None:
 def _email_reader_status() -> dict:
     try:
         from ..notifications import email_reader as _er
-        return _er.status()
+        st = _er.status()
     except Exception:
-        return {"state": "unknown"}
+        st = {"state": "unknown"}
+    try:
+        from ..notifications import mail_outbox as _ob
+        st["outbox_pending"] = _ob.pending_count()
+    except Exception:
+        pass
+    return st
 
 
 def _check_page_auth(request: "Request", admin_required: bool = False):
@@ -316,6 +322,7 @@ def _build_orchestrator(
     registry.register(email_tool.SCHEMA, email_tool.handler)
     registry.register(email_tool.LIST_SCHEMA, email_tool.list_handler)
     registry.register(email_tool.READ_SCHEMA, email_tool.read_handler)
+    registry.register(email_tool.REPLY_SCHEMA, email_tool.reply_handler)
     registry.register(pdf_tool.SCHEMA, pdf_tool.handler)
     registry.register(document_tool.SCHEMA, document_tool.handler)
     registry.register(image_tool.SCHEMA, image_tool.handler)
@@ -878,7 +885,7 @@ def create_app() -> FastAPI:
                         d = s.get("delivery") or {}
                         if d.get("type") == "email" and d.get("to"):
                             _mail.send_email(d["to"], f"SUNI — {s['name']}", answer,
-                                             user_id=owner["id"])
+                                             user_id=owner["id"], source="schedule")
                     except Exception as exc:
                         status = f"error: {exc}"
                         _log.error("[SCHEDULE] %s failed: %s", s["id"], exc, exc_info=True)
@@ -1610,7 +1617,7 @@ def create_app() -> FastAPI:
     async def update_user(user_id: str, request: Request, admin: dict = Depends(require_admin)):
         body = await request.json()
         try:
-            user = _auth.update_user(user_id, **{k: body[k] for k in ("role","active","username") if k in body})
+            user = _auth.update_user(user_id, **{k: body[k] for k in ("role","active","username","email") if k in body})
         except Exception as e:
             raise HTTPException(400, str(e))
         if not user:
@@ -3586,6 +3593,59 @@ def create_app() -> FastAPI:
         return JSONResponse({"ok": True})
 
     # ── Schedules ──────────────────────────────────────────────────────────
+
+    # ── SUNI's mailbox: the outbox an admin approves, and what the inbox
+    # watcher found strange. Admin only, every one of them: approving is the
+    # whole point of the outbox, and the alerts quote mail sent to SUNI. ──
+    @app.get("/api/mail/outbox")
+    async def mail_outbox_list(status: str = "", admin: dict = Depends(require_admin)):
+        from ..notifications import mail_outbox as _ob
+        return JSONResponse({"items": _ob.list_items(status=status),
+                             "pending": _ob.pending_count()})
+
+    def _outbox_call(fn):
+        try:
+            return JSONResponse(fn())
+        except KeyError:
+            raise HTTPException(404, "No such message")
+        except ValueError as e:
+            raise HTTPException(409, str(e))
+
+    @app.post("/api/mail/outbox/{draft_id}/approve")
+    async def mail_outbox_approve(draft_id: str, admin: dict = Depends(require_admin)):
+        from ..notifications import mail_outbox as _ob
+        # SMTP blocks; keep it off the event loop
+        loop = asyncio.get_running_loop()
+        try:
+            item = await loop.run_in_executor(None, _ob.approve, draft_id, admin["id"])
+        except KeyError:
+            raise HTTPException(404, "No such message")
+        except ValueError as e:
+            raise HTTPException(409, str(e))
+        return JSONResponse(item)
+
+    @app.post("/api/mail/outbox/{draft_id}/reject")
+    async def mail_outbox_reject(draft_id: str, request: Request, admin: dict = Depends(require_admin)):
+        from ..notifications import mail_outbox as _ob
+        body = await request.json() if (request.headers.get("content-length") or "0") != "0" else {}
+        return _outbox_call(lambda: _ob.reject(draft_id, admin["id"], str(body.get("reason", ""))))
+
+    @app.post("/api/mail/outbox/{draft_id}/retry")
+    async def mail_outbox_retry(draft_id: str, admin: dict = Depends(require_admin)):
+        from ..notifications import mail_outbox as _ob
+        return _outbox_call(lambda: _ob.retry(draft_id, admin["id"]))
+
+    @app.put("/api/mail/outbox/{draft_id}")
+    async def mail_outbox_edit(draft_id: str, request: Request, admin: dict = Depends(require_admin)):
+        from ..notifications import mail_outbox as _ob
+        body = await request.json()
+        return _outbox_call(lambda: _ob.edit(
+            draft_id, admin["id"], to=body.get("to"), subject=body.get("subject"), body=body.get("body")))
+
+    @app.get("/api/mail/alerts")
+    async def mail_alerts(admin: dict = Depends(require_admin)):
+        from ..notifications import email_reader as _er
+        return JSONResponse({"alerts": _er.alerts()})
 
     @app.get("/api/schedules")
     async def schedules_list_api(user: dict = Depends(get_current_user)):

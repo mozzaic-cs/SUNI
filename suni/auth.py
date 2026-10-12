@@ -13,6 +13,7 @@ Roles (ascending privilege):
 from __future__ import annotations
 import secrets
 import sqlite3
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -83,6 +84,11 @@ def init_db() -> None:
         cols = {r["name"] for r in c.execute("PRAGMA table_info(users)").fetchall()}
         if "auth_source" not in cols:
             c.execute("ALTER TABLE users ADD COLUMN auth_source TEXT NOT NULL DEFAULT 'local'")
+        # The person's work address, set by an ADMIN (Users tab), never by the
+        # user: SUNI mails these addresses without asking for approval, so a
+        # user able to set their own could make it an outside address.
+        if "email" not in cols:
+            c.execute("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''")
         # Maps an external identity (issuer + subject) to a local user. Returning
         # logins match ONLY on this link — never by username — so an IdP can never
         # be handed a pre-existing local account.
@@ -141,16 +147,29 @@ def get_user_by_username(username: str) -> dict | None:
 def list_users() -> list[dict]:
     with _conn() as c:
         rows = c.execute(
-            "SELECT id, username, role, active, created_at, last_login FROM users ORDER BY username"
+            "SELECT id, username, role, active, email, created_at, last_login FROM users ORDER BY username"
         ).fetchall()
     return [dict(r) for r in rows]
 
 
+def internal_addresses() -> set[str]:
+    """Addresses of active users, as set by an admin. SUNI may mail these
+    without an admin approving each message (notifications.email_notify)."""
+    with _conn() as c:
+        rows = c.execute("SELECT email FROM users WHERE active=1 AND email != ''").fetchall()
+    return {r["email"].lower() for r in rows}
+
+
 def update_user(user_id: str, **kwargs) -> dict | None:
-    allowed = {"role", "active", "username"}
+    allowed = {"role", "active", "username", "email"}
     fields  = {k: v for k, v in kwargs.items() if k in allowed}
     if "role" in fields and fields["role"] not in ROLES:
         raise ValueError(f"Invalid role: {fields['role']}")
+    if "email" in fields:
+        e = str(fields["email"] or "").strip().lower()
+        if e and not re.fullmatch(r"[^@\s,;<>]+@[^@\s,;<>]+\.[a-z]{2,}", e):
+            raise ValueError(f"Invalid email address: {fields['email']}")
+        fields["email"] = e
     if not fields:
         return get_user(user_id)
     sets = ", ".join(f"{k}=?" for k in fields)

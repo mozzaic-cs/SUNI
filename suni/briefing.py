@@ -24,16 +24,19 @@ def _section_email() -> str:
     """Count unread emails from IMAP if configured."""
     try:
         import imaplib
-        from .notifications.email_reader import IMAP_HOST, IMAP_PORT
-        if not IMAP_HOST:
+        # These were module constants once; importing them after they became
+        # functions raised ImportError, which the except below swallowed, so
+        # the briefing never showed an email count. SUNI's mailbox, through the
+        # same resolver as everything else (IMAP_USER/IMAP_PASS were read here
+        # and nowhere else).
+        from .notifications.email_reader import imap_host, imap_port
+        from .user_settings import resolve_email
+        acct = resolve_email("")
+        host = (acct or {}).get("imap_host") or imap_host()
+        if not (acct and host):
             return ""
-        import os
-        user = os.environ.get("IMAP_USER", "")
-        pwd  = os.environ.get("IMAP_PASS", "")
-        if not user or not pwd:
-            return ""
-        with imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT) as m:
-            m.login(user, pwd)
+        with imaplib.IMAP4_SSL(host, (acct or {}).get("imap_port") or imap_port()) as m:
+            m.login(acct["user"], acct["password"])
             m.select("INBOX", readonly=True)
             _, data = m.search(None, "UNSEEN")
             count = len(data[0].split()) if data and data[0] else 0

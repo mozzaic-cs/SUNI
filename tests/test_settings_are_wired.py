@@ -96,7 +96,7 @@ def test_email_poll_interval_is_clamped(monkeypatch):
     assert email_reader.poll_interval() >= 30, "a zero interval would spin the poll loop"
 
     monkeypatch.setattr(suni_config, "get", lambda k, d=None: "not a number")
-    assert email_reader.poll_interval() == 1800, "a bad value should fall back, not raise"
+    assert email_reader.poll_interval() == 120, "a bad value should fall back, not raise"
 
 
 def test_no_module_level_poll_constant():
