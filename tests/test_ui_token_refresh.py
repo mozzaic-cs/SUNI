@@ -24,7 +24,7 @@ import re
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-UIS = ("suni/web/face.html", "suni/web/ui.html", "suni/web/chat.html")
+UIS = ("suni/web/face.html", "suni/web/chat.html")   # "/" is face.html in orb mode
 
 
 def _fetch_wrapper(rel: str) -> str:
@@ -68,7 +68,7 @@ def test_it_only_sends_the_user_to_login_when_the_refresh_also_failed(rel):
         f"{rel} redirects to login before trying to refresh"
 
 
-@pytest.mark.parametrize("rel", ("suni/web/face.html", "suni/web/ui.html"))
+@pytest.mark.parametrize("rel", ("suni/web/face.html",))
 def test_the_token_variable_can_actually_be_replaced(rel):
     """It was `const _ST`. A refresh that cannot write the new token back is a
     refresh that fixes exactly one call and then fails forever after."""

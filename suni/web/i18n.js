@@ -34,6 +34,8 @@
     // replaces the whole textContent.
     "face.nav_orb": "◎ ORB",
     "face.nav_orb_t": "Switch to Orb mode",
+    "face.nav_face": "◉ FACE",
+    "face.nav_face_t": "Switch to Persona mode",
     "face.nav_chat": "☰ CHAT",
     "face.nav_chat_t": "Switch to Chat mode",
     "face.nav_stage": "▣ STAGE",
@@ -370,7 +372,7 @@
       'settings.imap_host':        'IMAP host (to read your inbox)',
       'settings.imap_port':        'IMAP port',
 
-      // ── Orb (ui.html) ──────────────────────────────────────────
+      // ── Orb (shared keys; the orb page is face.html in orb mode) ──────────────────────────────────────────
       'orb.placeholder':   'Speak your mind. I shall observe.',
       'orb.idle':          'IDLE',
       'orb.thinking':      'THINKING',
@@ -943,6 +945,8 @@
     // --- the strip along the top of the Face ---
     "face.nav_orb": "◎ ORBE",
     "face.nav_orb_t": "Mudar para o modo Orbe",
+    "face.nav_face": "◉ ROSTO",
+    "face.nav_face_t": "Mudar para o modo Persona",
     "face.nav_chat": "☰ CONVERSA",
     "face.nav_chat_t": "Mudar para o modo Conversa",
     "face.nav_stage": "▣ PALCO",

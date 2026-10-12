@@ -13,7 +13,7 @@
    "items": [
     {
      "id": "orb-ui-ui-html",
-     "title": "Orb UI — ui.html",
+     "title": "Orb UI — face.html in orb mode",
      "where": "browser · /",
      "lead": "WebGL orb · 6 Gaussian blobs · Lissajous paths",
      "body": [
@@ -904,7 +904,7 @@
     {
      "id": "ai-interaction-disclosure",
      "title": "AI-Interaction Disclosure",
-     "where": "Art 50(1) · main.py · ui.html · chat.html",
+     "where": "Art 50(1) · main.py · face.html · chat.html",
      "lead": "Users are informed they interact with an AI system",
      "body": [
       "SUNI_SYSTEM: never claim to be human — identify as \"AI assistant\"",

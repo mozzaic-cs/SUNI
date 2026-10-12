@@ -142,7 +142,6 @@ def _claude_code_present() -> bool:
 SUNI_MODEL  = resolve_model()
 EMBED_MODEL = os.environ.get("SUNI_EMBED_MODEL", "qwen2.5:1.5b")
 MEMORY_PATH = os.environ.get("SUNI_MEMORY_PATH", "memory/suni_memory.json")
-UI_FILE     = Path(__file__).parent / "ui.html"
 ADMIN_FILE  = Path(__file__).parent / "admin.html"
 ARCH_FILE   = Path(__file__).parent / "architecture.html"
 LOGIN_FILE  = Path(__file__).parent / "login.html"
@@ -1056,7 +1055,9 @@ def create_app() -> FastAPI:
         # to a wizard they cannot complete would just lock them out.
         if user.get("role") == "admin" and not suni_config.get("setup_completed", False):
             return RedirectResponse("/setup", status_code=302)
-        html = _inject_token(UI_FILE.read_text(encoding="utf-8"))
+        # The orb page is the face page with the orb in place of her head
+        # (face.html reads this marker), so the two share every feature.
+        html = _inject_token(FACE_FILE.read_text(encoding="utf-8").replace("__SUNI_PAGE__", "orb"))
         return _page(_inject_jwt(html, user))
 
     # ── First-run wizard ────────────────────────────────────────────────────

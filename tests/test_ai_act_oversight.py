@@ -329,7 +329,7 @@ def test_the_stop_notice_does_not_claim_the_work_was_undone():
 def test_all_three_uis_have_the_stop_control():
     """By this project's own standard (docs/eu-ai-act.md): a control that covers
     one code path is not a control. All three UIs POST /api/chat."""
-    for rel in ("suni/web/chat.html", "suni/web/ui.html", "suni/web/face.html"):
+    for rel in ("suni/web/chat.html", "suni/web/face.html"):
         src = (ROOT / rel).read_text(encoding="utf-8")
         assert "/api/chat/stop" in src, f"{rel} can start a run it cannot stop"
         assert "chat.stop" in src, f"{rel} has no translated stop label"

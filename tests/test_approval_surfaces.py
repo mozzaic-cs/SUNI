@@ -29,18 +29,18 @@ import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 FACE = (ROOT / "suni" / "web" / "face.html").read_text(encoding="utf-8")
-UI = (ROOT / "suni" / "web" / "ui.html").read_text(encoding="utf-8")
 SHARED = (ROOT / "suni" / "web" / "approval_ui.js").read_text(encoding="utf-8")
 CHAT = (ROOT / "suni" / "web" / "chat.html").read_text(encoding="utf-8")
 I18N = (ROOT / "suni" / "web" / "i18n.js").read_text(encoding="utf-8")
-SURFACES = {"ui.html": UI, "face.html": FACE, "chat.html": CHAT}
+# The orb page (/) is face.html in orb mode; ui.html is gone.
+SURFACES = {"face.html": FACE, "chat.html": CHAT}
 
 # Tools that require approval — from suni/approval.py. Each is unusable on any
 # interface that cannot render the request.
 GATED_SAMPLE = ["send_email", "write_file", "run_shell", "claude_task"]
 
 
-@pytest.mark.parametrize("name", ["ui.html", "face.html", "chat.html"])
+@pytest.mark.parametrize("name", ["face.html", "chat.html"])
 def test_every_surface_handles_the_approval_event(name):
     """All three chat interfaces, not just the one that happened to have it.
     An interface that cannot render the request cannot complete any gated
@@ -50,7 +50,7 @@ def test_every_surface_handles_the_approval_event(name):
         "there while the user watches 'thinking'")
 
 
-@pytest.mark.parametrize("name", ["ui.html", "face.html", "chat.html"])
+@pytest.mark.parametrize("name", ["face.html", "chat.html"])
 def test_every_surface_can_send_a_decision(name):
     """Rendering the question is half of it — the answer has to reach the
     endpoint that releases the blocked request."""
@@ -61,16 +61,15 @@ def test_every_surface_can_send_a_decision(name):
     assert "allow" in src and "deny" in src
 
 
-def test_the_two_voice_surfaces_share_one_implementation():
+def test_the_voice_surfaces_share_one_implementation():
     """Written twice, they drift; the second copy is the one that gets missed
-    when a bug is fixed."""
-    assert "showApprovalPrompt" in UI and "showApprovalPrompt" in FACE
-    assert UI.count("function showApprovalPrompt") == 0
+    when a bug is fixed. (The orb and the face are now one page.)"""
+    assert "showApprovalPrompt" in FACE
     assert FACE.count("function showApprovalPrompt") == 0
     assert "g.showApprovalPrompt" in SHARED
 
 
-@pytest.mark.parametrize("name", ["ui.html", "face.html"])
+@pytest.mark.parametrize("name", ["face.html"])
 def test_the_shared_module_is_actually_loaded(name):
     """A call to a function the page never loads is a ReferenceError that
     swallows the only prompt the user gets."""
@@ -94,7 +93,7 @@ def test_the_prompt_does_not_depend_on_page_level_helpers():
     assert "function esc(" in SHARED
 
 
-@pytest.mark.parametrize("name", ["ui.html", "face.html"])
+@pytest.mark.parametrize("name", ["face.html"])
 def test_the_surface_stops_looking_busy_while_it_waits(name):
     """The reported symptom was an interface that looked busy while it was in
     fact blocked on the user."""
@@ -155,14 +154,14 @@ def test_the_server_still_honours_the_flag():
 # /api/approval/trust had existed for months with no interface on top of them,
 # so a rule could be granted from any surface and withdrawn from none.
 
-@pytest.mark.parametrize("name", ["ui.html", "face.html", "chat.html"])
+@pytest.mark.parametrize("name", ["face.html", "chat.html"])
 def test_every_surface_can_revoke_a_standing_permission(name):
     """Granting is offered on all three, so withdrawing has to be too."""
     assert "renderTrustRules" in SURFACES[name], \
         f"{name} can grant standing permission but never shows it again"
 
 
-@pytest.mark.parametrize("name", ["ui.html", "face.html", "chat.html"])
+@pytest.mark.parametrize("name", ["face.html", "chat.html"])
 def test_the_revoke_list_has_somewhere_to_render(name):
     """The call is harmless without the container — and silently does nothing,
     which is the failure this whole file exists to catch."""

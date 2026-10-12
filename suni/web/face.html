@@ -937,13 +937,13 @@ header{
                display:none">
         <option value="" data-i18n="face.agent_none">◇ SUNI</option>
       </select>
-      <a href="/" data-i18n-title="face.nav_orb_t" data-icon="◎" class="hnav" title="Switch to Orb mode"
+      <a href="/" id="nav-other" data-i18n-title="face.nav_orb_t" data-icon="◎" class="hnav" title="Switch to Orb mode"
          style="padding:3px 8px;border:1px solid rgba(201,162,39,.45);border-radius:2px;
                 font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.08em;
                 color:rgba(201,162,39,.85);text-decoration:none;transition:all .2s;"
          onmouseover="this.style.color='#c9a227';this.style.borderColor='rgba(201,162,39,.85)'"
          onmouseout="this.style.color='rgba(201,162,39,.85)';this.style.borderColor='rgba(201,162,39,.45)'">
-        <span data-i18n="face.nav_orb">◎ ORB</span>
+        <span id="nav-other-label" data-i18n="face.nav_orb">◎ ORB</span>
       </a>
       <a href="/chat" data-i18n-title="face.nav_chat_t" data-icon="☰" class="hnav" title="Switch to Chat mode"
          style="padding:3px 8px;border:1px solid rgba(201,162,39,.45);border-radius:2px;
@@ -1148,6 +1148,17 @@ header{
 // ═══════════════════════════════════════════════════════════════════
 
 const canvas = document.getElementById('suni-canvas');
+/* The orb page is this page with the orb drawn where her head would be: the
+   server serves it on "/" with the marker below set to "orb". Everything
+   else (dock, caption, agents, stage, network, voice) is shared, so the two
+   pages cannot drift apart. ui.html, the orb's own page, is gone. */
+const ORB_MODE = '__SUNI_PAGE__' === 'orb';
+if (ORB_MODE) {
+  document.documentElement.classList.add('orb-mode');
+  const nav = document.getElementById('nav-other'), lab = document.getElementById('nav-other-label');
+  if (nav) { nav.href = '/face'; nav.dataset.i18nTitle = 'face.nav_face_t'; nav.title = 'Switch to Persona mode'; nav.dataset.icon = '◉'; }
+  if (lab) { lab.dataset.i18n = 'face.nav_face'; lab.textContent = '◉ FACE'; }
+}
 
 let W = window.innerWidth, H = window.innerHeight, DPR = 1;
 
@@ -1877,6 +1888,7 @@ function parseOBJ(text){
            eyeL, eyeR };
 }
 (function loadModel(){
+  if (ORB_MODE) return;
   fetch('/persona-model?ts='+Date.now())
     .then(r=> r.ok ? r.text() : Promise.reject(0))
     .then(txt=>{
@@ -1975,6 +1987,7 @@ function applyEyeCut(sz){
 window.setEyeCut=function(x,y,z){ EYE_CUT=[x,y,z]; applyEyeCut(EYE_CUT); };
 
 (function loadSolid(){
+  if (ORB_MODE) return;
   fetch('/persona-model-solid?ts='+Date.now())
     .then(r=> r.ok ? r.text() : Promise.reject(0))
     .then(txt=>{
@@ -2056,6 +2069,201 @@ function ensureBG(){
     bQuad=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,bQuad);
     gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1, 1,-1, -1,1, 1,-1, 1,1, -1,1]),gl.STATIC_DRAW);
   }catch(e){ console.warn('bg init:',e); progBG=null; }
+}
+/* ── the orb (orb page only) ──
+   A solid holographic body in her light, drawn into the viewport her head
+   would use, so the stage view moves and shrinks it exactly as it does her. */
+const ORB_FS = `precision highp float;
+uniform vec4  u_vp;   /* the viewport the head would be drawn in (stage view shrinks it) */
+uniform float u_t, u_ss, u_cam, u_R, u_amp;
+uniform vec3  u_col;
+uniform vec2  u_oc, u_mouse;
+uniform float u_spec[16];
+float hash(vec2 p){p=fract(p*vec2(127.1,311.7));p+=dot(p,p.yx+19.19);return fract((p.x+p.y)*p.x);}
+float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);
+  return mix(mix(hash(i),hash(i+vec2(1.0,0.0)),f.x),mix(hash(i+vec2(0.0,1.0)),hash(i+vec2(1.0,1.0)),f.x),f.y);}
+float fbm(vec2 p){float v=0.0,a=0.5;for(int i=0;i<4;i++){v+=a*noise(p);p=p*2.03+3.1;a*=0.5;}return v;}
+mat3 rotY(float a){ float c=cos(a),s=sin(a); return mat3(c,0.0,-s, 0.0,1.0,0.0, s,0.0,c); }
+mat3 rotX(float a){ float c=cos(a),s=sin(a); return mat3(1.0,0.0,0.0, 0.0,c,s, 0.0,-s,c); }
+void main(){
+  vec2 uv = (gl_FragCoord.xy - u_vp.xy) / u_vp.zw;
+  float asp = u_vp.z / u_vp.w;
+  float ss = u_ss;
+  float thk = clamp(ss, 0.0, 1.0);
+  float spk = clamp(1.0 - abs(ss - 2.0), 0.0, 1.0);
+  float wrk = clamp(1.0 - abs(ss - 3.0), 0.0, 1.0);
+  float brw = clamp(ss - 3.0, 0.0, 1.0);
+  float act = clamp(ss, 0.0, 1.0);
+  /* ── orb space: radius 1 ── */
+  vec2 P = uv - u_oc; P.x *= asp;
+  vec2 p = P / u_R;
+  float px = 1.0 / (u_R * u_vp.w);
+  float r = length(p);
+  float z = sqrt(max(0.0, 1.0 - r * r));
+  float inside = smoothstep(1.0 + px, 1.0 - px, r);
+
+  /* a soft halo of her light spills round it */
+  vec3 col = vec3(0.0);
+  col += u_col * exp(-max(r - 1.0, 0.0) * 4.0) * (1.0 - inside) * (0.10 + 0.10 * act + 0.25 * u_amp + 0.08 * u_cam);
+
+  /* ── the body: solid, lit like /face's head ── */
+  float spin = u_t * (0.10 + 0.25 * thk + 0.25 * wrk);
+  mat3 Rm = rotX(0.30 - u_mouse.y * 0.30) * rotY(spin + u_mouse.x * 0.50);
+  vec3 N = vec3(p, z);
+  vec3 q = Rm * N;
+  /* speaking: the surface swells in slow waves with her voice */
+  float wave = sin(r * 5.0 - u_t * 2.2) * u_amp * spk;
+  vec3 Nl = normalize(N + vec3(p * wave * 0.18, 0.0));
+  /* the light follows the pointer: move and she catches it */
+  vec3 L = normalize(vec3(-0.35 + u_mouse.x * 0.55, 0.45 + u_mouse.y * 0.45, 0.82));
+  float diff = max(0.0, dot(Nl, L));
+  float fres = pow(1.0 - z, 2.2);
+
+  /* No surface map: patterned, it read as a planet (clouds, continents).
+     Only a slow, faint shimmer in the sphere's own coordinates. */
+  float fl = u_t * (0.05 + 0.15 * thk + 0.2 * wrk);
+  float shim = fbm(q.xy / (1.4 + q.z) * 1.8 + vec2(fl, -fl * 0.7)) - 0.5;
+  /* energy rising from the centre in slow pulses, quicker as she works */
+  float pulse = pow(0.5 + 0.5 * sin(r * 7.0 - u_t * (1.0 + 0.8 * thk)), 6.0) * (1.0 - r) ;
+  /* light from inside: deeper toward the middle, as through a dense glass */
+  float depthGlow = exp(-r * r * 4.0) * (0.18 + 0.15 * act + 0.25 * u_amp + 0.08 * u_cam)
+                  * (0.85 + 0.15 * sin(u_t * 1.3));
+
+  /* Solid: strong light and shade. A wash of inner light made it a pale
+     balloon; the light inside is now a small core seen deep in it. */
+  vec3 body = u_col * (0.03 + 0.62 * pow(diff, 1.3)) * (1.0 + 0.35 * shim);
+  body += u_col * depthGlow;
+  /* depth: light suspended inside the glass, seen along the ray through it.
+     A few samples from the front surface to the back; brighter near the
+     middle, drifting and turning with her state. */
+  if (inside > 0.0) {
+    float em = 0.0;
+    for (int k = 0; k < 10; k++) {
+      float tk = (float(k) + 0.5) / 10.0;
+      vec3 vp = vec3(p, z * (1.0 - 2.0 * tk));
+      vec3 rp = Rm * vp;
+      float dn = fbm(rp.xy * 1.7 + rp.z * 1.3 + vec2(fl * 2.0, -fl * 1.4) + 3.0);
+      em += smoothstep(0.45, 0.85, dn) * exp(-dot(vp, vp) * 2.2);
+    }
+    body += mix(u_col, vec3(0.8, 0.95, 1.0), 0.25) * em * z * 0.18 * (0.55 + 0.45 * act + 0.8 * u_amp + 0.2 * u_cam);
+  }
+  body += mix(u_col, vec3(0.85, 0.97, 1.0), 0.3) * pulse * (0.04 + 0.15 * thk + 0.4 * u_amp * spk);
+  body += vec3(0.50, 0.85, 1.0) * fres * (0.9 + 0.35 * act + 0.6 * u_amp);   /* /face's rim */
+  body += vec3(0.85, 0.96, 1.0) * pow(max(0.0, dot(reflect(-L, Nl), vec3(0.0, 0.0, 1.0))), 36.0) * 0.7;
+  /* gloss: the nebula reflected in the glass, sliding as the pointer moves */
+  vec3 Rf = reflect(vec3(0.0, 0.0, -1.0), Nl);
+  float rfl = fbm(Rf.xy * 1.6 + u_mouse * 0.3 + vec2(u_t * 0.02, 0.0) + 2.0);
+  body += mix(u_col, vec3(0.95, 0.75, 0.45), 0.25) * smoothstep(0.45, 0.8, rfl) * (0.08 + 0.35 * fres);
+  /* thinking: a scan line sweeps her */
+  float scanY = sin(u_t * 1.6) * 0.92;
+  body += u_col * exp(-pow((p.y - scanY) / 0.03, 2.0)) * clamp(1.0 - abs(ss - 1.0), 0.0, 1.0) * 0.9 * (0.3 + 0.7 * z);
+  /* browsing: a radar sweep across the face of it */
+  float ang = atan(p.y, p.x);
+  body += u_col * exp(-mod(u_t * 2.2 - ang, 6.2831853) * 2.0) * brw * 0.35 * z;
+  /* working: bright bands travel down it, like progress */
+  body += u_col * smoothstep(0.92, 1.0, sin(p.y * 4.0 + u_t * 3.0)) * wrk * 0.30 * z;
+  /* /face's scanlines */
+  body *= 0.82 + 0.18 * sin(gl_FragCoord.y * 1.7 + u_t * 3.0);
+  vec3 bodyOut = (1.0 - exp(-body * 1.35)) * inside;
+  /* the rim, split a little into colours */
+  float e = 0.010;
+  col += vec3(smoothstep(e, 0.0, abs(r - 1.0 - e * 0.5)), smoothstep(e, 0.0, abs(r - 1.0)),
+              smoothstep(e, 0.0, abs(r - 1.0 + e * 0.5))) * (u_col * 0.5 + 0.5) * (0.35 + 0.3 * act + 0.4 * u_amp);
+
+  /* ── speaking: a glowing outline that bends with her voice ── */
+  if (spk > 0.01) {
+    float a2 = atan(p.x, p.y);                      /* 0 at the top, mirrored */
+    float fb = abs(a2) / 3.14159265 * 15.0, sv = 0.0;
+    float sw = 0.0;
+    for (int i = 0; i < 16; i++) { float w = exp(-pow(fb - float(i), 2.0) / 1.4); sv += u_spec[i] * w; sw += w; }
+    sv /= sw;
+    float rr = 1.05 + sv * 0.20;
+    float d = r - rr;
+    float line = exp(-pow(d / (0.006 + px), 2.0));
+    float haze = exp(-max(d, 0.0) * 9.0) * smoothstep(1.0, 1.04, r) * step(0.0, rr - r + 0.5);
+    vec3 vc = mix(u_col, vec3(0.941, 0.753, 0.251), smoothstep(0.25, 0.8, sv));
+    col += vc * (line * 1.1 + haze * 0.18 * sv) * spk * (1.0 - inside);
+  }
+
+  /* premultiplied: the body covers what is behind it, the glow adds */
+  gl_FragColor = vec4(bodyOut + (1.0 - exp(-col * 1.35)), inside);
+}
+`;
+let progOrb = null, _orbU = null, bOrbQuad = null, aOrbP = -1;
+const _orbSpec = new Float32Array(16);
+let _orbAmp = 0, _orbFbuf = null, _omx = 0, _omy = 0, _omtx = 0, _omty = 0;
+if (ORB_MODE) {
+  window.addEventListener('pointermove', e => {
+    _omtx = (e.clientX / window.innerWidth) * 2 - 1;
+    _omty = -((e.clientY / window.innerHeight) * 2 - 1);
+  });
+  document.addEventListener('pointerleave', () => { _omtx = 0; _omty = 0; });
+}
+function _ensureOrb(){
+  if (progOrb) return;
+  try {
+    const mk = (t, src) => { const sh = gl.createShader(t); gl.shaderSource(sh, src); gl.compileShader(sh);
+      if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh)); return sh; };
+    const pr = gl.createProgram();
+    gl.attachShader(pr, mk(gl.VERTEX_SHADER, 'attribute vec2 a_p; void main(){ gl_Position = vec4(a_p, 0.0, 1.0); }'));
+    gl.attachShader(pr, mk(gl.FRAGMENT_SHADER, ORB_FS));
+    gl.linkProgram(pr);
+    if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
+    const u = n => gl.getUniformLocation(pr, n);
+    _orbU = { vp: u('u_vp'), t: u('u_t'), ss: u('u_ss'), cam: u('u_cam'), R: u('u_R'), amp: u('u_amp'),
+              col: u('u_col'), oc: u('u_oc'), mouse: u('u_mouse'), spec: u('u_spec') };
+    aOrbP = gl.getAttribLocation(pr, 'a_p');
+    bOrbQuad = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, bOrbQuad);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,-1, 1,1, -1,1]), gl.STATIC_DRAW);
+    progOrb = pr;
+  } catch (e) { console.warn('orb init:', e); progOrb = null; }
+}
+/* Her voice in 16 bands, 100 Hz to 5 kHz on a log scale. Eased slowly, both
+   ways: reacting within a frame or two, the speaking orb looked frantic. */
+function _orbVoice(dt){
+  const on = analyser && audioCtx && state === 'speaking';
+  if (on) {
+    if (!_orbFbuf || _orbFbuf.length !== analyser.frequencyBinCount) _orbFbuf = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(_orbFbuf);
+  }
+  const hz = on ? audioCtx.sampleRate / analyser.fftSize : 1;
+  let sum = 0;
+  for (let i = 0; i < 16; i++) {
+    let v = 0;
+    if (on) {
+      const a = Math.max(1, Math.floor(100 * Math.pow(50, i / 16) / hz));
+      const b = Math.max(a + 1, Math.floor(100 * Math.pow(50, (i + 1) / 16) / hz));
+      for (let k = a; k < b && k < _orbFbuf.length; k++) v += _orbFbuf[k];
+      v = Math.min(1, Math.max(0, (v / ((b - a) * 255) - 0.15) / 0.6));
+    }
+    _orbSpec[i] += (v - _orbSpec[i]) * Math.min(1, (v > _orbSpec[i] ? 7 : 3) * dt);
+    sum += _orbSpec[i];
+  }
+  _orbAmp += (Math.min(1, sum / 16 * 1.6) - _orbAmp) * Math.min(1, 4 * dt);
+}
+function _drawOrb(dt, fovT){
+  _ensureOrb(); if (!progOrb) return;
+  _orbVoice(dt);
+  _omx += (_omtx - _omx) * Math.min(1, 3 * dt); _omy += (_omty - _omy) * Math.min(1, 3 * dt);
+  const vp = gl.getParameter(gl.VIEWPORT);
+  /* where her head's centre projects (view y 0.24 at depth 3.05), and an orb a
+     little smaller than her head */
+  const cy = 0.5 + 0.5 * (0.24 / (fovT * 3.05));
+  const R = 0.5 * (0.62 / (fovT * 3.05));
+  const c = stateColor(stateSmooth);
+  gl.disable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+  gl.useProgram(progOrb);
+  gl.uniform4f(_orbU.vp, vp[0], vp[1], vp[2], vp[3]);
+  gl.uniform1f(_orbU.t, T); gl.uniform1f(_orbU.ss, stateSmooth); gl.uniform1f(_orbU.cam, 0);
+  gl.uniform1f(_orbU.R, R); gl.uniform1f(_orbU.amp, _orbAmp);
+  gl.uniform3f(_orbU.col, c[0] / 255, c[1] / 255, c[2] / 255);
+  gl.uniform2f(_orbU.oc, 0.5, cy); gl.uniform2f(_orbU.mouse, _omx, _omy);
+  gl.uniform1fv(_orbU.spec, _orbSpec);
+  gl.bindBuffer(gl.ARRAY_BUFFER, bOrbQuad); gl.enableVertexAttribArray(aOrbP); gl.vertexAttribPointer(aOrbP, 2, gl.FLOAT, false, 0, 0);
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+  gl.disableVertexAttribArray(aOrbP);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+  gl.viewport(0, 0, canvas.width, canvas.height);
 }
 function drawBackground(){
   ensureBG(); if(!progBG) return;
@@ -2504,6 +2712,7 @@ function renderHead(dt){
     if (_phoneStage) { mx = canvas.width * 0.01; my = 44 * (canvas.height / H); }   // fully on screen, under the label
     gl.viewport((canvas.width - vpW - mx) * _stageT, (canvas.height - vpH - my) * _stageT, vpW, vpH);
   }
+  if (ORB_MODE) { _drawOrb(dt, _fovT); return; }
   gl.useProgram(prog);
   gl.uniformMatrix4fv(uMVP,false,mvp);
   gl.uniform1f(uJaw,jaw); gl.uniform1f(uHY,-0.08); gl.uniform1f(uHZ,-0.25);

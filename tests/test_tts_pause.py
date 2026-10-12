@@ -17,7 +17,7 @@ import re
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-UIS = ("suni/web/face.html", "suni/web/ui.html", "suni/web/chat.html")
+UIS = ("suni/web/face.html", "suni/web/chat.html")   # "/" is face.html in orb mode
 
 # Anchored on the button's own variable: these pages have several click
 # handlers, and a looser pattern cheerfully matches someone else's — it did,
