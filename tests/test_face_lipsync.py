@@ -66,7 +66,7 @@ def test_the_lip_crease_shows_only_when_the_lips_meet():
     line = next(l for l in FACE.splitlines() if l.strip().startswith("fres *= 1.0 - 0.92"))
     # By the mouth as a whole: per point, the still-touching corners of a
     # round mouth glinted.
-    assert "u_mFx.z" in line, "the crease glow is not tied to the lips meeting"
+    assert "mopen" in line and "float mopen = 1.0 - u_mFx.z" in FACE,         "the crease glow is not tied to the lips meeting"
     # faded over time: judged per frame it snapped on between two frames
     assert "cdt * 6" in FACE
 
@@ -88,10 +88,19 @@ def test_the_jaw_drops_below_the_lips_only():
     assert "jw = mix(a_jaw, m_below," in FACE and "vec3 p=jr(pm,jw);" in FACE
 
 
-def test_open_mouths_show_teeth_and_no_cup_rim():
-    assert "float teeth =" in FACE
+def test_open_mouths_show_no_teeth_and_no_cup_rim():
+    """Painted on the gap, the teeth read as a band (judged 2026-10-12)."""
+    assert "float teeth =" not in FACE
     assert "* edge * clamp(v_gap" not in FACE, "the light rim under the lower lip read as a cup"
 
 
 def test_f_and_v_have_their_own_shape():
     assert "u_mB.w * (0.016 * lipLo" in FACE and "window._mouthPose = (open, wide, fv)" in FACE
+
+
+def test_no_dark_patches_beside_the_corners():
+    """Cutting the rim glow over the whole mouth region (v_mreg) darkened a
+    rectangle of cheek beside each corner, and the lifted upper lip's
+    underside drew a black band with dark wedges at the corners."""
+    assert "max(sx * smoothstep(0.0, 0.2, v_mhx)," in FACE
+    assert "smoothstep(0.0, 0.5, v_ms)" in FACE, "the underside of the upper lip is left unlit"

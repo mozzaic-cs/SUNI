@@ -1663,6 +1663,14 @@ void main(){
      showing through rather than drawing an unlit shell over it. */
   if (v_y > cutN) discard;
   vec3 N=normalize(v_n);
+  /* Open, the lifted upper lip shows its underside. It faces down, away from
+     the light, and drew a near-black band that narrowed into dark wedges at
+     the corners. Lit as if facing forward, it reads as lip. Only on upper-lip
+     vertices (v_ms > 0) at the seam: wider, it lit a pale box round the mouth. */
+  float mopen = 1.0 - u_mFx.z;
+  N = normalize(mix(N, normalize(vec3(N.x * 0.5, 0.15, 1.0)),
+        (1.0 - smoothstep(0.0, 0.03, abs(v_mdy))) * smoothstep(0.0, 0.5, v_ms)
+        * smoothstep(0.0, 0.3, v_mhx) * mopen * smoothstep(0.05, -0.35, N.y)));
   float diff=max(0.0,dot(N,normalize(vec3(-0.35,0.45,0.82))));
   float fres=pow(1.0-max(0.0,dot(N,vec3(0.0,0.0,1.0))),2.2);
   /* Not along the lip seam. The rim glow lights every surface that turns away
@@ -1672,8 +1680,16 @@ void main(){
      glowing stripe as she spoke. Limited to the mouth (v_mreg) so the head's
      outline keeps its rim, and to an open mouth: closed, the bright crease
      is where the lips meet and is wanted — open, it is gone, corners too
-     (judged per point, the still-touching corners of a round mouth glinted). */
-  fres *= 1.0 - 0.92 * (1.0 - smoothstep(0.03, 0.06, abs(v_mdy - 0.004))) * smoothstep(0.02, 0.12, v_mreg) * (1.0 - u_mFx.z);
+     (judged per point, the still-touching corners of a round mouth glinted).
+     Only within the lips' span (v_mhx): v_mreg also covers the cheek beside
+     each corner, and cutting the rim there left a dark rectangle next to the
+     corners as she spoke, worst on the right, the side away from the light.
+     The corners themselves get just a thin strip along the crease. */
+  float sx = 1.0 - smoothstep(0.03, 0.06, abs(v_mdy - 0.004));
+  float rimCut = max(sx * smoothstep(0.0, 0.2, v_mhx),
+                     (1.0 - smoothstep(0.006, 0.014, abs(v_mdy - 0.004)))
+                     * (1.0 - smoothstep(0.15, 0.17, abs(v_p.x))) * smoothstep(0.02, 0.12, v_mreg));
+  fres *= 1.0 - 0.92 * rimCut * mopen;
   /* holographic shading: low ambient, cool body, strong glowing fresnel rim */
   vec3 col=u_color*(0.12+0.50*diff) + vec3(0.50,0.85,1.0)*fres*1.5;
   if (v_hair > 0.5) {
@@ -1729,17 +1745,8 @@ void main(){
      darkened lip skin too, with a jagged edge where the crease interleaves. */
   float inner = (1.0 - smoothstep(0.0, 0.9, abs(v_ms))) * smoothstep(0.25, 0.6, v_mhx) * smoothstep(0.0, 0.08, v_gap);
   col = mix(col, col * 0.14 + vec3(0.010, 0.030, 0.050), clamp(inner * u_mFx.x, 0.0, 0.85));
-  /* A hint of the upper teeth, just under the upper lip: dim, in her own
-     light, with faint gaps between them. f runs 0 at the upper lip to 1 at the
-     lower, so the band keeps to the top of the opening at any size. */
-  float tf = 0.5 - 0.5 * v_ms;
-  float teeth = smoothstep(0.04, 0.08, tf) * (1.0 - smoothstep(0.34, 0.40, tf))
-              * smoothstep(0.25, 0.6, v_mhx) * smoothstep(0.02, 0.10, v_gap);
-  float tgap = 1.0 - 0.6 * pow(abs(cos(v_p.x * 3.14159 / 0.045)), 18.0);
-  col = mix(col, (u_color * 0.62 + vec3(0.05, 0.09, 0.11)) * tgap, teeth * 0.88);
-  /* the lower lip's top edge catches the light once the mouth is open */
-  float edge = 1.0 - smoothstep(0.0, 0.007, abs(v_mdy + 0.034));
-   /* squared: gone before the corners */
+  /* No teeth: painted on the gap they read as a band, not as teeth (judged
+     2026-10-12). */
   if (u_mFx.y > 0.0) col = mix(col, vec3(1.0, 0.25, 0.35), clamp(v_mreg, 0.0, 1.0) * 0.6);
   gl_FragColor=vec4(col*u_bright, 1.0);
 }`;
