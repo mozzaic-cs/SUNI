@@ -431,7 +431,12 @@ header{
 <script>
 'use strict';
 // ═══════════════════════════════════════════════════════════════════
-//  WEBGL FLUID ANIMATION  —  Siri-style colorful cloud orb
+//  THE ORB  —  a solid holographic body in /face's light: the same nebula
+//  and stars, lit like her head (rim, scanlines), energy flowing over its
+//  surface and a light inside. Thinking sweeps a scan line, speaking swells
+//  it and draws her voice as an outline that bends, working runs bands down
+//  it, browsing sweeps a radar. Nothing orbits it: with a grid, rings and
+//  motes it read as a globe or an atom (rejected 2026-10-12).
 // ═══════════════════════════════════════════════════════════════════
 
 const canvas = document.getElementById('suni-canvas');
@@ -445,172 +450,153 @@ const FS = `
 precision highp float;
 uniform vec2  u_res;
 uniform float u_t;
-uniform float u_ss; /* smooth state: 0=idle 1=thinking 2=speaking */
-uniform float u_cam; /* webcam presence/motion energy 0..1 (opt-in) */
+uniform float u_ss;   /* smooth state: 0 idle, 1 thinking, 2 speaking, 3 working, 4 browsing */
+uniform float u_cam;  /* webcam presence/motion energy 0..1 (opt-in) */
+uniform vec3  u_col;  /* state colour, /face's palette */
+uniform vec2  u_oc;   /* orb centre, uv */
+uniform float u_R;    /* orb radius, in screen heights */
+uniform vec2  u_mouse;/* pointer, -1..1: the orb leans toward it */
+uniform float u_amp;  /* her voice, 0..1 */
+uniform float u_spec[16];
 
-/* ── noise ── */
 float hash(vec2 p){p=fract(p*vec2(127.1,311.7));p+=dot(p,p.yx+19.19);return fract((p.x+p.y)*p.x);}
-float noise(vec2 p){
-  vec2 i=floor(p),f=fract(p);
-  f=f*f*(3.0-2.0*f);
-  return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);
+float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);
+  return mix(mix(hash(i),hash(i+vec2(1.0,0.0)),f.x),mix(hash(i+vec2(0.0,1.0)),hash(i+vec2(1.0,1.0)),f.x),f.y);}
+float fbm(vec2 p){float v=0.0,a=0.5;for(int i=0;i<4;i++){v+=a*noise(p);p=p*2.03+3.1;a*=0.5;}return v;}
+float starL(vec2 uv,float sc,float sp,float sz){
+  vec2 dr=vec2(sin(u_t*sp*0.3)*0.02,cos(u_t*sp*0.2)*0.015);
+  vec2 id=floor((uv+dr)*sc); vec2 f=fract((uv+dr)*sc)-0.5;
+  float h=hash(id); float vis=step(0.972,h);
+  float tw=0.5+0.5*sin(u_t*sp*(1.5+h*3.0)+h*6.28); float d=length(f);
+  return smoothstep(sz,0.0,d)*vis*tw;
 }
-float fbm(vec2 p){
-  float v=0.0,a=0.5;
-  for(int i=0;i<5;i++){v+=a*noise(p);p=p*2.07+vec2(3.7+float(i)*6.13);a*=0.5;}
-  return v;
-}
-
-/* ── parallax star layer ── */
-float starLayer(vec2 uv, float scale, float speed, float size, float t){
-  vec2 drift = vec2(sin(t*speed*0.31)*0.018, cos(t*speed*0.23)*0.013);
-  vec2 id    = floor((uv + drift) * scale);
-  vec2 f     = fract((uv + drift) * scale) - 0.5;
-  float h    = hash(id);
-  float h2   = hash(id + vec2(3.7, 9.1));
-  float vis  = step(0.965, h);
-  float twk  = 0.55 + 0.45*sin(t*speed*(1.8+h*2.5) + h*6.28);
-  float d    = length(f - (vec2(h2, hash(id+vec2(1,2)))-0.5)*0.6);
-  return smoothstep(size, 0.0, d) * vis * twk * (0.35+h2*0.65);
-}
+mat3 rotY(float a){ float c=cos(a),s=sin(a); return mat3(c,0.0,-s, 0.0,1.0,0.0, s,0.0,c); }
+mat3 rotX(float a){ float c=cos(a),s=sin(a); return mat3(1.0,0.0,0.0, 0.0,c,s, 0.0,-s,c); }
 
 void main(){
   vec2 uv = gl_FragCoord.xy / u_res;
-  /* orb in upper portion of screen, chat panel below */
-  vec2 oc = vec2(0.5, 0.65);
-  vec2 p  = (uv - oc);
-  p.x    *= u_res.x / u_res.y;
+  float asp = u_res.x / u_res.y;
+  float ss = u_ss;
+  float thk = clamp(ss, 0.0, 1.0);
+  float spk = clamp(1.0 - abs(ss - 2.0), 0.0, 1.0);
+  float wrk = clamp(1.0 - abs(ss - 3.0), 0.0, 1.0);
+  float brw = clamp(ss - 3.0, 0.0, 1.0);
+  float act = clamp(ss, 0.0, 1.0);
 
-  float ss  = u_ss;
-  float thk = clamp(ss, 0.0, 1.0);                    /* thinking blend  0→1 */
-  float spk = clamp(ss - 1.0, 0.0, 1.0);              /* speaking blend  1→2 */
-  float wrk = clamp(ss - 2.0, 0.0, 1.0);              /* working blend   2→3 */
-  float brw = clamp(ss - 3.0, 0.0, 1.0);              /* browsing blend  3→4 */
-  float spd = 1.0 + ss * 0.9 + u_cam * 0.35;   /* your movement gives it a little more life */
-  float t   = u_t * spd;
+  /* ── the sky: /face's nebula and stars, drifting a little against the pointer ── */
+  vec2 bp = uv - 0.5; bp.x *= asp; bp -= u_mouse * 0.012;
+  float n  = fbm(bp * 2.5 + vec2(u_t * 0.03, u_t * 0.02));
+  float n2 = fbm(bp * 1.4 - vec2(u_t * 0.02, 0.0) + 5.0);
+  float n3 = fbm(bp * 1.8 + vec2(-u_t * 0.018, u_t * 0.024) + 11.0);
+  float neb = pow(clamp(n * 0.6 + n2 * 0.4, 0.0, 1.0), 1.9);
+  vec3 col = mix(vec3(0.02, 0.06, 0.14), u_col, neb * 0.85) * neb * 1.5;
+  float warm = pow(clamp(n2 - n * 0.30, 0.0, 1.0), 2.1);
+  col += mix(vec3(0.98, 0.52, 0.16), vec3(0.78, 0.16, 0.66), n) * warm * 0.42;
+  float acc = pow(clamp(n3 * 0.72 + n2 * 0.25, 0.0, 1.0), 2.3);
+  col += (0.5 + 0.5 * cos(6.2831853 * (vec3(1.0, 0.9, 0.72) * (n3 * 1.35 + n * 0.45) + vec3(0.0, 0.33, 0.60)))) * acc * 0.34;
+  vec2 su = uv - u_mouse * 0.006;
+  col += (starL(su, 26.0, 0.4, 0.012) * 0.9 + starL(su, 13.0, 0.7, 0.02) * 1.2 + starL(su, 7.0, 1.1, 0.03) * 1.5) * vec3(0.82, 0.92, 1.12);
+  col *= smoothstep(1.6, 0.14, length(bp)) * 0.72;
 
-  /* ── palette ── */
-  vec3 cGold  = vec3(0.788, 0.635, 0.153);
-  vec3 cGoldB = vec3(0.941, 0.753, 0.251);
-  vec3 cAmber = vec3(0.95,  0.55,  0.10);
-  vec3 cCyan  = vec3(0.000, 0.831, 1.000);
-  vec3 cTeal  = vec3(0.000, 0.650, 0.700);
-  vec3 cPurp  = vec3(0.471, 0.188, 0.941);
-  vec3 cBlue  = vec3(0.094, 0.376, 0.941);
-  vec3 cMag   = vec3(0.878, 0.251, 0.627);
-  /* ── background: pure black ── */
-  vec3 bg = vec3(0.0);
+  /* ── orb space: radius 1 ── */
+  vec2 P = uv - u_oc; P.x *= asp;
+  vec2 p = P / u_R;
+  float px = 1.0 / (u_R * u_res.y);
+  float r = length(p);
+  float z = sqrt(max(0.0, 1.0 - r * r));
+  float inside = smoothstep(1.0 + px, 1.0 - px, r);
 
-  /* ── 3-layer parallax starfield ── */
-  float sL1 = starLayer(uv, 28.0, 0.18, 0.012, u_t); /* far:  dense, tiny, cold  */
-  float sL2 = starLayer(uv, 14.0, 0.38, 0.018, u_t); /* mid:  medium, neutral    */
-  float sL3 = starLayer(uv,  7.0, 0.72, 0.026, u_t); /* near: sparse, warm       */
-  vec3 stCol = sL1*vec3(0.55,0.68,1.0)*0.28
-             + sL2*vec3(0.82,0.90,1.0)*0.44
-             + sL3*vec3(1.00,0.95,0.82)*0.62;
+  /* behind the glass the sky dims, and a soft halo of her light spills round it */
+  col += u_col * exp(-max(r - 1.0, 0.0) * 4.0) * (1.0 - inside) * (0.10 + 0.10 * act + 0.25 * u_amp + 0.08 * u_cam);
 
-  /* ── blob Lissajous paths ── */
-  float br = 0.108 + ss * 0.019;
-  vec2 b0 = vec2(sin(t*0.710)*br,          cos(t*0.530)*br*0.70);
-  vec2 b1 = vec2(cos(t*0.430+1.20)*br*0.85,sin(t*0.670+0.80)*br*0.62);
-  vec2 b2 = vec2(sin(t*0.580+2.10)*br*0.72,cos(t*0.390+1.50)*br*0.88);
-  vec2 b3 = vec2(cos(t*0.820+0.50)*br*0.65,sin(t*0.470+2.30)*br*0.52);
-  vec2 b4 = vec2(sin(t*0.340+1.70)*br*0.92,cos(t*0.610+0.30)*br*0.67);
-  vec2 b5 = vec2(cos(t*0.910+3.10)*br*0.78,sin(t*0.550+1.10)*br*0.56);
+  /* ── the body: solid, lit like /face's head ── */
+  float spin = u_t * (0.10 + 0.25 * thk + 0.25 * wrk);
+  mat3 Rm = rotX(0.30 - u_mouse.y * 0.30) * rotY(spin + u_mouse.x * 0.50);
+  vec3 N = vec3(p, z);
+  vec3 q = Rm * N;
+  /* speaking: the surface swells in slow waves with her voice */
+  float wave = sin(r * 9.0 - u_t * 6.0) * u_amp * spk;
+  vec3 Nl = normalize(N + vec3(p * wave * 0.25, 0.0));
+  /* the light follows the pointer: move and she catches it */
+  vec3 L = normalize(vec3(-0.35 + u_mouse.x * 0.55, 0.45 + u_mouse.y * 0.45, 0.82));
+  float diff = max(0.0, dot(Nl, L));
+  float fres = pow(1.0 - z, 2.2);
 
-  /* ── blob colours — morph with state ── */
-  vec3 cWork = vec3(0.20, 0.85, 0.55);   /* green-teal: working */
-  vec3 cBrws = vec3(0.10, 0.75, 0.95);   /* bright cyan: browsing */
-  vec3 bc0 = mix(mix(mix(cGold,  cWork, wrk), cBrws, brw), mix(cPurp,  cGoldB, spk), thk);
-  vec3 bc1 = mix(mix(mix(cCyan*0.9, cWork*0.7, wrk), cBrws, brw), mix(cBlue, cCyan, spk), thk*0.65);
-  vec3 bc2 = mix(mix(cAmber*0.75, cWork, wrk), mix(cPurp, cMag, spk), thk);
-  vec3 bc3 = mix(mix(cGoldB, cWork*0.6, wrk), mix(cTeal, cGoldB, spk), thk*0.7);
-  vec3 bc4 = mix(cTeal*0.6, cBlue, thk);
-  vec3 bc5 = mix(cGold*0.5, mix(cMag, cGoldB, spk), clamp(ss*0.5,0.0,1.0));
+  /* No surface map: patterned, it read as a planet (clouds, continents).
+     Only a slow, faint shimmer in the sphere's own coordinates. */
+  float fl = u_t * (0.05 + 0.15 * thk + 0.2 * wrk);
+  float shim = fbm(q.xy / (1.4 + q.z) * 1.8 + vec2(fl, -fl * 0.7)) - 0.5;
+  /* energy rising from the centre in slow pulses, quicker as she works */
+  float pulse = pow(0.5 + 0.5 * sin(r * 7.0 - u_t * (1.2 + 1.5 * thk + 2.5 * u_amp)), 6.0) * (1.0 - r) ;
+  /* light from inside: deeper toward the middle, as through a dense glass */
+  float depthGlow = exp(-r * r * 4.0) * (0.18 + 0.15 * act + 0.25 * u_amp + 0.08 * u_cam)
+                  * (0.85 + 0.15 * sin(u_t * 1.3));
 
-  float bw0 = 1.00 + spk*0.35;
-  float bw1 = 0.80 + thk*0.42;
-  float bw2 = 0.62 + thk*0.52;
-  float bw3 = 0.75 + spk*0.55;
-  float bw4 = 0.58 + thk*0.60;
-  float bw5 = 0.18 + spk*0.88;
+  /* Solid: strong light and shade. A wash of inner light made it a pale
+     balloon; the light inside is now a small core seen deep in it. */
+  vec3 body = u_col * (0.03 + 0.62 * pow(diff, 1.3)) * (1.0 + 0.35 * shim);
+  body += u_col * depthGlow;
+  /* depth: light suspended inside the glass, seen along the ray through it.
+     A few samples from the front surface to the back; brighter near the
+     middle, drifting and turning with her state. */
+  if (inside > 0.0) {
+    float em = 0.0;
+    for (int k = 0; k < 10; k++) {
+      float tk = (float(k) + 0.5) / 10.0;
+      vec3 vp = vec3(p, z * (1.0 - 2.0 * tk));
+      vec3 rp = Rm * vp;
+      float dn = fbm(rp.xy * 1.7 + rp.z * 1.3 + vec2(fl * 2.0, -fl * 1.4) + 3.0);
+      em += smoothstep(0.45, 0.85, dn) * exp(-dot(vp, vp) * 2.2);
+    }
+    body += mix(u_col, vec3(0.8, 0.95, 1.0), 0.25) * em * z * 0.18 * (0.55 + 0.45 * act + 0.8 * u_amp + 0.2 * u_cam);
+  }
+  body += mix(u_col, vec3(0.85, 0.97, 1.0), 0.3) * pulse * (0.04 + 0.15 * thk + 0.4 * u_amp * spk);
+  body += vec3(0.50, 0.85, 1.0) * fres * (0.9 + 0.35 * act + 0.6 * u_amp);   /* /face's rim */
+  body += vec3(0.85, 0.96, 1.0) * pow(max(0.0, dot(reflect(-L, Nl), vec3(0.0, 0.0, 1.0))), 36.0) * 0.7;
+  /* gloss: the nebula reflected in the glass, sliding as the pointer moves */
+  vec3 Rf = reflect(vec3(0.0, 0.0, -1.0), Nl);
+  float rfl = fbm(Rf.xy * 1.6 + u_mouse * 0.3 + vec2(u_t * 0.02, 0.0) + 2.0);
+  body += mix(u_col, vec3(0.95, 0.75, 0.45), 0.25) * smoothstep(0.45, 0.8, rfl) * (0.08 + 0.35 * fres);
+  /* thinking: a scan line sweeps her */
+  float scanY = sin(u_t * 1.6) * 0.92;
+  body += u_col * exp(-pow((p.y - scanY) / 0.03, 2.0)) * clamp(1.0 - abs(ss - 1.0), 0.0, 1.0) * 0.9 * (0.3 + 0.7 * z);
+  /* browsing: a radar sweep across the face of it */
+  float ang = atan(p.y, p.x);
+  body += u_col * exp(-mod(u_t * 2.2 - ang, 6.2831853) * 2.0) * brw * 0.35 * z;
+  /* working: bright bands travel down it, like progress */
+  body += u_col * smoothstep(0.92, 1.0, sin(p.y * 4.0 + u_t * 3.0)) * wrk * 0.30 * z;
+  /* /face's scanlines */
+  body *= 0.82 + 0.18 * sin(gl_FragCoord.y * 1.7 + u_t * 3.0);
+  col = mix(col, body, inside);
+  /* the rim, split a little into colours */
+  float e = 0.010;
+  col += vec3(smoothstep(e, 0.0, abs(r - 1.0 - e * 0.5)), smoothstep(e, 0.0, abs(r - 1.0)),
+              smoothstep(e, 0.0, abs(r - 1.0 + e * 0.5))) * (u_col * 0.5 + 0.5) * (0.35 + 0.3 * act + 0.4 * u_amp);
 
-  /* ── gaussian metaball field ── */
-  float bs  = 0.084 + ss*0.014;
-  float bsq = bs*bs;
-  float d0=length(p-b0), d1=length(p-b1), d2=length(p-b2);
-  float d3=length(p-b3), d4=length(p-b4), d5=length(p-b5);
-  float w0=bw0*exp(-d0*d0/bsq), w1=bw1*exp(-d1*d1/bsq), w2=bw2*exp(-d2*d2/bsq);
-  float w3=bw3*exp(-d3*d3/bsq), w4=bw4*exp(-d4*d4/bsq), w5=bw5*exp(-d5*d5/bsq);
-  float field = w0+w1+w2+w3+w4+w5;
-  vec3 blobCol = field>0.001
-    ? (bc0*w0+bc1*w1+bc2*w2+bc3*w3+bc4*w4+bc5*w5)/field
-    : cGold;
+  /* ── speaking: a glowing outline that bends with her voice ── */
+  if (spk > 0.01) {
+    float a2 = atan(p.x, p.y);                      /* 0 at the top, mirrored */
+    float fb = abs(a2) / 3.14159265 * 15.0, sv = 0.0;
+    float sw = 0.0;
+    for (int i = 0; i < 16; i++) { float w = exp(-pow(fb - float(i), 2.0) / 1.4); sv += u_spec[i] * w; sw += w; }
+    sv /= sw;
+    float rr = 1.05 + sv * 0.20;
+    float d = r - rr;
+    float line = exp(-pow(d / (0.006 + px), 2.0));
+    float haze = exp(-max(d, 0.0) * 9.0) * smoothstep(1.0, 1.04, r) * step(0.0, rr - r + 0.5);
+    vec3 vc = mix(u_col, vec3(0.941, 0.753, 0.251), smoothstep(0.25, 0.8, sv));
+    col += vc * (line * 1.1 + haze * 0.18 * sv) * spk * (1.0 - inside);
+  }
 
-  /* ── FBM cloud texture ── */
-  float ns = 3.1 + ss*0.5;
-  float n  = fbm(p*ns         + vec2(u_t*0.065, u_t*0.048));
-  float n2 = fbm(p*ns*1.75    - vec2(u_t*0.048, u_t*0.085) + 7.3);
-  float cloud = n*0.54 + n2*0.46;
-
-  /* ── orb boundary ── */
-  float orbR  = 0.212;
-  float orbD  = length(p);
-  float orbMsk = smoothstep(orbR+0.075, orbR-0.025, orbD);
-
-  /* ── inner core (extra bright center) ── */
-  float core = smoothstep(orbR*0.6, 0.0, orbD) * (0.35 + ss*0.22);
-
-  /* ── density = blobs × cloud ── */
-  float density = clamp((field*0.70 + cloud*0.65)*orbMsk, 0.0, 1.35);
-
-  /* no rim, no glow — clean sphere edge */
-
-  /* ── 3D sphere shading ── */
-  float sz      = sqrt(max(0.0, orbR*orbR - dot(p, p)));
-  vec3  sNorm   = normalize(vec3(p, sz));
-  vec3  vDir    = vec3(0.0, 0.0, 1.0);
-  vec3  lDir    = normalize(vec3(
-                    sin(u_t*0.17)*0.28 - 0.25,
-                    cos(u_t*0.13)*0.18 + 0.52, 0.80));
-  float diff    = max(0.0, dot(sNorm, lDir));
-  vec3  hv      = normalize(lDir + vDir);
-  float spec    = pow(max(0.0, dot(sNorm, hv)), 62.0)
-                * smoothstep(0.0, 0.008, sz);
-  float fresnel = pow(1.0 - max(0.0, dot(sNorm, vDir)), 3.2);
-  float sphMsk  = smoothstep(0.0, 0.006, sz);
-  blobCol  = blobCol * mix(0.28, 1.0, diff);
-  blobCol += vec3(0.96, 0.99, 1.00) * spec * (0.75 + spk*0.55);
-  blobCol  = mix(blobCol, blobCol * 0.12, fresnel * 0.72 * sphMsk);
-
-  /* ── compose ── */
-  vec3 col = bg;
-  /* stars only outside the orb */
-  col += stCol * smoothstep(orbR+0.04, orbR+0.18, orbD);
-  col  = mix(col, blobCol*(1.10+ss*0.20), clamp(density, 0.0, 1.0));
-  col += core * mix(cGoldB, mix(cCyan, cGoldB, spk), thk) * 0.45;
-  col *= 1.0 + spk*0.25;
-
-  /* ── idle = greyscale; colour blooms in as state activates OR when the
-        webcam senses you're present (opt-in), so an idle orb "wakes" for you ── */
-  float luma = dot(col, vec3(0.299, 0.587, 0.114));
-  col = mix(vec3(luma), col, clamp(ss * 1.4 + u_cam * 0.6, 0.0, 1.0));
-  col *= 1.0 + u_cam * 0.10;
-
-  /* ── hard fade to black outside orb + glow radius ── */
-  /* hard clip at orb edge — no halo */
-  col *= smoothstep(orbR + 0.008, orbR - 0.004, orbD);
-
-  /* ── filmic tonemap ── */
-  col  = col / (col + 0.78) * 1.82;
-  col  = clamp(col, 0.0, 1.0);
-
+  /* idle and nobody there: quieter. The webcam (opt-in) wakes it. */
+  col *= 0.85 + 0.15 * act + 0.12 * u_cam;
+  col = 1.0 - exp(-col * 1.35);
   gl_FragColor = vec4(col, 1.0);
 }
 `;
 
 // ── compile & link ──────────────────────────────────────────────────
-let gl, prog, uRes, uT, uSS, uCam, glOk = false;
+let gl, prog, uRes, uT, uSS, uCam, uCol, uOc, uR, uMouse, uAmp, uSpec, glOk = false;
 let _camEnergy = 0;   // smoothed webcam presence/motion energy (0..1), opt-in
 
 try {
@@ -647,6 +633,12 @@ try {
     uT   = gl.getUniformLocation(prog, 'u_t');
     uSS  = gl.getUniformLocation(prog, 'u_ss');
     uCam = gl.getUniformLocation(prog, 'u_cam');
+    uCol = gl.getUniformLocation(prog, 'u_col');
+    uOc  = gl.getUniformLocation(prog, 'u_oc');
+    uR   = gl.getUniformLocation(prog, 'u_R');
+    uMouse = gl.getUniformLocation(prog, 'u_mouse');
+    uAmp = gl.getUniformLocation(prog, 'u_amp');
+    uSpec = gl.getUniformLocation(prog, 'u_spec');
 
     glOk = true;
   }
@@ -791,6 +783,51 @@ function setState(s, toolName) {
     : (typeof t !== 'undefined' && _STATE_KEYS[s] ? t(_STATE_KEYS[s]) : s.toUpperCase());
 }
 
+// ── What the orb shows ───────────────────────────────────────────────
+// /face's palette, so the two pages light the same way per state.
+const ORB_COL = [[70,170,225],[0,212,255],[150,225,255],[40,220,150],[20,200,235]];
+function _orbColor(ss){
+  const i = Math.max(0, Math.min(3, Math.floor(ss))), f = Math.min(1, Math.max(0, ss - i));
+  return ORB_COL[i].map((c, k) => (c + (ORB_COL[i+1][k] - c) * f) / 255);
+}
+// Sized and placed in the space above the chat panel, rings included.
+let _orbFit = { cy: 0.62, R: 0.2 }, _orbFitN = 0;
+function _fitOrb(){
+  const H = window.innerHeight, W = window.innerWidth;
+  const bottom = Math.min(H - 60, _overlay.getBoundingClientRect().top - 12), top = 60;
+  const avail = Math.max(120, bottom - top);
+  const Rpx = Math.max(40, Math.min(avail / 2 / 1.55, W / 2 / 1.75, 260));
+  const cyPx = top + avail / 2;
+  _orbFit.cy += ((1 - cyPx / H) - _orbFit.cy) * 0.2;
+  _orbFit.R  += (Rpx / H - _orbFit.R) * 0.2;
+}
+// The pointer, eased: the orb leans toward it.
+let _mx = 0, _my = 0, _mtx = 0, _mty = 0;
+window.addEventListener('pointermove', e => {
+  _mtx = (e.clientX / window.innerWidth) * 2 - 1;
+  _mty = -((e.clientY / window.innerHeight) * 2 - 1);
+});
+document.addEventListener('pointerleave', () => { _mtx = 0; _mty = 0; });
+// Her voice: 16 bands, low to high, from the analyser on the TTS audio.
+const _fbuf = new Uint8Array(128), _spec = new Float32Array(16);
+let _amp = 0;
+function _voiceBands(dt){
+  const on = analyser && state === 'speaking';
+  if (on) analyser.getByteFrequencyData(_fbuf);
+  let sum = 0;
+  for (let i = 0; i < 16; i++) {
+    let v = 0;
+    if (on) {
+      const a = 1 + Math.floor(Math.pow(i / 16, 1.5) * 56), b = Math.max(a + 1, 1 + Math.floor(Math.pow((i + 1) / 16, 1.5) * 56));
+      for (let k = a; k < b; k++) v += _fbuf[k];
+      v = Math.min(1, Math.max(0, (v / ((b - a) * 255) - 0.12) / 0.6));
+    }
+    _spec[i] += (v - _spec[i]) * Math.min(1, (v > _spec[i] ? 20 : 7) * dt);
+    sum += _spec[i];
+  }
+  _amp += (Math.min(1, sum / 16 * 1.6) - _amp) * Math.min(1, 12 * dt);
+}
+
 // ── Animation loop ───────────────────────────────────────────────────
 let lastTs = 0, T = 0;
 function frame(ts) {
@@ -802,11 +839,21 @@ function frame(ts) {
   stateSmooth += (tgt - stateSmooth) * Math.min(rate * 3, 1);
 
   if (glOk) {
+    if (_orbFitN++ % 15 === 0) _fitOrb();
+    _mx += (_mtx - _mx) * Math.min(1, 3 * dt); _my += (_mty - _my) * Math.min(1, 3 * dt);
+    _voiceBands(dt);
     gl.useProgram(prog);
     gl.uniform2f(uRes, canvas.width, canvas.height);
     gl.uniform1f(uT,  T);
     gl.uniform1f(uSS, stateSmooth);
     gl.uniform1f(uCam, _camEnergy);
+    const c = _orbColor(stateSmooth);
+    gl.uniform3f(uCol, c[0], c[1], c[2]);
+    gl.uniform2f(uOc, 0.5, _orbFit.cy);
+    gl.uniform1f(uR, _orbFit.R);
+    gl.uniform2f(uMouse, _mx, _my);
+    gl.uniform1f(uAmp, _amp);
+    gl.uniform1fv(uSpec, _spec);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
   }
   requestAnimationFrame(frame);
