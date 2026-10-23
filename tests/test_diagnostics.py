@@ -328,6 +328,12 @@ def test_no_user_facing_setting_is_read_from_the_instance_default():
             # a user's preference.
             if "has_" in line or 'cfg["' in line:
                 continue
+            # A helper that IS the instance default (the admin panel's voice),
+            # reached only once the user's own value was found unusable. The
+            # marker is explicit so it is a decision someone made, not a shape
+            # the regex happens to miss.
+            if "# instance-default: after the user's own" in line:
+                continue
             offenders.append(f"{f.relative_to(root.parent)}:{n}: {line.strip()[:90]}")
     assert not offenders, (
         "a per-user setting is being read from the instance config:\n  "

@@ -316,7 +316,7 @@ def test_a_refused_cloud_voice_falls_back_to_a_windows_voice_in_its_language(
     spoken, said = [], []
     _cloud_only(monkeypatch, app, spoken)
     _fake_windows(monkeypatch, said)
-    monkeypatch.setattr(S, "_voice_for_lang", lambda lang: "pt-PT-RaquelNeural")
+    monkeypatch.setattr(S, "_default_voice_for", lambda lang: "pt-PT-RaquelNeural")
     try:
         r = client.post("/api/tts", json={"text": "Olá."}, headers=std_headers)
         assert r.status_code == 200 and r.content == b"RIFFwinwav"
@@ -366,7 +366,7 @@ def test_azure_speaks_the_chosen_voice_instead_of_edge_tts(client, app, std_head
     spoken = []
     _cloud_only(monkeypatch, app, spoken)
     sent = _azure(monkeypatch, (200, b"ID3mp3"))
-    monkeypatch.setattr(S, "_voice_for_lang", lambda lang: "pt-PT-RaquelNeural")
+    monkeypatch.setattr(S, "_default_voice_for", lambda lang: "pt-PT-RaquelNeural")
     try:
         r = client.post("/api/tts", json={"text": "Olá <b> & adeus."}, headers=std_headers)
         assert r.status_code == 200 and r.content == b"ID3mp3"

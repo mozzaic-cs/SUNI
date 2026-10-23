@@ -2717,7 +2717,15 @@ function esc(s) {
 // ═══════════════════════════════════════════
 //  CONFIGURATION
 // ═══════════════════════════════════════════
+// False until the stored config has been applied to the form. Every field
+// renders as its widget default before that, and Save posts every field, so a
+// Save pressed while the dropdowns were still loading — or after /api/config
+// failed — wrote those defaults back over 27 settings (force_claude_code, the
+// channels, doc_paths, code_project_roots, the model chain). Measured.
+let _cfgLoaded = false;
+
 async function loadConfig() {
+  _cfgLoaded = false;
   // Load Ollama models
   try {
     const r = await _apiFetch('/api/ollama/models');
@@ -2752,10 +2760,15 @@ async function loadConfig() {
   // Load current config
   try {
     const r = await _apiFetch('/api/config');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
     const cfg = await r.json();
     applyConfigToForm(cfg);
+    _cfgLoaded = true;
     setTimeout(cfgBaseline, 0);   // what was loaded is the baseline, not a change
-  } catch(e) {}
+  } catch(e) {
+    console.error('Config load failed:', e);
+    _showCfgNotLoaded();
+  }
 
   // Load model inventory (non-blocking)
   loadInventory(false);
@@ -3065,8 +3078,14 @@ function _collectCollabPool(){
   return _collabPool.map(({has_key, ...e}) => e);
 }
 
+function _showCfgNotLoaded() {
+  const out = document.getElementById('cfg-dirty');
+  if (out) out.textContent = t('admin.cfg_not_loaded');
+}
+
 document.getElementById('cfg-form').addEventListener('submit', async e => {
   e.preventDefault();
+  if (!_cfgLoaded) { _showCfgNotLoaded(); return; }
   const form = e.target;
   const data = {};
   ['display_name','tagline','system_prompt_addendum','global_output_dir'].forEach(k => {

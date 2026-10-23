@@ -60,11 +60,23 @@ class TestConfig:
         r = client.get("/api/config", headers=std_headers)
         assert r.status_code == 200
 
-    def test_config_update_by_any_auth_user(self, client, std_headers):
+    def test_config_update_by_admin(self, client, admin_headers):
         r = client.post("/api/config",
                         json={"system_prompt_addendum": "test addendum"},
-                        headers=std_headers)
+                        headers=admin_headers)
         assert r.status_code == 200
+
+    @pytest.mark.parametrize("who", ["std_headers", "ro_headers"])
+    def test_config_update_refused_for_non_admins(self, client, request, who):
+        """A standard account must not be able to rewrite the system config:
+        persona, force_claude_code, code_project_roots, SMTP, allow-lists."""
+        from suni import config as suni_config
+        before = suni_config.get("system_prompt_addendum")
+        r = client.post("/api/config",
+                        json={"system_prompt_addendum": "not yours to set"},
+                        headers=request.getfixturevalue(who))
+        assert r.status_code == 403
+        assert suni_config.get("system_prompt_addendum") == before
 
 
 class TestUsers:

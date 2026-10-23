@@ -116,6 +116,36 @@ def _voice_for_lang(lang: str | None) -> str | None:
     if l.startswith("pt"):
         return _LANG_DEFAULT_VOICE["pt"]
     return None
+
+
+def _admin_voice() -> str:
+    """The admin panel's TTS voice, or the SUNI_TTS_VOICE environment one.
+
+    /api/tts used to fall back to TTS_VOICE (the environment) alone, so the
+    admin panel's "TTS voice" was saved and reached nothing. The untouched
+    config default counts as "not chosen", so an environment-only deployment
+    keeps its voice.
+    """
+    v = str(suni_config.get("tts_voice") or "").strip()  # instance-default: after the user's own
+    if v in _EDGE_TTS_VOICE_SET and v != suni_config.DEFAULTS.get("tts_voice"):
+        return v
+    return TTS_VOICE
+
+
+def _default_voice_for(lang: str | None) -> str:
+    """Voice for someone who has not picked one of their own.
+
+    The admin's default when it speaks their language (or they have none);
+    otherwise the language's own voice, because an English default must not
+    read Portuguese with an English accent (nor a Portuguese one English).
+    """
+    admin = _admin_voice()
+    l = (lang or "").strip().lower()
+    if not l or admin.lower().startswith(l[:2]):
+        return admin
+    if TTS_VOICE.lower().startswith(l[:2]):
+        return _voice_for_lang(l) or TTS_VOICE
+    return _voice_for_lang(l) or admin
 from ..model_inventory import resolve_model
 
 # Whether the Claude Code CLI is installed. Cached with a short TTL because
@@ -2041,7 +2071,7 @@ def create_app() -> FastAPI:
             "model_note_code": note_code,
             "model_note_args": note_args,
             "routing_override": override,
-            "tts_voice":  TTS_VOICE,
+            "tts_voice":  _admin_voice(),
             "memory":     stats["total"],
             "claude_code": has_claude_code,
             "tiers":      {str(t): m.name for t, m in _tier_map.items()},
@@ -2817,9 +2847,8 @@ def create_app() -> FastAPI:
         if _saved_voice in _EDGE_TTS_VOICE_SET:
             voice = _saved_voice
         else:
-            voice = (_voice_for_lang(_settings.get("response_language")
-                                     or _settings.get("stt_language"))
-                     or TTS_VOICE)
+            voice = _default_voice_for(_settings.get("response_language")
+                                       or _settings.get("stt_language"))
         from .. import tts_azure as _azure
         if time.monotonic() >= _cloud_tts["down_until"]:
             try:
@@ -4381,8 +4410,13 @@ def create_app() -> FastAPI:
                 ]
         return JSONResponse(cfg)
 
-    @app.post("/api/config", dependencies=[Depends(_check_token)])
-    async def post_config(request: Request):
+    # Admin only. It was any signed-in user, so a "standard" account could
+    # rewrite the persona, turn force_claude_code on, widen code_project_roots
+    # (where code_task may edit files), repoint SMTP, or add itself to a
+    # channel allow-list — everything RBAC withholds from that role, one POST
+    # away. Reading stays open: the chat pages need the voice/STT settings.
+    @app.post("/api/config")
+    async def post_config(request: Request, admin: dict = Depends(require_admin)):
         body = await request.json()
         # Validate types loosely
         allowed = set(suni_config.DEFAULTS.keys())

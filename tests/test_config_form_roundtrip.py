@@ -175,3 +175,19 @@ def test_the_parser_would_notice_a_missing_field():
 @pytest.mark.parametrize("key", ["audit_retention_days", "session_ingest_owner"])
 def test_those_keys_are_real_config_keys(key):
     assert key in config.DEFAULTS
+
+
+def test_save_refuses_until_the_stored_config_is_on_the_form():
+    """Save posts every field. Before the stored config is applied, each field
+    holds its widget default, so a Save pressed while the dropdowns were still
+    loading (or after /api/config failed) wrote 27 defaults over the real
+    settings. Measured against a live copy of the form."""
+    save_src = _save_fn()
+    head = save_src[:save_src.index("const data")]
+    assert "if (!_cfgLoaded)" in head, "Save must refuse before the config has loaded"
+    load_src = HTML[HTML.index("async function loadConfig()"):]
+    load_src = load_src[:load_src.index("\nfunction applyConfigToForm")]
+    # reset at the start (covers Revert), set only right after a successful apply
+    assert load_src.index("_cfgLoaded = false") < load_src.index("applyConfigToForm(cfg)")
+    assert load_src.index("applyConfigToForm(cfg)") < load_src.index("_cfgLoaded = true")
+    assert "if (!r.ok)" in load_src, "an error response must not count as loaded"
