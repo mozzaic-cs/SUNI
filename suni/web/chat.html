@@ -853,13 +853,27 @@ _modalSave.addEventListener('click', async () => {
 async function _loadTtsVoices() {
   const data = await _apiFetch('/api/tts/voices').then(r => r.json()).catch(() => ({ voices: [] }));
   const sel = document.getElementById('s-tts-voice');
+  // Runs on every open: start from "System default" again, not append twice.
+  sel.querySelectorAll('option:not([value=""])').forEach(o => o.remove());
   for (const v of data.voices || []) {
     const opt = document.createElement('option');
     opt.value = v;
-    opt.textContent = v;
+    opt.textContent = (data.labels || {})[v] || v;   // ElevenLabs ids are not readable
     sel.appendChild(opt);
   }
-  sel.value = _userSettings.tts_voice || '';
+  _keepSavedVoice(sel, _userSettings.tts_voice);
+}
+
+// A saved voice from another provider is not in the list. Keep it as an option:
+// a blank select would save "" and erase it.
+function _keepSavedVoice(sel, saved) {
+  sel.value = saved || '';
+  if (saved && sel.value !== saved) {
+    const opt = document.createElement('option');
+    opt.value = saved; opt.textContent = t('settings.voice_unused', {v: saved});
+    sel.appendChild(opt);
+    sel.value = saved;
+  }
 }
 
 document.getElementById('user-chip').addEventListener('click', () => {

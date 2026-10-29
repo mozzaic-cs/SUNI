@@ -15,7 +15,7 @@ python-multipart==0.0.26
 # HTTP / websockets (channels, gateways)
 httpx==0.28.1
 requests==2.32.3
-websockets==12.0
+websockets==17.3
 
 # Models & providers
 ollama==0.6.1
@@ -39,6 +39,7 @@ PyYAML==6.0.3
 
 # Voice (text-to-speech)
 edge-tts==7.2.8
+elevenlabs==2.75.0
 
 # Files, documents & images (uploads, PDF/DOCX/XLSX/PPTX, email files)
 pillow==10.2.0

@@ -376,6 +376,9 @@ DEFAULTS: dict[str, Any] = {
     "tts_base_url": "",                            # OpenAI-compatible base incl. /v1 (e.g. http://gpu-5:8080/v1)
     "tts_model":    "tts-1",                       # model name the server expects
     "tts_api_key":  "",                            # optional
+    # tts_backend = "elevenlabs": the key is ELEVENLABS_API_KEY in .env.
+    "elevenlabs_voice": "",                        # voice id; "" = first that suits the speaker's language
+    "elevenlabs_model": "eleven_flash_v2_5",       # lowest latency; spoken sentence by sentence
 }
 
 _cache: dict[str, Any] = {}

@@ -1148,10 +1148,29 @@ input,textarea{caret-color:var(--cyan)}
           <select name="tts_backend">
             <option value="auto" data-i18n="admin.opt_tts_auto">Automatic (local voice if installed and no cloud voice chosen, else cloud)</option>
             <option value="local" data-i18n="admin.opt_tts_local">Local voice (Piper, on this machine)</option>
-            <option value="edge" data-i18n="admin.opt_tts_edge">edge-tts (Microsoft cloud)</option>
+            <option value="edge" data-i18n="admin.opt_tts_edge">Microsoft (Azure Speech when keyed, else edge-tts)</option>
+            <option value="elevenlabs" data-i18n="admin.opt_tts_elevenlabs">ElevenLabs (falls back to Microsoft)</option>
             <option value="server" data-i18n="admin.opt_tts_self">Self-hosted (audio stays in your infra)</option>
           </select>
           <div class="field-hint" data-i18n-html="admin.hint_tts">Self-hosted TTS keeps the spoken reply text inside your infrastructure (privacy/enterprise) and works offline. Uses an OpenAI-compatible <code>/v1/audio/speech</code> server; the voice above is passed through (set it to a voice the server knows). On failure it returns no audio — it does <b>not</b> fall back to the cloud. <b>Needs a running TTS server to validate.</b></div>
+        </div>
+        <div id="cfg-el-box" hidden>
+          <div class="field">
+            <label data-i18n="admin.lbl_el_voice">ElevenLabs default voice</label>
+            <select name="elevenlabs_voice" id="cfg-el-voice">
+              <option value="" data-i18n="admin.opt_el_voice_auto">Automatic: the first voice that suits each person's language</option>
+            </select>
+            <div class="field-hint" data-i18n="admin.hint_el_voice">Portuguese is only ever spoken by a European Portuguese (pt-PT) voice; with none on the account, Portuguese speakers hear Microsoft's.</div>
+          </div>
+          <div class="field">
+            <label data-i18n="admin.lbl_el_model">ElevenLabs model</label>
+            <select name="elevenlabs_model">
+              <option value="eleven_flash_v2_5" data-i18n="admin.opt_el_flash">Flash v2.5 — fastest, cheapest (recommended)</option>
+              <option value="eleven_multilingual_v2" data-i18n="admin.opt_el_multi">Multilingual v2 — steadier, slower</option>
+              <option value="eleven_v4" data-i18n="admin.opt_el_v4">v4 — highest quality, slowest</option>
+            </select>
+          </div>
+          <div id="cfg-el-status" class="field-note" style="font-size:13px;color:var(--muted);margin:-4px 0 12px"></div>
         </div>
         <div class="field">
           <label data-i18n="admin.lbl_tts_url">TTS base URL</label>
@@ -2740,22 +2759,22 @@ async function loadConfig() {
 
   // Load TTS voices
   try {
-    const r = await _apiFetch('/api/tts/voices');
+    const r = await _apiFetch('/api/tts/voices?provider=microsoft');
     const {voices} = await r.json();
     const sel = el('cfg-voice');
     sel.innerHTML = voices.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
   } catch(e) {}
-  // The field above is the default, not the admin's own voice: say which one
-  // the admin actually hears, so the two don't look out of sync.
   try {
-    const mine = el('cfg-voice-mine');
-    mine.textContent = '';
-    const r = await _apiFetch('/api/users/me/settings');
-    if (r.ok) {
-      const v = ((await r.json()).tts_voice || '').trim();
-      mine.textContent = v ? t('admin.hint_tts_yours', {v}) : t('admin.hint_tts_yours_default');
-    }
+    const r = await _apiFetch('/api/tts/voices?provider=elevenlabs');
+    const {voices, labels} = await r.json();
+    const sel = el('cfg-el-voice');
+    const keep = sel.querySelector('option[value=""]').outerHTML;
+    // The value without its "eleven:" prefix: that is what the config stores.
+    sel.innerHTML = keep + (voices || []).map(v =>
+      `<option value="${esc(v.replace(/^eleven:/, ''))}">${esc((labels || {})[v] || v)}</option>`).join('');
   } catch(e) {}
+  _showVoicePlan();
+  _showElevenStatus();
 
   // Accounts for the ingest-owner picker. Populated BEFORE applyConfigToForm:
   // assigning a <select> value that has no matching <option> yet silently
@@ -2790,6 +2809,43 @@ async function loadConfig() {
   loadHardware();
 }
 
+// The fields above are defaults, not the admin's own voice: say which voice the
+// admin actually hears, and from whom, so the two don't look out of sync.
+async function _showVoicePlan() {
+  const mine = el('cfg-voice-mine');
+  if (!mine) return;
+  mine.textContent = '';
+  try {
+    const r = await _apiFetch('/api/tts/plan');
+    if (!r.ok) return;
+    const p = await r.json();
+    const who = t('admin.tts_provider_' + p.provider);
+    mine.textContent = t('admin.hint_tts_yours', {v: p.label || p.voice, p: who})
+      + (p.elevenlabs_resting ? ' ' + t('admin.el_resting') : '');
+  } catch(e) {}
+}
+async function _showElevenStatus() {
+  const box = el('cfg-el-status');
+  if (!box) return;
+  box.textContent = '';
+  try {
+    const r = await _apiFetch('/api/tts/elevenlabs/usage');
+    if (!r.ok) return;
+    const u = await r.json();
+    if (!u.configured) box.textContent = t('admin.el_no_key');
+    else if (u.error) box.textContent = t('admin.el_error', {e: u.error});
+    else box.textContent = t('admin.el_usage', {used: (u.used || 0).toLocaleString(), limit: (u.limit || 0).toLocaleString(), tier: u.tier});
+  } catch(e) {}
+}
+function _syncTtsBackend() {
+  const tb = document.querySelector('#cfg-form [name=tts_backend]');
+  const box = el('cfg-el-box');
+  if (tb && box) box.hidden = tb.value !== 'elevenlabs';
+}
+document.addEventListener('change', e => {
+  if (e.target && e.target.name === 'tts_backend') _syncTtsBackend();
+});
+
 function applyConfigToForm(cfg) {
   const form = document.getElementById('cfg-form');
   const fields = ['display_name','tagline','model','tts_voice',
@@ -2800,6 +2856,7 @@ function applyConfigToForm(cfg) {
                   'stt_backend','stt_base_url','stt_model','stt_api_key',
                   'vision_base_url','vision_model','vision_api_key',
                   'tts_backend','tts_base_url','tts_model','tts_api_key',
+                  'elevenlabs_voice','elevenlabs_model',
                   // A field missing from this list is not merely "not shown":
                   // it renders as its widget default, and because it lives
                   // inside cfg-form the next Save posts that default back and
@@ -2849,6 +2906,17 @@ function applyConfigToForm(cfg) {
   const _tb = form.elements.tts_backend;
   if (_tb) _tb.value = ({'': 'auto', piper: 'local'})[String(cfg.tts_backend ?? '').toLowerCase()]
                        ?? String(cfg.tts_backend).toLowerCase();
+  _syncTtsBackend();
+
+  // The stored ElevenLabs voice, kept even when the list did not load: a blank
+  // select would save "" and lose it.
+  const _ev = form.elements.elevenlabs_voice;
+  if (_ev && cfg.elevenlabs_voice && _ev.value !== cfg.elevenlabs_voice) {
+    const o = document.createElement('option');
+    o.value = o.textContent = cfg.elevenlabs_voice;
+    _ev.appendChild(o);
+    _ev.value = cfg.elevenlabs_voice;
+  }
 
   // Checkbox fields
   const fcc = document.getElementById('force_claude_code');
@@ -3130,6 +3198,8 @@ document.getElementById('cfg-form').addEventListener('submit', async e => {
   data.tts_base_url   = (form.elements.tts_base_url?.value ?? '').trim();
   data.tts_model      = (form.elements.tts_model?.value ?? '').trim() || 'tts-1';
   data.tts_api_key    = form.elements.tts_api_key?.value ?? '';
+  data.elevenlabs_voice = form.elements.elevenlabs_voice?.value ?? '';
+  data.elevenlabs_model = form.elements.elevenlabs_model?.value || 'eleven_flash_v2_5';
   data.tts_voice    = form.elements.tts_voice?.value;
   data.stt_language      = form.elements.stt_language?.value;
   data.response_language = form.elements.response_language?.value ?? '';
@@ -3227,6 +3297,7 @@ document.getElementById('cfg-form').addEventListener('submit', async e => {
     if (res.ok) {
       const msg = el('save-msg');
       cfgBaseline();
+      _showVoicePlan();   // a new provider or default changes what the admin hears
       msg.classList.add('show');
       el('restart-note').style.display = '';
       setTimeout(() => msg.classList.remove('show'), 3000);

@@ -33,8 +33,8 @@ def _local_branch() -> str:
     the test over prose. That is the third time today a slice-sized test has
     broken on an insertion.
     """
-    i = SERVER.index("_tts_backend = str(suni_config.get")
-    j = SERVER.index("if _saved_voice in _EDGE_TTS_VOICE_SET:", i)
+    i = SERVER.index('if _provider == "local":')
+    j = SERVER.index("voice = _microsoft_voice(_settings)", i)
     return SERVER[i:j]
 
 
@@ -141,43 +141,45 @@ def test_the_loop_survives_synthesis():
 
 
 # ── a voice somebody chose must win ─────────────────────────────────────────
-def test_an_explicitly_chosen_voice_is_not_overridden():
-    """The first version ran the local branch before reading the saved voice,
-    so a female voice somebody had selected silently became the male one that
-    happens to be the only European Portuguese voice piper ships. Their setting
-    reached nothing. Speed is not worth taking a choice away."""
-    block = _local_branch()
-    assert "_chose_edge" in block, "the saved voice is not consulted"
-    assert "_saved_voice in _EDGE_TTS_VOICE_SET" in block
-    assert 'not _chose_edge' in block, "auto still overrides a chosen voice"
-    # And the saved voice has to be read BEFORE the decision, not after.
-    assert SERVER.index("_saved_voice = str(") < SERVER.index(
-        "_tts_backend = str(suni_config.get")
+def _plan(client, headers, monkeypatch, saved, backend):
+    """What /api/tts would speak with, asked through the route that says so."""
+    from suni import config as C
+    from suni.web import server as S
+    real_get = C.get
+    monkeypatch.setattr(C, "get", lambda k, d=None: backend if k == "tts_backend"
+                        else real_get(k, d))
+    monkeypatch.setattr(S._user_settings, "get",
+                        lambda uid: {"tts_voice": saved, "response_language": "pt-PT"})
+    monkeypatch.setattr(T, "available", lambda: True)
+    r = client.get("/api/tts/plan", headers=headers)
+    assert r.status_code == 200, r.status_code
+    return r.json()["provider"]
 
 
 def test_the_local_voice_can_be_chosen_on_purpose():
     """A voice that cannot be selected is not an option, it is an ambush: the
     only way it could ever play was by overriding something."""
     i = SERVER.index("async def tts_voices")
-    block = SERVER[i:i + 900]
+    block = SERVER[i:i + 2000]
     assert '"local:"' in block or "f\"local:{p.stem}\"" in block, (
         "the picker lists only cloud voices, so local is unchoosable")
-    assert "_chose_local" in _local_branch(), "choosing it has no effect"
 
 
-@pytest.mark.parametrize("saved,backend,expect_local", [
-    ("pt-PT-RaquelNeural", "auto",  False),   # chosen cloud voice — honoured
-    ("",                   "auto",  True),    # nothing chosen — local is the faster default
-    ("local:pt_PT-tugao",  "auto",  True),    # chosen local voice
-    ("pt-PT-RaquelNeural", "piper", True),    # pinned by the operator, deliberately
+# The first version ran the local branch before reading the saved voice, so a
+# female voice somebody had selected silently became the male one that happens
+# to be the only European Portuguese voice piper ships. Their setting reached
+# nothing. Speed is not worth taking a choice away.
+@pytest.mark.parametrize("saved,backend,expect", [
+    ("pt-PT-RaquelNeural", "auto",  "microsoft"),   # chosen cloud voice — honoured
+    ("",                   "auto",  "local"),       # nothing chosen — local is the faster default
+    ("local:pt_PT-tugao",  "auto",  "local"),       # chosen local voice
+    ("local:pt_PT-tugao",  "edge",  "local"),       # ...whatever the backend
+    ("pt-PT-RaquelNeural", "piper", "local"),       # pinned by the operator, deliberately
+    ("pt-PT-RaquelNeural", "edge",  "microsoft"),
+    ("",                   "edge",  "microsoft"),
 ])
-def test_the_decision_table_holds(saved, backend, expect_local):
-    edge_voices = {"en-GB-SoniaNeural", "pt-PT-RaquelNeural"}
-    chose_edge = saved in edge_voices
-    chose_local = saved.startswith("local:")
-    use_local = chose_local or backend in ("piper", "local") or (
-        backend == "auto" and not chose_edge)
-    assert use_local is expect_local
+def test_the_decision_table_holds(client, std_headers, monkeypatch, saved, backend, expect):
+    assert _plan(client, std_headers, monkeypatch, saved, backend) == expect
 
 
 # ── whose language is it ────────────────────────────────────────────────────
@@ -290,8 +292,8 @@ def test_a_refused_cloud_voice_is_not_retried_before_every_sentence(client, app,
 
 def test_self_hosted_tts_still_never_falls_back():
     """A privacy deployment returns before the fallback: its 503 stays a 503."""
-    i = SERVER.index("if _tts.enabled():")
-    j = SERVER.index("_tts_backend = str(suni_config.get", i)
+    i = SERVER.index('if _provider == "server":')
+    j = SERVER.index('if _provider == "elevenlabs":', i)
     assert "return Response(status_code=503)" in SERVER[i:j]
     assert SERVER.index("local fallback failed too") > j
 

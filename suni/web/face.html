@@ -5777,7 +5777,7 @@ async function _openOrbSettings() {
   if (voiceSel.options.length === 1) {
     const data = await _apiFetch('/api/tts/voices').then(r=>r.json()).catch(()=>({voices:[]}));
     for (const v of data.voices||[]) {
-      const opt = document.createElement('option'); opt.value = v; opt.textContent = v;
+      const opt = document.createElement('option'); opt.value = v; opt.textContent = (data.labels||{})[v] || v;
       voiceSel.appendChild(opt);
     }
   }
@@ -5785,7 +5785,17 @@ async function _openOrbSettings() {
   _orbUserSettings = prefs;
   document.getElementById('orb-resp-lang').value  = prefs.response_language || '';
   document.getElementById('orb-stt-lang').value   = prefs.stt_language      || '';
-  document.getElementById('orb-tts-voice').value  = prefs.tts_voice         || '';
+  // A saved voice from another provider is not in the list. Keep it as an
+  // option: a blank select would save "" and erase it.
+  voiceSel.value = prefs.tts_voice || '';
+  if (prefs.tts_voice && voiceSel.value !== prefs.tts_voice) {
+    voiceSel.querySelectorAll('option[data-kept]').forEach(o => o.remove());
+    const opt = document.createElement('option');
+    opt.value = prefs.tts_voice; opt.dataset.kept = '1';
+    opt.textContent = t('settings.voice_unused', {v: prefs.tts_voice});
+    voiceSel.appendChild(opt);
+    voiceSel.value = prefs.tts_voice;
+  }
   // Re-read on every open: a rule may have been added since the last one.
   if (window.renderTrustRules) renderTrustRules(document.getElementById('trust-rules'));
   _orbModal.style.display = 'flex';

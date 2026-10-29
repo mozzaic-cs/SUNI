@@ -2757,6 +2757,59 @@ def create_app() -> FastAPI:
     _cloud_tts = {"down_until": 0.0}
     app.state.cloud_tts = _cloud_tts
     _CLOUD_TTS_RETRY_S = 300
+    # ElevenLabs is benched on its own: an exhausted free month must not take
+    # Microsoft down with it — Microsoft is where it falls back to.
+    _eleven_tts = {"down_until": 0.0}
+    app.state.eleven_tts = _eleven_tts
+    _ELEVEN_RETRY_S = 300
+    _ELEVEN_QUOTA_RETRY_S = 1800
+
+    def _speech_language(settings: dict) -> str:
+        language = settings.get("response_language") or settings.get("stt_language") or ""
+        return language or suni_config.get("response_language") or ""
+
+    async def _speech_plan(settings: dict) -> tuple[str, str]:
+        """(provider, voice) for this speaker's next clip, before any fallback.
+
+        A VOICE THE USER CHOSE WINS within the provider. The first version ran
+        the local voice before the chosen one and turned a female voice into a
+        male one. "auto" therefore means "local when nothing was chosen".
+
+        The provider the admin picked wins: a voice saved for another provider
+        is not used, it falls back to this provider's voice for the speaker's
+        language. Otherwise switching to ElevenLabs would change nothing for
+        anyone who had once picked a Microsoft voice.
+        """
+        from .. import tts as _tts
+        from .. import tts_elevenlabs as _el
+        from .. import tts_windows as _win
+        saved = str(settings.get("tts_voice") or "").strip()
+        backend = str(suni_config.get("tts_backend", "auto") or "auto").lower()
+        if _tts.enabled():
+            return "server", settings.get("tts_voice") or TTS_VOICE
+        if backend == "elevenlabs" and _el.configured()                 and time.monotonic() >= _eleven_tts["down_until"]:
+            vid = await _el.pick(saved, str(suni_config.get("elevenlabs_voice") or ""),
+                                 _speech_language(settings))
+            if vid:
+                return "elevenlabs", vid
+            # No voice on the account suits this language (Portuguese needs a
+            # pt-PT one): Microsoft's voice for it, not a foreign accent.
+        if backend != "elevenlabs" and saved.startswith(_win.PREFIX):
+            return "windows", saved
+        if backend != "elevenlabs" and (saved.startswith("local:")
+                                        or backend in ("piper", "local")
+                                        or (backend == "auto" and saved not in _EDGE_TTS_VOICE_SET)):
+            from .. import tts_local as _local
+            if _local.available():
+                return "local", saved
+        return "microsoft", _microsoft_voice(settings)
+
+    def _microsoft_voice(settings: dict) -> str:
+        saved = str(settings.get("tts_voice") or "").strip()
+        if saved in _EDGE_TTS_VOICE_SET:
+            return saved
+        return _default_voice_for(settings.get("response_language")
+                                  or settings.get("stt_language"))
 
     @app.post("/api/tts")
     @_limiter.limit("40/minute")
@@ -2783,12 +2836,14 @@ def create_app() -> FastAPI:
         _settings    = _user_settings.get(user["id"]) or {}
         _saved_voice = str(_settings.get("tts_voice") or "").strip()
 
+        _provider, _plan_voice = await _speech_plan(_settings)
+
         # Self-hosted TTS (opt-in) — audio stays in your infra. Do NOT fall back
         # to edge-tts on failure: a privacy-motivated deployment must not silently
         # leak text to the cloud. Return 503 (no audio) instead. Server voice IDs
         # are backend-specific, so we don't validate/remap them against edge names.
         from .. import tts as _tts
-        if _tts.enabled():
+        if _provider == "server":
             voice = body.get("voice") or _saved_voice or TTS_VOICE
             try:
                 audio = await _tts.synthesize(clean, voice)
@@ -2797,58 +2852,49 @@ def create_app() -> FastAPI:
                 _log.warning("[TTS] self-hosted TTS failed (no cloud fallback): %s", e)
                 return Response(status_code=503)
 
-        # edge-tts: honour the user's saved voice only if it's a real edge voice;
-        # otherwise speak in the reply language so Portuguese text isn't read with
-        # an English accent — and a stale/invalid voice ID can't cause a silent
-        # 503. We deliberately ignore any client-sent voice for this decision: the
-        # browser echoes back a possibly-English global default, which must not
-        # override a Portuguese speaker's language.
-        # The local voice first, when there is one. Measured on this machine,
-        # per sentence: edge-tts ~2.0-2.5s to first audio, piper 0.12s. Replies
-        # are spoken sentence by sentence, so that two seconds is paid before
-        # the first one and then raced against playback for every one after —
-        # and it is a dependency on Microsoft being reachable, which has
-        # returned 503 here merely because the box was busy.
+        # ElevenLabs, when the admin chose it. Any failure — the free month's
+        # credits spent above all — falls back to Microsoft, never to silence.
+        if _provider == "elevenlabs":
+            from .. import tts_elevenlabs as _el
+            try:
+                _mp3 = await _el.speak(clean, _plan_voice, _speech_language(_settings))
+                return Response(content=_mp3, media_type="audio/mpeg")
+            except _el.QuotaExceeded as exc:
+                _eleven_tts["down_until"] = time.monotonic() + _ELEVEN_QUOTA_RETRY_S
+                _log.warning("[TTS] %s — speaking with Microsoft for the next %ds",
+                             exc, _ELEVEN_QUOTA_RETRY_S)
+            except Exception as exc:      # noqa: BLE001
+                _eleven_tts["down_until"] = time.monotonic() + _ELEVEN_RETRY_S
+                _log.warning("[TTS] ElevenLabs failed (%s) — speaking with Microsoft "
+                             "for the next %ds", str(exc)[:160], _ELEVEN_RETRY_S)
+
         # A Windows voice chosen on purpose ("win:Microsoft Helia - ..."):
         # rendered here like any other clip, so the lip sync still sees it.
         from .. import tts_windows as _win
-        if _saved_voice.startswith(_win.PREFIX):
+        if _provider == "windows":
             _wav = await _win.speak(clean, _saved_voice)
             if _wav:
                 return Response(content=_wav, media_type="audio/wav")
-        _tts_backend = str(suni_config.get("tts_backend", "auto") or "auto").lower()
-        # A VOICE THE USER CHOSE WINS. The first version of this ran the local
-        # branch first and silently overrode an explicitly selected voice —
-        # a female one became a male one, and the setting in the admin panel
-        # reached nothing. Speed is not worth taking somebody's choice away.
-        #
-        # "auto" therefore means "local when nothing was chosen"; picking
-        # "local" from the voice list is how you choose it on purpose, and
-        # "piper" in the config pins it regardless.
-        _chose_edge = _saved_voice in _EDGE_TTS_VOICE_SET
-        _chose_local = _saved_voice.startswith("local:")
+        # The local voice (see _speech_plan for when). Measured on this machine,
+        # per sentence: edge-tts ~2.0-2.5s to first audio, piper 0.12s.
         _tried_local = False
-        if _chose_local or (_tts_backend in ("piper", "local")) or (
-                _tts_backend == "auto" and not _chose_edge):
+        if _provider == "local":
             try:
                 from .. import tts_local as _local
-                if _local.available():
-                    _tried_local = True
-                    _wav = await _local.speak(clean)
-                    if _wav:
-                        return Response(content=_wav, media_type="audio/wav")
-                    # Fell through on purpose: a failed clip must not cost
-                    # somebody their voice output when the cloud still works.
-                elif _tts_backend != "auto":
-                    _log.info("[TTS] no local voice installed — using the cloud voice")
+                _tried_local = True
+                _wav = await _local.speak(clean)
+                if _wav:
+                    return Response(content=_wav, media_type="audio/wav")
+                # Fell through on purpose: a failed clip must not cost
+                # somebody their voice output when the cloud still works.
             except Exception as exc:      # noqa: BLE001
                 _log.warning("[TTS] local voice failed, using the cloud: %s", exc)
 
-        if _saved_voice in _EDGE_TTS_VOICE_SET:
-            voice = _saved_voice
-        else:
-            voice = _default_voice_for(_settings.get("response_language")
-                                       or _settings.get("stt_language"))
+        # Microsoft: the user's saved voice only if it's a real edge voice;
+        # otherwise the reply language's, so Portuguese text isn't read with an
+        # English accent. Any client-sent voice is ignored on purpose: the
+        # browser echoes back a possibly-English global default.
+        voice = _microsoft_voice(_settings)
         from .. import tts_azure as _azure
         if time.monotonic() >= _cloud_tts["down_until"]:
             try:
@@ -4523,14 +4569,27 @@ def create_app() -> FastAPI:
         return JSONResponse({"models": await _ollama_models()})
 
     @app.get("/api/tts/voices", dependencies=[Depends(_check_token)])
-    async def tts_voices():
+    async def tts_voices(provider: str = ""):
         """Every voice that can actually be picked, cloud and local together.
 
         Listing only the cloud ones made the local voice unchoosable: it could
         arrive only by overriding whatever the person had selected, which is
         how a chosen female voice became a male one without anyone asking.
         A voice you cannot select is not an option, it is an ambush.
+
+        With ElevenLabs chosen in the admin panel, only its voices: any other
+        would be saved and then not used. `labels` names the ones whose id is
+        not readable. `provider` lets the admin panel list either set.
         """
+        from .. import tts_elevenlabs as _el
+        want = (provider or "").lower() or (
+            "elevenlabs" if str(suni_config.get("tts_backend") or "").lower() == "elevenlabs"
+            else "microsoft")
+        if want == "elevenlabs":
+            vs = await _el.voices()
+            return JSONResponse({"provider": "elevenlabs",
+                                 "voices": [_el.PREFIX + v["id"] for v in vs],
+                                 "labels": {_el.PREFIX + v["id"]: v["label"] for v in vs}})
         voices = list(EDGE_TTS_VOICES)
         try:
             from .. import tts_local as _local
@@ -4543,7 +4602,22 @@ def create_app() -> FastAPI:
             voices.extend(_win.voice_ids())
         except Exception:      # noqa: BLE001 — not Windows, or no SAPI
             pass
-        return JSONResponse({"voices": voices})
+        return JSONResponse({"provider": "microsoft", "voices": voices})
+
+    @app.get("/api/tts/plan")
+    async def tts_plan(user: dict = Depends(get_current_user)):
+        """The voice this user will actually hear next, and from whom — so the
+        settings pages can say so instead of showing a default that isn't used."""
+        from .. import tts_elevenlabs as _el
+        provider, voice = await _speech_plan(_user_settings.get(user["id"]) or {})
+        label = _el.label_for(voice) if provider == "elevenlabs" else voice
+        return JSONResponse({"provider": provider, "voice": voice, "label": label,
+                             "elevenlabs_resting": time.monotonic() < _eleven_tts["down_until"]})
+
+    @app.get("/api/tts/elevenlabs/usage")
+    async def tts_elevenlabs_usage(admin: dict = Depends(require_admin)):
+        from .. import tts_elevenlabs as _el
+        return JSONResponse(await _el.usage())
 
     return app
 

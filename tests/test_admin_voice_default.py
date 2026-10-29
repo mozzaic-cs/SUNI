@@ -54,10 +54,11 @@ def test_an_invalid_admin_voice_cannot_silence_speech(admin_voice):
     assert S._admin_voice() == S.TTS_VOICE
 
 
-def test_tts_route_uses_the_default_not_the_constant():
-    import inspect
-    src = inspect.getsource(S)
-    i = src.index("if _saved_voice in _EDGE_TTS_VOICE_SET:")
-    block = src[i:i + 400]
-    assert "_default_voice_for(" in block
-    assert "or TTS_VOICE" not in block
+def test_tts_route_uses_the_default_not_the_constant(client, std_headers, monkeypatch):
+    """Someone with no voice of their own hears the admin's default."""
+    monkeypatch.setitem(suni_config._cache, "tts_backend", "edge")
+    monkeypatch.setitem(suni_config._cache, "tts_voice", "en-GB-LibbyNeural")
+    monkeypatch.setattr(S._user_settings, "get", lambda uid: {"response_language": "en-GB"})
+    monkeypatch.setattr(S, "TTS_VOICE", "en-GB-RyanNeural")
+    r = client.get("/api/tts/plan", headers=std_headers)
+    assert r.json() == {**r.json(), "provider": "microsoft", "voice": "en-GB-LibbyNeural"}
