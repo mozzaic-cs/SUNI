@@ -490,3 +490,23 @@ def test_a_mail_turn_neither_resumes_nor_saves_a_session(monkeypatch):
             assert "Bash" not in a[a.index("--allowedTools") + 1]
         else:
             assert a[a.index("--resume") + 1] == "OLD" and saved == ["NEW"]
+
+
+def test_a_password_changed_in_the_admin_panel_is_used_without_a_restart(monkeypatch):
+    cfg = {"smtp_user": "suni@acme.test", "smtp_pass": "old",
+           "notify_to": "boss@acme.test"}
+    monkeypatch.setattr(email_notify, "setting", lambda k, e, d="": cfg.get(k, d))
+    monkeypatch.setattr(email_reader, "imap_host", lambda: "imap.test")
+    monkeypatch.setattr(email_reader, "poll_interval", lambda: 0.01)
+    tried, stop = [], asyncio.Event()
+
+    def check(user, password):
+        tried.append(password)
+        cfg["smtp_pass"] = "new"              # the admin saves a new password
+        if len(tried) == 2:
+            stop.set()
+        return []
+
+    monkeypatch.setattr(email_reader, "_check_inbox_sync", check)
+    asyncio.run(email_reader.watch(stop))
+    assert tried == ["old", "new"]

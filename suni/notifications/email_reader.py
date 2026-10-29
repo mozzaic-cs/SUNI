@@ -404,6 +404,11 @@ async def watch(stop_event: asyncio.Event) -> None:
 
     loop = asyncio.get_event_loop()
     while not stop_event.is_set():
+        # Read the account on every poll: a password changed in the admin
+        # panel was otherwise ignored until a restart, and the watcher kept
+        # logging in with the old one (AUTHENTICATIONFAILED every cycle).
+        user = setting("smtp_user", "SUNI_SMTP_USER", "") or user
+        password = setting("smtp_pass", "SUNI_SMTP_PASS", "") or password
         try:
             new_emails = await loop.run_in_executor(
                 None, _check_inbox_sync, user, password
