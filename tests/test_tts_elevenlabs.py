@@ -86,6 +86,9 @@ def test_labels_are_readable(account):
 @pytest.mark.parametrize("exc,quota", [
     (NS(status_code=401, body={"detail": {"status": "quota_exceeded"}}), True),
     (NS(status_code=402, body=None), True),
+    # Measured 2026-10-29 with a pt-PT library voice on the free plan.
+    (NS(status_code=402, body={"detail": {"code": "paid_plan_required",
+                                          "status": "payment_required"}}), True),
     (NS(status_code=401, body={"detail": {"status": "invalid_api_key"}}), False),
     (NS(status_code=500, body="boom"), False),
 ])

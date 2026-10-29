@@ -37,7 +37,8 @@ _voice_cache: dict = {"at": 0.0, "voices": []}
 
 
 class QuotaExceeded(RuntimeError):
-    """The account has no credits left this period."""
+    """The account cannot pay for this: no credits left this period, or a voice
+    its plan does not include."""
 
 
 def _key() -> str:
@@ -167,7 +168,11 @@ async def speak(text: str, voice_id: str, lang: str | None) -> bytes:
             buf.extend(chunk)
     except Exception as exc:      # noqa: BLE001
         if _is_quota(exc):
-            raise QuotaExceeded(f"ElevenLabs credits exhausted ({_status(exc)})") from None
+            # Spent credits, or a voice the plan does not cover ("Free users
+            # cannot use library voices via the API" is a 402 too): either
+            # way it will not change in minutes, so the long rest.
+            why = "needs a paid plan" if "paid_plan_required" in str(getattr(exc, "body", ""))                 else "credits exhausted"
+            raise QuotaExceeded(f"ElevenLabs {why} ({_status(exc)})") from None
         raise RuntimeError(f"ElevenLabs answered {_status(exc)}") from None
     if not buf:
         raise RuntimeError("ElevenLabs returned no audio")
