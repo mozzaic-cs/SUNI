@@ -1140,10 +1140,14 @@ input,textarea{caret-color:var(--cyan)}
         <div class="field">
           <label data-i18n="admin.cfg_tts">TTS voice</label>
           <select name="tts_voice" id="cfg-voice"></select>
+          <div class="field-hint" data-i18n="admin.hint_tts_default">Used by anyone who has not picked a voice under "Language &amp; voice" (face or chat page) — their own choice always wins.</div>
+          <div id="cfg-voice-mine" style="font-size:13px;color:var(--gold-b);margin-top:2px"></div>
         </div>
         <div class="field">
           <label data-i18n="admin.lbl_tts_backend">Text-to-speech backend</label>
           <select name="tts_backend">
+            <option value="auto" data-i18n="admin.opt_tts_auto">Automatic (local voice if installed and no cloud voice chosen, else cloud)</option>
+            <option value="local" data-i18n="admin.opt_tts_local">Local voice (Piper, on this machine)</option>
             <option value="edge" data-i18n="admin.opt_tts_edge">edge-tts (Microsoft cloud)</option>
             <option value="server" data-i18n="admin.opt_tts_self">Self-hosted (audio stays in your infra)</option>
           </select>
@@ -2741,6 +2745,17 @@ async function loadConfig() {
     const sel = el('cfg-voice');
     sel.innerHTML = voices.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
   } catch(e) {}
+  // The field above is the default, not the admin's own voice: say which one
+  // the admin actually hears, so the two don't look out of sync.
+  try {
+    const mine = el('cfg-voice-mine');
+    mine.textContent = '';
+    const r = await _apiFetch('/api/users/me/settings');
+    if (r.ok) {
+      const v = ((await r.json()).tts_voice || '').trim();
+      mine.textContent = v ? t('admin.hint_tts_yours', {v}) : t('admin.hint_tts_yours_default');
+    }
+  } catch(e) {}
 
   // Accounts for the ingest-owner picker. Populated BEFORE applyConfigToForm:
   // assigning a <select> value that has no matching <option> yet silently
@@ -2829,6 +2844,11 @@ function applyConfigToForm(cfg) {
     const el = form.elements[k];
     if (el && cfg[k] !== undefined) el.value = cfg[k];
   });
+  // The server reads an empty tts_backend as "auto" and "piper" as "local";
+  // with no matching <option> the select showed blank.
+  const _tb = form.elements.tts_backend;
+  if (_tb) _tb.value = ({'': 'auto', piper: 'local'})[String(cfg.tts_backend ?? '').toLowerCase()]
+                       ?? String(cfg.tts_backend).toLowerCase();
 
   // Checkbox fields
   const fcc = document.getElementById('force_claude_code');
