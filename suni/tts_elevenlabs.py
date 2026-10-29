@@ -37,8 +37,21 @@ _voice_cache: dict = {"at": 0.0, "voices": []}
 
 
 class QuotaExceeded(RuntimeError):
-    """The account cannot pay for this: no credits left this period, or a voice
-    its plan does not include."""
+    """The account cannot pay for this: no credits left this period ("quota"),
+    or a voice its plan does not include ("paid_plan")."""
+    def __init__(self, msg: str, kind: str = "quota"):
+        super().__init__(msg)
+        self.kind = kind
+
+
+# Voices ElevenLabs refused for this plan (free accounts cannot use library
+# voices through the API). Shown as such in the voice menus; not skipped by
+# pick(), so an upgraded plan is found by the next try instead of never.
+_refused: set[str] = set()
+
+
+def refused(voice_id: str) -> bool:
+    return (voice_id or "").removeprefix(PREFIX) in _refused
 
 
 def _key() -> str:
@@ -171,11 +184,15 @@ async def speak(text: str, voice_id: str, lang: str | None) -> bytes:
             # Spent credits, or a voice the plan does not cover ("Free users
             # cannot use library voices via the API" is a 402 too): either
             # way it will not change in minutes, so the long rest.
-            why = "needs a paid plan" if "paid_plan_required" in str(getattr(exc, "body", ""))                 else "credits exhausted"
-            raise QuotaExceeded(f"ElevenLabs {why} ({_status(exc)})") from None
+            if "paid_plan_required" in str(getattr(exc, "body", "")):
+                _refused.add(voice_id.removeprefix(PREFIX))
+                raise QuotaExceeded(f"ElevenLabs needs a paid plan for this voice "
+                                    f"({_status(exc)})", "paid_plan") from None
+            raise QuotaExceeded(f"ElevenLabs credits exhausted ({_status(exc)})") from None
         raise RuntimeError(f"ElevenLabs answered {_status(exc)}") from None
     if not buf:
         raise RuntimeError("ElevenLabs returned no audio")
+    _refused.discard(voice_id.removeprefix(PREFIX))
     return bytes(buf)
 
 

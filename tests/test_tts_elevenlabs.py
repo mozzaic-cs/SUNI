@@ -107,6 +107,8 @@ class _Convert:
 
         async def gen():
             if fail:
+                import asyncio
+                await asyncio.sleep(0.05)   # a network round trip: others get to run
                 raise fail
             yield b"ID3"
             yield b"el-mp3"
@@ -241,3 +243,70 @@ def test_an_unreachable_voice_list_is_not_asked_before_every_sentence(monkeypatc
         assert asyncio.run(EL.voices()) == []
     assert len(calls) == 1
     assert calls[0]["request_options"]["timeout_in_seconds"] <= 5
+
+
+# ── a refused voice says so, and is refused once, not per sentence ──────────
+class _PaidPlan(Exception):
+    status_code = 402
+    body = {"detail": {"code": "paid_plan_required", "status": "payment_required"}}
+
+
+def test_a_voice_the_plan_refuses_is_marked_and_explained(client, app, std_headers,
+                                                         monkeypatch, account):
+    from suni.web import server as S
+    account(CLAUDIA)
+    EL._refused.clear()
+    _sdk(monkeypatch, _Convert(fail=_PaidPlan()))
+    _speaker(monkeypatch, S, voice="eleven:claudia")
+    heard = []
+    _microsoft(monkeypatch, S, heard)
+    app.state.eleven_tts.update(down_until=0.0, ok=False, reason=None)
+    app.state.cloud_tts["down_until"] = 0.0
+    try:
+        r = client.post("/api/tts", json={"text": "Olá."}, headers=std_headers)
+        assert r.content == b"edge-mp3", "no fallback to Microsoft"
+        d = client.get("/api/tts/voices", headers=std_headers).json()
+        assert d["unavailable"] == {"eleven:claudia": "paid_plan"}
+        plan = client.get("/api/tts/plan", headers=std_headers).json()
+        assert plan["provider"] == "microsoft" and plan["elevenlabs_reason"] == "paid_plan"
+    finally:
+        app.state.eleven_tts.update(down_until=0.0, ok=False, reason=None)
+        EL._refused.clear()
+
+
+def test_a_voice_that_works_again_is_no_longer_marked(monkeypatch, account):
+    import asyncio
+    account(CLAUDIA)
+    EL._refused.add("claudia")
+    _sdk(monkeypatch, _Convert())
+    asyncio.run(EL.speak("Olá.", "eleven:claudia", "pt-PT"))
+    assert not EL.refused("claudia"), "an upgraded plan still shows the voice as refused"
+
+
+def test_a_replys_sentences_are_refused_once_not_each(app, std_headers, monkeypatch, account):
+    """A reply's sentences reach /api/tts together. All of them were sent to
+    ElevenLabs and refused in the same second, before the first refusal could
+    start the rest."""
+    import asyncio
+    import httpx
+    from suni.web import server as S
+    account(CLAUDIA)
+    conv = _Convert(fail=_PaidPlan())
+    _sdk(monkeypatch, conv)
+    _speaker(monkeypatch, S)
+    _microsoft(monkeypatch, S, [])
+    app.state.eleven_tts.update(down_until=0.0, ok=False, reason=None)
+    app.state.cloud_tts["down_until"] = 0.0
+
+    async def reply():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                     base_url="https://t") as c:
+            return await asyncio.gather(*(c.post("/api/tts", json={"text": f"Frase {i}."},
+                                                 headers=std_headers) for i in range(3)))
+    try:
+        rs = asyncio.run(reply())
+        assert [r.content for r in rs] == [b"edge-mp3"] * 3
+        assert len(conv.calls) == 1, f"{len(conv.calls)} sentences sent to be refused"
+    finally:
+        app.state.eleven_tts.update(down_until=0.0, ok=False, reason=None)
+        EL._refused.clear()

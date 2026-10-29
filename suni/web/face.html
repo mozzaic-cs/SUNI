@@ -1101,6 +1101,7 @@ header{
         font-family:'DM Mono',monospace;font-size:12px;outline:none;cursor:pointer;width:100%">
         <option value="" data-i18n="common.sys_default">System default</option>
       </select>
+      <div id="orb-tts-now" style="font-size:11px;color:rgba(218,215,240,.6);line-height:1.4"></div>
     </div>
 
     <!-- Filled by renderTrustRules(); stays empty when nothing is trusted. -->
@@ -5777,7 +5778,9 @@ async function _openOrbSettings() {
   if (voiceSel.options.length === 1) {
     const data = await _apiFetch('/api/tts/voices').then(r=>r.json()).catch(()=>({voices:[]}));
     for (const v of data.voices||[]) {
-      const opt = document.createElement('option'); opt.value = v; opt.textContent = (data.labels||{})[v] || v;
+      const name = (data.labels||{})[v] || v;
+      const opt = document.createElement('option'); opt.value = v;
+      opt.textContent = (data.unavailable||{})[v] ? t('settings.voice_paid_plan', {v: name}) : name;
       voiceSel.appendChild(opt);
     }
   }
@@ -5796,6 +5799,15 @@ async function _openOrbSettings() {
     voiceSel.appendChild(opt);
     voiceSel.value = prefs.tts_voice;
   }
+  // Which voice is actually heard, and why it is not the chosen one when it
+  // is not: a voice ElevenLabs refuses used to fall back to Microsoft silently.
+  const now = document.getElementById('orb-tts-now');
+  now.textContent = '';
+  _apiFetch('/api/tts/plan').then(r => r.ok ? r.json() : null).then(p => {
+    if (!p) return;
+    now.textContent = t('settings.tts_now', {v: p.label || p.voice, p: t('admin.tts_provider_' + p.provider)})
+      + (p.elevenlabs_reason ? ' ' + t('settings.el_why_' + p.elevenlabs_reason) : '');
+  }).catch(() => {});
   // Re-read on every open: a rule may have been added since the last one.
   if (window.renderTrustRules) renderTrustRules(document.getElementById('trust-rules'));
   _orbModal.style.display = 'flex';

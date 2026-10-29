@@ -2766,12 +2766,15 @@ async function loadConfig() {
   } catch(e) {}
   try {
     const r = await _apiFetch('/api/tts/voices?provider=elevenlabs');
-    const {voices, labels} = await r.json();
+    const {voices, labels, unavailable} = await r.json();
     const sel = el('cfg-el-voice');
     const keep = sel.querySelector('option[value=""]').outerHTML;
     // The value without its "eleven:" prefix: that is what the config stores.
-    sel.innerHTML = keep + (voices || []).map(v =>
-      `<option value="${esc(v.replace(/^eleven:/, ''))}">${esc((labels || {})[v] || v)}</option>`).join('');
+    sel.innerHTML = keep + (voices || []).map(v => {
+      const name = (labels || {})[v] || v;
+      const text = (unavailable || {})[v] ? t('settings.voice_paid_plan', {v: name}) : name;
+      return `<option value="${esc(v.replace(/^eleven:/, ''))}">${esc(text)}</option>`;
+    }).join('');
   } catch(e) {}
   _showVoicePlan();
   _showElevenStatus();
@@ -2821,7 +2824,7 @@ async function _showVoicePlan() {
     const p = await r.json();
     const who = t('admin.tts_provider_' + p.provider);
     mine.textContent = t('admin.hint_tts_yours', {v: p.label || p.voice, p: who})
-      + (p.elevenlabs_resting ? ' ' + t('admin.el_resting') : '');
+      + (p.elevenlabs_reason ? ' ' + t('settings.el_why_' + p.elevenlabs_reason) : '');
   } catch(e) {}
 }
 async function _showElevenStatus() {

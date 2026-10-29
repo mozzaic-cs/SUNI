@@ -600,6 +600,7 @@ select option,select optgroup{background:var(--bg2);color:var(--text)}
       <select id="s-tts-voice">
         <option value="" data-i18n="common.sys_default">System default</option>
       </select>
+      <div id="s-tts-now" style="font-size:12px;opacity:.7;margin-top:4px"></div>
     </div>
     <div class="field">
       <label data-i18n="settings.output_dir">Output Directory</label>
@@ -858,10 +859,22 @@ async function _loadTtsVoices() {
   for (const v of data.voices || []) {
     const opt = document.createElement('option');
     opt.value = v;
-    opt.textContent = (data.labels || {})[v] || v;   // ElevenLabs ids are not readable
+    const name = (data.labels || {})[v] || v;   // ElevenLabs ids are not readable
+    opt.textContent = (data.unavailable || {})[v] ? t('settings.voice_paid_plan', {v: name}) : name;
     sel.appendChild(opt);
   }
   _keepSavedVoice(sel, _userSettings.tts_voice);
+  _showTtsNow(document.getElementById('s-tts-now'));
+}
+
+// Which voice is actually heard, and why it is not the chosen one when it
+// is not: a voice ElevenLabs refuses used to fall back to Microsoft silently.
+async function _showTtsNow(box) {
+  box.textContent = '';
+  const p = await _apiFetch('/api/tts/plan').then(r => r.ok ? r.json() : null).catch(() => null);
+  if (!p) return;
+  box.textContent = t('settings.tts_now', {v: p.label || p.voice, p: t('admin.tts_provider_' + p.provider)})
+    + (p.elevenlabs_reason ? ' ' + t('settings.el_why_' + p.elevenlabs_reason) : '');
 }
 
 // A saved voice from another provider is not in the list. Keep it as an option:

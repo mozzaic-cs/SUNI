@@ -2759,10 +2759,39 @@ def create_app() -> FastAPI:
     _CLOUD_TTS_RETRY_S = 300
     # ElevenLabs is benched on its own: an exhausted free month must not take
     # Microsoft down with it — Microsoft is where it falls back to.
-    _eleven_tts = {"down_until": 0.0}
+    # "ok": the last call worked, so sentences may go in parallel. Until one
+    # does (at start, or after a refusal) they go one at a time: a reply's
+    # sentences arrive together, and all of them used to be refused at once.
+    _eleven_tts = {"down_until": 0.0, "ok": False, "reason": None}
     app.state.eleven_tts = _eleven_tts
+    _eleven_lock = asyncio.Lock()
     _ELEVEN_RETRY_S = 300
     _ELEVEN_QUOTA_RETRY_S = 1800
+
+    async def _speak_eleven(text: str, voice_id: str, lang: str) -> bytes | None:
+        """ElevenLabs audio, or None when it failed or is resting (then the
+        caller speaks with Microsoft)."""
+        from .. import tts_elevenlabs as _el
+        if not _eleven_tts["ok"]:
+            async with _eleven_lock:
+                if time.monotonic() < _eleven_tts["down_until"]:
+                    return None              # refused while this one waited
+                return await _try_eleven(_el, text, voice_id, lang)
+        return await _try_eleven(_el, text, voice_id, lang)
+
+    async def _try_eleven(_el, text: str, voice_id: str, lang: str) -> bytes | None:
+        try:
+            mp3 = await _el.speak(text, voice_id, lang)
+            _eleven_tts.update(ok=True, reason=None)
+            return mp3
+        except _el.QuotaExceeded as exc:
+            rest, reason, why = _ELEVEN_QUOTA_RETRY_S, exc.kind, str(exc)[:160]
+        except Exception as exc:      # noqa: BLE001
+            rest, reason, why = _ELEVEN_RETRY_S, "error", f"ElevenLabs failed ({str(exc)[:160]})"
+        _eleven_tts.update(ok=False, reason=reason,
+                           down_until=time.monotonic() + rest)
+        _log.warning("[TTS] %s — speaking with Microsoft for the next %ds", why, rest)
+        return None
 
     def _speech_language(settings: dict) -> str:
         language = settings.get("response_language") or settings.get("stt_language") or ""
@@ -2855,18 +2884,9 @@ def create_app() -> FastAPI:
         # ElevenLabs, when the admin chose it. Any failure — the free month's
         # credits spent above all — falls back to Microsoft, never to silence.
         if _provider == "elevenlabs":
-            from .. import tts_elevenlabs as _el
-            try:
-                _mp3 = await _el.speak(clean, _plan_voice, _speech_language(_settings))
+            _mp3 = await _speak_eleven(clean, _plan_voice, _speech_language(_settings))
+            if _mp3:
                 return Response(content=_mp3, media_type="audio/mpeg")
-            except _el.QuotaExceeded as exc:
-                _eleven_tts["down_until"] = time.monotonic() + _ELEVEN_QUOTA_RETRY_S
-                _log.warning("[TTS] %s — speaking with Microsoft for the next %ds",
-                             exc, _ELEVEN_QUOTA_RETRY_S)
-            except Exception as exc:      # noqa: BLE001
-                _eleven_tts["down_until"] = time.monotonic() + _ELEVEN_RETRY_S
-                _log.warning("[TTS] ElevenLabs failed (%s) — speaking with Microsoft "
-                             "for the next %ds", str(exc)[:160], _ELEVEN_RETRY_S)
 
         # A Windows voice chosen on purpose ("win:Microsoft Helia - ..."):
         # rendered here like any other clip, so the lip sync still sees it.
@@ -4589,7 +4609,10 @@ def create_app() -> FastAPI:
             vs = await _el.voices()
             return JSONResponse({"provider": "elevenlabs",
                                  "voices": [_el.PREFIX + v["id"] for v in vs],
-                                 "labels": {_el.PREFIX + v["id"]: v["label"] for v in vs}})
+                                 "labels": {_el.PREFIX + v["id"]: v["label"] for v in vs},
+                                 # Refused for this plan: the menus say so.
+                                 "unavailable": {_el.PREFIX + v["id"]: "paid_plan"
+                                                 for v in vs if _el.refused(v["id"])}})
         voices = list(EDGE_TTS_VOICES)
         try:
             from .. import tts_local as _local
@@ -4611,8 +4634,16 @@ def create_app() -> FastAPI:
         from .. import tts_elevenlabs as _el
         provider, voice = await _speech_plan(_user_settings.get(user["id"]) or {})
         label = _el.label_for(voice) if provider == "elevenlabs" else voice
+        resting = time.monotonic() < _eleven_tts["down_until"]
+        chosen = str(suni_config.get("tts_backend") or "").lower() == "elevenlabs"
         return JSONResponse({"provider": provider, "voice": voice, "label": label,
-                             "elevenlabs_resting": time.monotonic() < _eleven_tts["down_until"]})
+                             "elevenlabs_resting": resting,
+                             # Why ElevenLabs is not speaking, when it was chosen:
+                             # paid_plan | quota | error | no_voice (none suits
+                             # the language) | no_key.
+                             "elevenlabs_reason": (_eleven_tts["reason"] if resting else
+                                                   None if not chosen or provider == "elevenlabs" else
+                                                   "no_key" if not _el.configured() else "no_voice")})
 
     @app.get("/api/tts/elevenlabs/usage")
     async def tts_elevenlabs_usage(admin: dict = Depends(require_admin)):
