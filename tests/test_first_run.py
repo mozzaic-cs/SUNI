@@ -67,6 +67,19 @@ def test_completion_is_persisted(config_file):
     assert monkey["setup_completed"] is True
 
 
+def test_a_partial_save_keeps_everything_else(config_file):
+    """save({one key}) wiped a live instance's whole config once: persona,
+    models, languages, and setup_completed, which sent the admin to the wizard."""
+    config_file.write_text(json.dumps({"setup_completed": True, "system_prompt": "mine",
+                                       "stt_language": "pt-PT"}), encoding="utf-8")
+    suni_config.load()
+    suni_config.save({"tts_backend": "elevenlabs"})
+    on_disk = json.loads(config_file.read_text(encoding="utf-8"))
+    assert on_disk["tts_backend"] == "elevenlabs"
+    assert on_disk["setup_completed"] is True
+    assert on_disk["system_prompt"] == "mine" and on_disk["stt_language"] == "pt-PT"
+
+
 # ── endpoint surface ─────────────────────────────────────────────────────────
 
 def test_wizard_writes_only_its_own_fields():

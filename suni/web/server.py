@@ -4499,7 +4499,7 @@ def create_app() -> FastAPI:
                 filtered[_lk] = _clean
         # Merge over the CURRENT config, not defaults — a PARTIAL POST (e.g. a
         # single backend field) must preserve every other setting rather than
-        # resetting it. (config.save() itself merges over DEFAULTS.)
+        # resetting it. (config.save() now merges over the stored config too.)
         merged = suni_config.all()
         # What these keys held BEFORE the merge overwrites them. The admin form
         # submits every field on Save, so "present in the payload" says nothing

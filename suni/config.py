@@ -401,8 +401,19 @@ def load() -> dict[str, Any]:
 
 
 def save(data: dict[str, Any]) -> None:
+    """Store `data` over the current config: a partial dict changes those keys
+    and keeps every other one.
+
+    It used to be {**DEFAULTS, **data}. On 2026-10-29 save({"tts_backend": ...})
+    from a maintenance script reset a live instance to the defaults — persona,
+    models, languages, force_claude_code — and setup_completed=False sent the
+    admin back to the first-run wizard. Restored from a backup plus a captured
+    admin-form post; the persona lost the edits made after the backup.
+    """
     global _cache
-    merged = {**DEFAULTS, **data}
+    if not _cache:
+        load()
+    merged = {**DEFAULTS, **_cache, **data}
     _CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     _CONFIG_PATH.write_text(
         json.dumps(merged, indent=2, ensure_ascii=False), encoding="utf-8"
