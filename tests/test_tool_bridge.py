@@ -288,3 +288,37 @@ def test_rpc_basics():
         assert loop.run_until_complete(tb.handle_rpc(t, [1]))["error"]["code"] == -32600
     finally:
         loop.close()
+
+
+def test_meeting_recording_is_reachable_on_the_cli_path(env):
+    """2026-10-30: 'send me the transcript of my 14:30 Meet' was answered 'I
+    can't join the call' — the meeting tools were never lent to the CLI."""
+    from suni.tools import meeting_tool
+    started = []
+
+    async def fake_start(participants_informed: bool = False, title: str = ""):
+        started.append((USER_ID_CTX.get(""), participants_informed, title))
+        return "Recording 'Meet' (id m1)."
+
+    env["reg"].register(meeting_tool.START_SCHEMA, fake_start)
+    for schema in (meeting_tool.STOP_SCHEMA, meeting_tool.LIST_SCHEMA,
+                   meeting_tool.TRANSCRIBE_SCHEMA):
+        env["reg"].register(schema, lambda **k: "ok")
+
+    async def script(turn):
+        names = [t["name"] for t in (await tb.handle_rpc(
+            turn, {"id": 1, "method": "tools/list"}))["result"]["tools"]]
+        assert {"start_meeting_recording", "stop_meeting_recording",
+                "list_meetings", "transcribe_meeting"} <= set(names)
+        assert "transcribe_meeting" in tb.task_note(turn)
+        r = await tb.handle_rpc(turn, {"id": 2, "method": "tools/call", "params": {
+            "name": "start_meeting_recording",
+            "arguments": {"title": "Meet", "participants_informed": True}}})
+        assert r["result"]["isError"] is False
+        return "A gravar."
+
+    out, _, _ = _run(env, script, text="vou ter uma reunião via Google Meet, "
+                                        "consegues depois enviar-me a transcrição?")
+    assert out == "A gravar."
+    assert started == [("u1", True, "Meet")]
+    assert env["asked"] == ["start_meeting_recording"], "recording must still be approved"

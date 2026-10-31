@@ -46,7 +46,13 @@ _log = logging.getLogger("suni.tool_bridge")
 SERVER_NAME = "suni_bridge"
 CODE_RUN = "start_code_run"
 # Only tools the CLI has no equivalent for. See the module docstring.
-BRIDGE_TOOLS = ("look_at_screen", "generate_image", "send_email")
+BRIDGE_TOOLS = ("look_at_screen", "generate_image", "send_email",
+                # Meeting recording (suni/meetings.py): records this machine's
+                # audio and transcribes it locally. Missing here, "send me the
+                # transcript of my 14:30 Meet" was answered "I can't join the
+                # call" (2026-10-30). Recording keeps its card per meeting.
+                "start_meeting_recording", "stop_meeting_recording",
+                "list_meetings", "transcribe_meeting")
 
 # Reading mail is lent only on a MAIL TURN, and a mail turn is locked down.
 # An email's text is written by whoever sent it. The CLI normally runs with
@@ -353,6 +359,13 @@ def task_note(t: Turn) -> str:
         lines.append("- generate_image: when they ask for a picture to be made.")
     if "send_email" in t.tools:
         lines.append("- send_email: when they ask for mail to be sent.")
+    if "start_meeting_recording" in t.tools:
+        lines.append("- start_meeting_recording / stop_meeting_recording / "
+                     "list_meetings / transcribe_meeting: you do not join the "
+                     "call; you record this computer's audio while the user is "
+                     "in it, then transcribe it locally. Before starting, the "
+                     "user must confirm everyone was told it is recorded; never "
+                     "assume it.")
     if "list_emails" in t.tools:
         own = _own_mailbox()
         lines.append("- list_emails / read_email: your inbox"
