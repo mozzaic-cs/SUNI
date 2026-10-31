@@ -1231,10 +1231,17 @@ input,textarea{caret-color:var(--cyan)}
           <div class="field-hint" data-i18n="admin.hint_meetings">SUNI does not join the call: it records what this computer plays and hears while you are in it, and transcribes it here. Every recording still asks for your approval, and the participants must be told first.</div>
         </div>
         <div class="field">
-          <label data-i18n="admin.lbl_meeting_devices">Audio sources</label>
-          <div id="cfg-meeting-devices" style="display:flex;flex-direction:column;gap:4px;font-size:13px"></div>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:2px 0">
+            <input type="checkbox" id="cfg-meeting-pc" style="accent-color:var(--gold)">
+            <span data-i18n="admin.chk_meeting_pc">Record the PC's sound</span>
+          </label>
+          <div class="field-hint" data-i18n="admin.hint_meeting_pc">Everyone else on the call: whatever Windows plays on the default output — speakers or headset, whichever is in use when the recording starts. Your own voice is not in it; that is the microphone below.</div>
+          <div id="cfg-meeting-pc-note" class="field-hint" style="color:var(--gold-b)" hidden></div>
+        </div>
+        <div class="field">
+          <label data-i18n="admin.lbl_meeting_mic">Microphone</label>
+          <select id="cfg-meeting-mic"></select>
           <div id="cfg-meeting-warn" class="field-hint" style="color:var(--gold-b)" hidden></div>
-          <div class="field-hint" data-i18n="admin.hint_meeting_devices">Tick both halves of the conversation: the PC's sound carries the people on the call, the microphone carries you. "PC sound" follows whichever output Windows uses (speakers, headset); Stereo Mix only hears the Realtek card.</div>
         </div>
         <div class="field">
           <label data-i18n="admin.lbl_meeting_model">Transcription model</label>
@@ -2871,61 +2878,59 @@ document.addEventListener('change', e => {
   if (e.target && e.target.name === 'tts_backend') _syncTtsBackend();
 });
 
-// Meeting audio sources: what Windows offers now, plus anything stored that it
-// no longer offers (shown, so saving does not silently drop it).
-const _LOOPBACK = /^pc-sound$|stereo mix|mistura est[ée]reo|what u hear|loopback|cable output|monitor of/i;
+// Meeting audio: a PC-sound switch (everyone else on the call) and one
+// microphone (you). Both are stored in meeting_devices, as the recorder reads
+// them. A stored Stereo Mix-style loopback loads as "PC sound" on: it was
+// there for the same job, which PC sound does whatever output is in use.
+const _LOOPBACK = /stereo mix|mistura est[ée]reo|what u hear|loopback|cable output|monitor of/i;
 const _PC_SOUND = 'pc-sound';   // meeting_capture.PC_SOUND: whatever Windows plays
 let _meetingDevicesLoaded = false;
 async function _loadMeetingDevices(stored) {
-  const box = el('cfg-meeting-devices');
-  if (!box) return;
+  const pc = el('cfg-meeting-pc'), mic = el('cfg-meeting-mic'), note = el('cfg-meeting-pc-note');
+  if (!pc || !mic) return;
   _meetingDevicesLoaded = false;
-  box.textContent = t('admin.meeting_devices_loading');
-  let found = [], err = '';
+  mic.replaceChildren(new Option(t('admin.meeting_devices_loading'), ''));
+  let found = [], pcOk = false, err = '';
   try {
     const r = await _apiFetch('/api/meetings/devices');
-    if (r.ok) {
-      const j = await r.json(); found = j.devices || []; err = j.error || '';
-      if (j.pc_sound) found = [_PC_SOUND, ...found];
-    }
+    if (r.ok) { const j = await r.json(); found = j.devices || []; pcOk = !!j.pc_sound; err = j.error || ''; }
     else err = 'HTTP ' + r.status;
   } catch(e) { err = String(e); }
-  box.textContent = '';
-  const names = [...found, ...stored.filter(d => !found.includes(d))];
-  if (!names.length) box.textContent = err || t('admin.meeting_devices_none');
-  names.forEach(n => {
-    const lab = document.createElement('label');
-    lab.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer';
-    const cb = document.createElement('input');
-    cb.type = 'checkbox'; cb.dataset.meetingDevice = n; cb.checked = stored.includes(n);
-    cb.style.accentColor = 'var(--gold)';
-    cb.addEventListener('change', _syncMeetingWarn);
-    const sp = document.createElement('span');
-    sp.textContent = (n === _PC_SOUND ? t('admin.meeting_pc_sound') : n)
-      + (found.includes(n) ? '' : ' — ' + t('admin.meeting_device_missing'));
-    lab.append(cb, sp);
-    box.appendChild(lab);
-  });
+  pc.checked = stored.includes(_PC_SOUND) || stored.some(d => _LOOPBACK.test(d));
+  pc.disabled = !pcOk;
+  if (note) { note.textContent = pcOk ? '' : t('admin.meeting_pc_unavailable'); note.hidden = pcOk; }
+  const mics = found.filter(d => !_LOOPBACK.test(d));
+  const storedMic = stored.find(d => d !== _PC_SOUND && !_LOOPBACK.test(d)) || '';
+  mic.replaceChildren(new Option(err ? err : t('admin.meeting_mic_none'), ''));
+  mics.forEach(n => mic.appendChild(new Option(n, n)));
+  if (storedMic && !mics.includes(storedMic))
+    mic.appendChild(new Option(storedMic + ' — ' + t('admin.meeting_device_missing'), storedMic));
+  mic.value = storedMic;
   _meetingDevicesLoaded = true;
   _syncMeetingWarn();
 }
 function _meetingDevices() {
-  return [...document.querySelectorAll('#cfg-meeting-devices [data-meeting-device]')]
-    .filter(cb => cb.checked).map(cb => cb.dataset.meetingDevice);
+  const out = [];
+  if (el('cfg-meeting-pc')?.checked) out.push(_PC_SOUND);
+  const m = el('cfg-meeting-mic')?.value;
+  if (m) out.push(m);
+  return out;
 }
 function _syncMeetingWarn() {
   const w = el('cfg-meeting-warn');
   if (!w) return;
   const on = !!document.getElementById('meetings_enabled')?.checked;
-  const sel = _meetingDevices();
+  const pc = !!el('cfg-meeting-pc')?.checked, mic = !!el('cfg-meeting-mic')?.value;
   let msg = '';
-  if (on && !sel.length) msg = t('admin.meeting_warn_none');
-  else if (on && !sel.some(d => _LOOPBACK.test(d))) msg = t('admin.meeting_warn_loopback');
+  if (on && !pc && !mic) msg = t('admin.meeting_warn_none');
+  else if (on && !pc) msg = t('admin.meeting_warn_loopback');
+  else if (on && !mic) msg = t('admin.meeting_warn_mic');
   w.textContent = msg;
   w.hidden = !msg;
 }
 document.addEventListener('change', e => {
-  if (e.target && e.target.id === 'meetings_enabled') _syncMeetingWarn();
+  if (e.target && ['meetings_enabled', 'cfg-meeting-pc', 'cfg-meeting-mic'].includes(e.target.id))
+    _syncMeetingWarn();
 });
 
 function applyConfigToForm(cfg) {

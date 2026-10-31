@@ -45,3 +45,15 @@ def test_saving_before_the_device_list_loads_keeps_the_stored_devices():
     # Before the list renders the picker is empty; posting [] then would wipe
     # the configured devices on an unrelated save.
     assert "if (_meetingDevicesLoaded) data.meeting_devices = _meetingDevices();" in HTML
+
+
+def test_the_sources_are_a_pc_sound_switch_and_one_microphone():
+    """Simplified 2026-10-31: a list of every input Windows offers asked the
+    admin to know which one was a loopback. PC sound is one switch; the only
+    other thing a call needs is the microphone."""
+    assert 'id="cfg-meeting-pc"' in HTML and '<select id="cfg-meeting-mic">' in HTML
+    assert "cfg-meeting-devices" not in HTML
+    # A stored Stereo Mix loads as PC sound on, and loopbacks are kept out of
+    # the microphone menu.
+    assert "stored.some(d => _LOOPBACK.test(d))" in HTML
+    assert "found.filter(d => !_LOOPBACK.test(d))" in HTML
