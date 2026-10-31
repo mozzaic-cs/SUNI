@@ -542,7 +542,7 @@
      "body": [
       "STT: browser | self-hosted Whisper (stt.py)",
       "Vision: OpenAI-compatible VLM · image → answer (vision.py)",
-      "TTS: edge-tts | self-hosted /v1/audio/speech (tts.py)",
+      "TTS: Azure Speech | edge-tts | ElevenLabs (falls back to Microsoft) | self-hosted /v1/audio/speech (tts.py) · local Piper",
       "No router — config convention IS the map · ClaudeCodeAgent T5"
      ],
      "phase": "",
@@ -708,7 +708,10 @@
       "Weekly · interval_days=7 · all active users",
       "extract → supersede → dedup → conv-dedup → age-out",
       "Soft-deprecate (lifecycle) — reversible, never deleted",
-      "consolidator.py · asyncio.Lock per user"
+      "consolidator.py · asyncio.Lock per user",
+      "meeting_capture.py · \"PC sound\" = WASAPI loopback of the default output (PyAudioWPatch), looked up per start; a feeder pipes PCM into ffmpeg and pads silence so the PC track keeps time with the mic",
+      "Stops by itself when the call window (Teams / Zoom / Meet tab) has gone 30 s (180 s for a tab); cap meeting_max_minutes; then transcribes at once, one shielded job per meeting",
+      "Admin → Configuração → Gravação de reuniões: switch, sources (GET /api/meetings/devices), model"
      ],
      "phase": "",
      "icon": ""
@@ -724,7 +727,10 @@
       "transcription.py · faster-whisper on CPU, chunked on segment boundaries (an hour overflows num_ctx 8192)",
       "Installed by default (install.py, --no-meetings skips); ffmpeg is checked for separately because pip cannot supply it",
       "local_files_only load: 174s → 4.9s. faster-whisper contacted the HF hub on EVERY load — the same trap that cost image generation 208s→29s",
-      "Measured: 4.4x realtime, so a 60-min meeting transcribes in ~14 min"
+      "Measured: 4.4x realtime, so a 60-min meeting transcribes in ~14 min",
+      "meeting_capture.py · \"PC sound\" = WASAPI loopback of the default output (PyAudioWPatch), looked up per start; a feeder pipes PCM into ffmpeg and pads silence so the PC track keeps time with the mic",
+      "Stops by itself when the call window (Teams / Zoom / Meet tab) has gone 30 s (180 s for a tab); cap meeting_max_minutes; then transcribes at once, one shielded job per meeting",
+      "Admin → Configuração → Gravação de reuniões: switch, sources (GET /api/meetings/devices), model"
      ],
      "phase": "",
      "icon": ""

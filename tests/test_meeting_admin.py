@@ -31,7 +31,8 @@ def test_no_ffmpeg_is_said_not_raised(client, admin_headers, monkeypatch):
     monkeypatch.setattr(meetings, "list_audio_devices", boom)
     r = client.get("/api/meetings/devices", headers=admin_headers)
     assert r.status_code == 200
-    assert r.json() == {"devices": [], "error": "ffmpeg is not installed or not on PATH."}
+    assert r.json()["devices"] == []
+    assert r.json()["error"] == "ffmpeg is not installed or not on PATH."
 
 
 def test_the_form_has_the_switch_and_saves_it():

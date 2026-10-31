@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 import subprocess
 import uuid
@@ -56,6 +57,8 @@ from . import config as _cfg
 from .logger import get_logger
 from .user_settings import resolve_output_dir
 from . import proc as _proc
+from . import meeting_capture as _cap
+from .meeting_capture import PC_SOUND
 
 log = get_logger("suni.meetings")
 
@@ -64,6 +67,12 @@ log = get_logger("suni.meetings")
 _active: dict[str, dict] = {}
 
 _FFMPEG_TIMEOUT_S = 15          # grace for ffmpeg to finalise the file on stop
+_WATCH_TICK_S = 10              # how often a recording checks its call window
+
+# Called as on_auto_stop(user_id, stopped) after a recording stopped by itself
+# (the call window closed, or the length cap). meeting_tool sets it to make the
+# transcript straight away.
+on_auto_stop = None
 
 
 class MeetingError(RuntimeError):
@@ -129,7 +138,8 @@ def _configured_devices() -> list[str]:
     return [str(d) for d in raw if str(d).strip()]
 
 
-def capture_args(devices: list[str], wav: Path) -> list[str]:
+def capture_args(devices: list[str], wav: Path,
+                 loopback: tuple[int, int] | None = None) -> list[str]:
     """The ffmpeg command line for a capture.
 
     Split out so the recording lifecycle — spawn, liveness check, graceful stop,
@@ -141,11 +151,17 @@ def capture_args(devices: list[str], wav: Path) -> list[str]:
     wants, and roughly 2 MB per minute instead of 10.
     """
     args: list[str] = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
+    if loopback:
+        # The PC's sound, as raw PCM on stdin (meeting_capture.Feeder). First,
+        # so duration=first ends the file when the feed closes on stop.
+        rate, channels = loopback
+        args += ["-f", "s16le", "-ar", str(rate), "-ac", str(channels), "-i", "pipe:0"]
     for d in devices:
         args += ["-f", "dshow", "-i", f"audio={d}"]
-    if len(devices) > 1:
+    inputs = len(devices) + (1 if loopback else 0)
+    if inputs > 1:
         args += ["-filter_complex",
-                 f"amix=inputs={len(devices)}:duration=longest:normalize=0"]
+                 f"amix=inputs={inputs}:duration={'first' if loopback else 'longest'}:normalize=0"]
     args += ["-ac", "1", "-ar", "16000", str(wav)]
     return args
 
@@ -215,30 +231,51 @@ async def start_recording(
     devs = devices or _configured_devices()
     if not devs:
         raise MeetingError(
-            "No audio devices configured. Set meeting_devices — usually the "
-            "system loopback ('Stereo Mix …') plus your microphone.")
+            "No audio devices configured. In the admin panel, tick the PC's "
+            "sound and your microphone under Meeting recording.")
 
     meeting_id = datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6]
     mdir  = _meeting_dir(user_id, meeting_id)
     wav   = mdir / "audio.wav"
 
-    args = capture_args(devs, wav)
+    dshow = [d for d in devs if d != PC_SOUND]
+    feeder, read_fd, sources = None, None, list(dshow)
+    if PC_SOUND in devs:
+        try:
+            src = await asyncio.to_thread(_cap.open_loopback)
+        except Exception as exc:                 # noqa: BLE001
+            raise MeetingError(f"Could not open the PC's sound (default output): {exc}")
+        read_fd, write_fd = os.pipe()
+        feeder = _cap.Feeder(src, write_fd)
+        sources.insert(0, f"PC sound ({getattr(src, 'name', '') or 'default output'})")
+        args = capture_args(dshow, wav, loopback=(src.rate, src.channels))
+    else:
+        args = capture_args(devs, wav)
 
     try:
         proc = await _proc.exec_(
             *args,
-            stdin=asyncio.subprocess.PIPE,
+            stdin=read_fd if feeder else asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.PIPE,
         )
     except FileNotFoundError:
+        if feeder:
+            os.close(read_fd)
+            feeder.start()
+            feeder.stop()                        # closes the pipe and the device
         raise MeetingError("ffmpeg is not installed or not on PATH.")
+    if feeder:
+        os.close(read_fd)                        # ffmpeg holds its own copy
+        feeder.start()
 
     # ffmpeg fails fast on a device it cannot open — a disabled "Stereo Mix" is
     # the common one. Give it a moment and report that now, rather than handing
     # back a meeting id for a recording that never started.
     await asyncio.sleep(1.5)
     if proc.returncode is not None:
+        if feeder:
+            feeder.stop()
         err = (await proc.stderr.read()).decode("utf-8", "replace").strip()
         raise MeetingError(
             f"Could not open the audio device(s) {devs}: {err.splitlines()[-1] if err else 'unknown error'}")
@@ -255,7 +292,7 @@ async def start_recording(
         "state":       "recording",
     }
     _write_meta(mdir, meta)
-    _active[user_id] = {**meta, "proc": proc, "dir": str(mdir)}
+    _active[user_id] = {**meta, "proc": proc, "dir": str(mdir), "feeder": feeder}
 
     # If it cannot be audited, it does not run. Recording people without a
     # record of who started it is the one outcome this feature must not
@@ -268,6 +305,8 @@ async def start_recording(
                          target_id=meeting_id)
     except Exception as exc:                     # noqa: BLE001
         _active.pop(user_id, None)
+        if feeder:
+            feeder.stop()
         try:
             proc.terminate()
         except Exception:                        # noqa: BLE001
@@ -276,11 +315,59 @@ async def start_recording(
         raise MeetingError(
             f"Could not write the audit record, so the recording was stopped: {exc}")
     log.info("[MEETING] recording started %s (%s) by %s", meeting_id, meta["title"], username)
+
+    anchors = []
+    if _cfg.get("meeting_auto_stop", True):
+        try:
+            anchors = await asyncio.to_thread(_cap.call_windows, title)
+        except Exception as exc:                 # noqa: BLE001
+            log.warning("[MEETING] could not read the call windows: %s", exc)
+    _active[user_id]["watch"] = asyncio.create_task(
+        _watch_end(user_id, username, meeting_id, _cap.EndWatch(anchors) if anchors else None))
+    if anchors:
+        meta["auto_stop"] = [a["title"] for a in anchors]
+        _write_meta(mdir, meta)
     return {"meeting_id": meeting_id, "title": meta["title"],
-            "path": str(wav), "devices": devs}
+            "path": str(wav), "devices": devs, "sources": sources,
+            "auto_stop": [a["title"] for a in anchors]}
 
 
-async def stop_recording(user_id: str, username: str = "") -> dict:
+async def _watch_end(user_id: str, username: str, meeting_id: str, end) -> None:
+    """Stop this recording when its call window has gone (`end`; None when
+    none was found) or it reaches meeting_max_minutes: a recorder nobody
+    stops would otherwise run until the disk is full."""
+    loop = asyncio.get_running_loop()
+    t0 = loop.time()
+    try:
+        cap_s = float(_cfg.get("meeting_max_minutes", 240) or 0) * 60
+    except (TypeError, ValueError):
+        cap_s = 0
+    if cap_s <= 0:
+        cap_s = 240 * 60
+    while True:
+        await asyncio.sleep(_WATCH_TICK_S)
+        entry = _active.get(user_id)
+        if not entry or entry["meeting_id"] != meeting_id:
+            return
+        why = ""
+        if end is not None and await asyncio.to_thread(end.ended):
+            why = "the call window closed"
+        elif loop.time() - t0 >= cap_s:
+            why = f"it reached {cap_s / 60:g} minutes"
+        if not why:
+            continue
+        try:
+            stopped = await stop_recording(user_id, username, reason=why)
+        except MeetingError as exc:
+            log.warning("[MEETING] automatic stop of %s: %s", meeting_id, exc)
+            return
+        log.info("[MEETING] %s stopped by itself: %s", meeting_id, why)
+        if on_auto_stop is not None:
+            asyncio.create_task(on_auto_stop(user_id, stopped))
+        return
+
+
+async def stop_recording(user_id: str, username: str = "", reason: str = "") -> dict:
     """Finish the recording and close the file cleanly.
 
     ffmpeg is asked to quit via stdin rather than killed: a terminated ffmpeg
@@ -291,9 +378,18 @@ async def stop_recording(user_id: str, username: str = "") -> dict:
     if not entry:
         raise MeetingError("Nothing is being recorded.")
 
+    watch = entry.get("watch")
+    if watch is not None and watch is not asyncio.current_task():
+        watch.cancel()
     proc: asyncio.subprocess.Process = entry["proc"]
+    feeder = entry.get("feeder")
     try:
-        if proc.returncode is None:
+        if feeder is not None:
+            # Closing the feed is the stop: the PC-sound input ends, and with
+            # duration=first so does the file. ffmpeg's stdin is that pipe.
+            await asyncio.to_thread(feeder.stop)
+            await asyncio.wait_for(proc.wait(), timeout=_FFMPEG_TIMEOUT_S)
+        elif proc.returncode is None:
             proc.stdin.write(b"q")
             await proc.stdin.drain()
             await asyncio.wait_for(proc.wait(), timeout=_FFMPEG_TIMEOUT_S)
@@ -315,12 +411,13 @@ async def stop_recording(user_id: str, username: str = "") -> dict:
         "ended_at": ended.isoformat(),
         "seconds":  secs,
         "state":    "recorded",
+        "stopped":  reason or "asked",
         "audio_bytes": wav.stat().st_size if wav.exists() else 0,
     })
     _write_meta(mdir, meta)
 
     _audit.log_event(user_id, username, "meeting.recording.stopped",
-                     detail=f"{meta.get('title','')} · {secs}s",
+                     detail=f"{meta.get('title','')} · {secs}s" + (f" · {reason}" if reason else ""),
                      target_id=entry["meeting_id"])
     log.info("[MEETING] recording stopped %s after %ss", entry["meeting_id"], secs)
 

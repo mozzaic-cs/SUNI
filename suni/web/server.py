@@ -4655,11 +4655,13 @@ def create_app() -> FastAPI:
         """The audio inputs ffmpeg can name, for the admin's device picker.
         Listing is a subprocess; off the event loop."""
         from .. import meetings as _m
+        from .. import meeting_capture as _cap
+        pc = _cap.pc_sound_available()
         try:
             devices = await asyncio.to_thread(_m.list_audio_devices)
-            return JSONResponse({"devices": devices})
+            return JSONResponse({"devices": devices, "pc_sound": pc})
         except _m.MeetingError as e:
-            return JSONResponse({"devices": [], "error": str(e)})
+            return JSONResponse({"devices": [], "pc_sound": pc, "error": str(e)})
 
     return app
 

@@ -270,6 +270,10 @@ DEFAULTS: dict[str, Any] = {
     "meeting_devices":      [],
     # base = ~150 MB, fast on CPU. small = ~500 MB, better on accented speech.
     "meeting_whisper_model": "base",
+    # Stop by itself once the call window seen at the start has closed
+    # (suni/meeting_capture.py), and never run longer than the cap.
+    "meeting_auto_stop":    True,
+    "meeting_max_minutes":  240,
     # auto = whichever device has been MEASURED fastest here, and the CPU until
     # something has been. The CPU is the safe option: it cannot run out of
     # VRAM, cannot fight the language model for a card, and has no driver that

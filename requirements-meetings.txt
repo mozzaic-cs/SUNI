@@ -15,3 +15,7 @@
 # ffmpeg must also be on PATH for capture — it is a system package, not a pip
 # one (Windows: choco install ffmpeg / winget install ffmpeg).
 faster-whisper==1.0.3
+
+# "PC sound": WASAPI loopback of the default output device, which ffmpeg
+# cannot open. Windows only; elsewhere the option is simply not offered.
+PyAudioWPatch==0.2.12.8; sys_platform == "win32"

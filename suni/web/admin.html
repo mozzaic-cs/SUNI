@@ -1234,7 +1234,7 @@ input,textarea{caret-color:var(--cyan)}
           <label data-i18n="admin.lbl_meeting_devices">Audio sources</label>
           <div id="cfg-meeting-devices" style="display:flex;flex-direction:column;gap:4px;font-size:13px"></div>
           <div id="cfg-meeting-warn" class="field-hint" style="color:var(--gold-b)" hidden></div>
-          <div class="field-hint" data-i18n="admin.hint_meeting_devices">Tick both halves of the conversation: the PC's own sound ("Stereo Mix") carries the people on the call, the microphone carries you. Stereo Mix missing? Enable it under Control Panel → Sound → Recording → Show Disabled Devices.</div>
+          <div class="field-hint" data-i18n="admin.hint_meeting_devices">Tick both halves of the conversation: the PC's sound carries the people on the call, the microphone carries you. "PC sound" follows whichever output Windows uses (speakers, headset); Stereo Mix only hears the Realtek card.</div>
         </div>
         <div class="field">
           <label data-i18n="admin.lbl_meeting_model">Transcription model</label>
@@ -2873,7 +2873,8 @@ document.addEventListener('change', e => {
 
 // Meeting audio sources: what Windows offers now, plus anything stored that it
 // no longer offers (shown, so saving does not silently drop it).
-const _LOOPBACK = /stereo mix|mistura est[ée]reo|what u hear|loopback|cable output|monitor of/i;
+const _LOOPBACK = /^pc-sound$|stereo mix|mistura est[ée]reo|what u hear|loopback|cable output|monitor of/i;
+const _PC_SOUND = 'pc-sound';   // meeting_capture.PC_SOUND: whatever Windows plays
 let _meetingDevicesLoaded = false;
 async function _loadMeetingDevices(stored) {
   const box = el('cfg-meeting-devices');
@@ -2883,7 +2884,10 @@ async function _loadMeetingDevices(stored) {
   let found = [], err = '';
   try {
     const r = await _apiFetch('/api/meetings/devices');
-    if (r.ok) { const j = await r.json(); found = j.devices || []; err = j.error || ''; }
+    if (r.ok) {
+      const j = await r.json(); found = j.devices || []; err = j.error || '';
+      if (j.pc_sound) found = [_PC_SOUND, ...found];
+    }
     else err = 'HTTP ' + r.status;
   } catch(e) { err = String(e); }
   box.textContent = '';
@@ -2897,7 +2901,8 @@ async function _loadMeetingDevices(stored) {
     cb.style.accentColor = 'var(--gold)';
     cb.addEventListener('change', _syncMeetingWarn);
     const sp = document.createElement('span');
-    sp.textContent = n + (found.includes(n) ? '' : ' — ' + t('admin.meeting_device_missing'));
+    sp.textContent = (n === _PC_SOUND ? t('admin.meeting_pc_sound') : n)
+      + (found.includes(n) ? '' : ' — ' + t('admin.meeting_device_missing'));
     lab.append(cb, sp);
     box.appendChild(lab);
   });

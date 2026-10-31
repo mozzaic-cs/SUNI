@@ -683,7 +683,8 @@ body.simple .section-gap{height:6px!important}
           <span>1 SUNI → N specialized model endpoints (config map)</span>
           STT: browser | self-hosted Whisper (stt.py)<br>
           Vision: OpenAI-compatible VLM · image → answer (vision.py)<br>
-          TTS: Azure Speech (tts_azure.py, keyed in .env) | edge-tts | self-hosted /v1/audio/speech (tts.py) · fallback to local Helia/Piper<br>
+          TTS: Azure Speech (tts_azure.py, keyed in .env) | edge-tts | ElevenLabs (tts_elevenlabs.py) | self-hosted /v1/audio/speech (tts.py) · fallback to local Helia/Piper<br>
+          <span style="color:var(--teal)">tts_backend picked by the admin WINS over a voice saved for another provider (_speech_plan, /api/tts/plan). ElevenLabs: pt = pt-PT voices only; credits out or a plan-refused voice &rarr; Microsoft, provider rested 30 min, one refusal per reply (lock)</span> <span class="new-badge" style="font-size:7.5px">new</span><br>
           <span style="color:var(--muted)">No router — config convention IS the map · ClaudeCodeAgent T5</span>
         </div>
       </div>
@@ -739,6 +740,21 @@ body.simple .section-gap{height:6px!important}
           <span class="tool-pill" style="color:#4a90d9">playwright_navigate</span>
           <span class="tool-pill" style="color:#4a90d9">playwright_screenshot</span>
           <span class="tool-pill" style="font-size:8px;color:rgba(74,144,217,.5)">+30 more</span>
+        </div>
+        <div class="tool-group" style="border-color:rgba(201,162,39,.25);flex:1;min-width:200px">
+          <div class="tg-header" style="color:var(--gold)">Lent to Claude Code &middot; tool_bridge.py <span class="new-badge" style="font-size:7.5px">new</span></div>
+          <div style="font-size:9px;color:var(--muted);margin-bottom:5px">
+            SUNI-only tools, per turn, over /mcp/bridge with a one-turn token<br>
+            every call through _gated_call (role, policy, card, output guard)
+          </div>
+          <span class="tool-pill">look_at_screen</span>
+          <span class="tool-pill">generate_image</span>
+          <span class="tool-pill">send_email</span>
+          <span class="tool-pill new">start/stop_meeting_recording</span>
+          <span class="tool-pill new">list_meetings</span>
+          <span class="tool-pill new">transcribe_meeting</span>
+          <span class="tool-pill">start_code_run</span>
+          <div style="font-size:9px;color:var(--muted);margin-top:4px">Missing a tool here = "I can't do that" on every forced-Claude-Code turn (the meeting tools, until 2026-10-31)</div>
         </div>
       </div>
     </div>
@@ -1076,6 +1092,9 @@ body.simple .section-gap{height:6px!important}
       <div class="svc-name">Meeting Recorder <span class="new-badge">new</span></div>
       <div class="svc-detail">meetings.py &middot; ffmpeg dshow &rarr; 16 kHz mono WAV<br>
         Loopback (people on the call) + mic (people in the room), amix<br>
+        <span style="color:var(--teal)">meeting_capture.py &middot; "PC sound" = WASAPI loopback of the DEFAULT output (PyAudioWPatch), looked up at each start, so it follows a switch to the headset; Stereo Mix only hears the Realtek card. A feeder thread pipes PCM into ffmpeg (first input, amix duration=first) and writes silence while nothing plays, so the PC track keeps time with the mic</span> <span class="new-badge" style="font-size:7.5px">new</span><br>
+        <span style="color:var(--teal)">Stops by itself: call windows seen at start (Teams / Zoom / a Meet tab) gone for 30 s (180 s for a browser tab, which loses its title on a tab switch); hard cap meeting_max_minutes (240). Then transcribes straight away, one shielded job per meeting &mdash; a Claude Code turn that times out does not cancel it</span> <span class="new-badge" style="font-size:7.5px">new</span><br>
+        <span style="color:var(--purple)">Admin &rarr; Configura&ccedil;&atilde;o &rarr; Grava&ccedil;&atilde;o de reuni&otilde;es: switch, audio sources (GET /api/meetings/devices), model</span> <span class="new-badge" style="font-size:7.5px">new</span><br>
         <span style="color:var(--purple)">Writes into the user's OWN output dir &mdash; same isolation as any generated file</span><br>
         <span style="color:var(--gold)">Consent is a GATE: start refuses without participants_informed=True, no config can default it, and the tool is approval-gated. No audit row &rarr; no recording</span><br>
         <span style="color:var(--purple)">transcription.py &middot; faster-whisper on CPU, chunked on segment boundaries (an hour overflows num_ctx 8192)</span><br><span style="color:var(--purple)">Installed by default (install.py, --no-meetings skips); ffmpeg is checked for separately because pip cannot supply it</span><br><span style="color:var(--gold)">local_files_only load: 174s &rarr; 4.9s. faster-whisper contacted the HF hub on EVERY load &mdash; the same trap that cost image generation 208s&rarr;29s</span><br><span style="color:var(--purple)">Measured: 4.4x realtime, so a 60-min meeting transcribes in ~14 min</span>
@@ -1103,6 +1122,7 @@ body.simple .section-gap{height:6px!important}
     <div class="svc">
       <div class="svc-name">Inbox Watcher</div>
       <div class="svc-detail">SUNI's own mailbox · IMAP SSL every 2 min · seen_uids.json<br>NEVER passes content to model<br>
+        <span style="color:var(--teal)">Re-reads smtp_user/smtp_pass on every poll: a password changed in the admin panel used to be ignored until a restart (AUTHENTICATIONFAILED every cycle)</span> <span class="new-badge" style="font-size:7.5px">new</span><br>
         <span style="color:var(--teal)">mail_guard.py: SPF/DKIM/DMARC, spoofed SUNI/admin, lookalike domains, Reply-To diversion, risky attachments, unknown threads, floods, AI-injection phrasing (EN+PT) → alert email · admin Mail tab · audit</span> <span class="new-badge" style="font-size:7.5px">new</span><br>
         <span style="color:var(--gold)">Outbox (mail_outbox.py): from SUNI's address, mail to non-users waits for an admin (approve · edit · reject); users' admin-set email = internal, sent directly</span> <span class="new-badge" style="font-size:7.5px">new</span><br>
         <span style="color:var(--teal)">read_email admin-only for SUNI's mailbox; after it runs the request is tainted (no trust rule skips a card)</span>

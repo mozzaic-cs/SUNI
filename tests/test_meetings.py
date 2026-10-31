@@ -41,6 +41,9 @@ def _enabled(monkeypatch):
     # lifecycle test would fail for the right reason but the wrong cause.
     from suni import audit as _audit
     _audit.init_db()
+    # The automatic stop reads the window list; never the real desktop here.
+    from suni import meeting_capture as _cap
+    monkeypatch.setattr(_cap, "_windows", lambda: [])
     meetings._active.clear()
     yield
     meetings._active.clear()

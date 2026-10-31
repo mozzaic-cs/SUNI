@@ -13,6 +13,8 @@ the user, and "Recording started" is a better answer than a dict.
 """
 from __future__ import annotations
 
+import asyncio
+
 from .. import meetings as _m
 from .. import transcription as _tx
 from ..logger import get_logger
@@ -76,9 +78,14 @@ async def start_handler(participants_informed: bool = False, title: str = "") ->
             *_who(),
             title=title, participants_informed=bool(participants_informed),
         )
-        return (f"Recording '{r['title']}' (id {r['meeting_id']}). "
-                f"Capturing {len(r['devices'])} audio source(s). "
-                f"Say when to stop.")
+        sources = ", ".join(r.get("sources") or r["devices"])
+        if r.get("auto_stop"):
+            end = (f"It stops by itself when the call window closes "
+                   f"({'; '.join(r['auto_stop'])}), and the transcript is made "
+                   f"straight after. Or say when to stop.")
+        else:
+            end = "No call window was found, so say when to stop."
+        return f"Recording '{r['title']}' (id {r['meeting_id']}) from: {sources}. {end}"
     except _m.MeetingError as e:
         return f"Could not start recording: {e}"
 
@@ -148,27 +155,45 @@ TRANSCRIBE_SCHEMA = {
 
 
 async def transcribe_handler(meeting_id: str = "") -> str:
-    uid = _who()[0]
+    return await transcribe_for(_who()[0], meeting_id)
+
+
+# One transcription per meeting at a time. After an automatic stop one starts
+# by itself; asking for the transcript meanwhile waits for that one instead of
+# running a second on the same CPU. Shielded: a Claude Code turn that times out
+# cancels its tool call, and that must not throw away ten minutes of work —
+# the next ask finds the finished transcript.
+_jobs: dict[tuple[str, str], asyncio.Future] = {}
+
+
+async def transcribe_for(uid: str, meeting_id: str = "") -> str:
+    if not meeting_id:
+        rows = _m.list_meetings(uid, limit=1)
+        if not rows:
+            return "No recorded meetings to transcribe."
+        meeting_id = rows[0]["meeting_id"]
+    key = (uid, meeting_id)
+    job = _jobs.get(key)
+    if job is None or job.done():
+        job = asyncio.ensure_future(_transcribe(uid, meeting_id))
+        _jobs[key] = job
+        job.add_done_callback(lambda j, k=key: _jobs.pop(k, None) if _jobs.get(k) is j else None)
+    return await asyncio.shield(job)
+
+
+async def _transcribe(uid: str, meeting_id: str) -> str:
     try:
-        if not meeting_id:
-            rows = _m.list_meetings(uid, limit=1)
-            if not rows:
-                return "No recorded meetings to transcribe."
-            meeting_id = rows[0]["meeting_id"]
         mdir, meta = _m.get_meeting(uid, meeting_id)
     except _m.MeetingError as e:
         return str(e)
-
     cached = mdir / "transcript.txt"
     if cached.exists():
         return (f"Transcript of '{meta.get('title','')}' (already transcribed):\n\n"
                 + cached.read_text(encoding="utf-8"))
-
     if not _tx.available():
         return ("Local transcription is not installed. Install it with:\n"
                 "    pip install -r requirements-meetings.txt\n"
                 "The recording is safe — it can be transcribed later.")
-
     wav = mdir / "audio.wav"
     if not wav.exists():
         return f"Meeting '{meeting_id}' has no audio file."
@@ -178,10 +203,9 @@ async def transcribe_handler(meeting_id: str = "") -> str:
         # machine is en-GB while the speaker is pt-PT, so a Portuguese meeting
         # came back as confident English nonsense. The same mistake was made on
         # the live speech path; this is the other place it was waiting.
-        _uid, _ = _who()
         try:
             from .. import user_settings as _us
-            _lang = str((_us.get(_uid) or {}).get("stt_language", "") or "")
+            _lang = str((_us.get(uid) or {}).get("stt_language", "") or "")
         except Exception:      # noqa: BLE001 — a missing preference is not fatal
             _lang = ""
         segments = await _tx.transcribe_file(wav, language=_lang)
@@ -200,3 +224,14 @@ async def transcribe_handler(meeting_id: str = "") -> str:
     log.info("[MEETING] transcribed %s — %d segments", meeting_id, len(segments))
     return (f"Transcript of '{meta.get('title','')}' ({len(segments)} segments):\n\n"
             + text)
+
+
+async def _after_auto_stop(uid: str, stopped: dict) -> None:
+    """The meeting ended by itself: have the transcript ready for the ask."""
+    try:
+        await transcribe_for(uid, stopped["meeting_id"])
+    except Exception as exc:      # noqa: BLE001 — it can still be asked for
+        log.warning("[MEETING] transcription after auto-stop failed: %s", exc)
+
+
+_m.on_auto_stop = _after_auto_stop
