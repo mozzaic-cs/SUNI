@@ -1222,6 +1222,28 @@ input,textarea{caret-color:var(--cyan)}
           <input type="password" name="stt_api_key" data-i18n-placeholder="admin.ph_key_ifreq" placeholder="only if the server requires it">
         </div>
 
+        <div data-cfg-group="voice" class="section-head" style="margin-top:8px" data-i18n="admin.sec_meetings">Meeting recording</div>
+        <div class="field">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:2px 0">
+            <input type="checkbox" id="meetings_enabled" name="meetings_enabled" style="accent-color:var(--gold)">
+            <span data-i18n="admin.chk_meetings">Allow meeting recording on this machine</span>
+          </label>
+          <div class="field-hint" data-i18n="admin.hint_meetings">SUNI does not join the call: it records what this computer plays and hears while you are in it, and transcribes it here. Every recording still asks for your approval, and the participants must be told first.</div>
+        </div>
+        <div class="field">
+          <label data-i18n="admin.lbl_meeting_devices">Audio sources</label>
+          <div id="cfg-meeting-devices" style="display:flex;flex-direction:column;gap:4px;font-size:13px"></div>
+          <div id="cfg-meeting-warn" class="field-hint" style="color:var(--gold-b)" hidden></div>
+          <div class="field-hint" data-i18n="admin.hint_meeting_devices">Tick both halves of the conversation: the PC's own sound ("Stereo Mix") carries the people on the call, the microphone carries you. Stereo Mix missing? Enable it under Control Panel → Sound → Recording → Show Disabled Devices.</div>
+        </div>
+        <div class="field">
+          <label data-i18n="admin.lbl_meeting_model">Transcription model</label>
+          <select name="meeting_whisper_model">
+            <option value="base" data-i18n="admin.opt_meeting_base">base — fast (about 14 min per hour of audio here)</option>
+            <option value="small" data-i18n="admin.opt_meeting_small">small — more accurate, slower</option>
+          </select>
+        </div>
+
         <div data-cfg-group="voice" class="section-head" style="margin-top:8px" data-i18n="admin.sec_vision">Vision (image understanding)</div>
         <div class="field">
           <label data-i18n="admin.lbl_vlm_url">Vision (VLM) base URL</label>
@@ -2849,6 +2871,58 @@ document.addEventListener('change', e => {
   if (e.target && e.target.name === 'tts_backend') _syncTtsBackend();
 });
 
+// Meeting audio sources: what Windows offers now, plus anything stored that it
+// no longer offers (shown, so saving does not silently drop it).
+const _LOOPBACK = /stereo mix|mistura est[ée]reo|what u hear|loopback|cable output|monitor of/i;
+let _meetingDevicesLoaded = false;
+async function _loadMeetingDevices(stored) {
+  const box = el('cfg-meeting-devices');
+  if (!box) return;
+  _meetingDevicesLoaded = false;
+  box.textContent = t('admin.meeting_devices_loading');
+  let found = [], err = '';
+  try {
+    const r = await _apiFetch('/api/meetings/devices');
+    if (r.ok) { const j = await r.json(); found = j.devices || []; err = j.error || ''; }
+    else err = 'HTTP ' + r.status;
+  } catch(e) { err = String(e); }
+  box.textContent = '';
+  const names = [...found, ...stored.filter(d => !found.includes(d))];
+  if (!names.length) box.textContent = err || t('admin.meeting_devices_none');
+  names.forEach(n => {
+    const lab = document.createElement('label');
+    lab.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.dataset.meetingDevice = n; cb.checked = stored.includes(n);
+    cb.style.accentColor = 'var(--gold)';
+    cb.addEventListener('change', _syncMeetingWarn);
+    const sp = document.createElement('span');
+    sp.textContent = n + (found.includes(n) ? '' : ' — ' + t('admin.meeting_device_missing'));
+    lab.append(cb, sp);
+    box.appendChild(lab);
+  });
+  _meetingDevicesLoaded = true;
+  _syncMeetingWarn();
+}
+function _meetingDevices() {
+  return [...document.querySelectorAll('#cfg-meeting-devices [data-meeting-device]')]
+    .filter(cb => cb.checked).map(cb => cb.dataset.meetingDevice);
+}
+function _syncMeetingWarn() {
+  const w = el('cfg-meeting-warn');
+  if (!w) return;
+  const on = !!document.getElementById('meetings_enabled')?.checked;
+  const sel = _meetingDevices();
+  let msg = '';
+  if (on && !sel.length) msg = t('admin.meeting_warn_none');
+  else if (on && !sel.some(d => _LOOPBACK.test(d))) msg = t('admin.meeting_warn_loopback');
+  w.textContent = msg;
+  w.hidden = !msg;
+}
+document.addEventListener('change', e => {
+  if (e.target && e.target.id === 'meetings_enabled') _syncMeetingWarn();
+});
+
 function applyConfigToForm(cfg) {
   const form = document.getElementById('cfg-form');
   const fields = ['display_name','tagline','model','tts_voice',
@@ -2860,6 +2934,7 @@ function applyConfigToForm(cfg) {
                   'vision_base_url','vision_model','vision_api_key',
                   'tts_backend','tts_base_url','tts_model','tts_api_key',
                   'elevenlabs_voice','elevenlabs_model',
+                  'meeting_whisper_model',
                   // A field missing from this list is not merely "not shown":
                   // it renders as its widget default, and because it lives
                   // inside cfg-form the next Save posts that default back and
@@ -2920,6 +2995,10 @@ function applyConfigToForm(cfg) {
     _ev.appendChild(o);
     _ev.value = cfg.elevenlabs_voice;
   }
+
+  const _men = document.getElementById('meetings_enabled');
+  if (_men) { _men.checked = !!cfg.meetings_enabled; }
+  _loadMeetingDevices(cfg.meeting_devices || []);
 
   // Checkbox fields
   const fcc = document.getElementById('force_claude_code');
@@ -3258,6 +3337,11 @@ document.getElementById('cfg-form').addEventListener('submit', async e => {
   // Collaboration (Mode 2)
   data.collaborate_enabled = !!document.getElementById('collaborate_enabled')?.checked;
   data.voice_fillers = !!document.getElementById('voice_fillers')?.checked;
+  data.meetings_enabled = !!document.getElementById('meetings_enabled')?.checked;
+  data.meeting_whisper_model = form.elements.meeting_whisper_model?.value || 'base';
+  // Only once the list has rendered: before that the picker is empty, and
+  // saving would post [] over the stored devices.
+  if (_meetingDevicesLoaded) data.meeting_devices = _meetingDevices();
   data.collaborate_skip_critique = !!document.getElementById('collaborate_skip_critique')?.checked;
   data.collaborate_pool = _collectCollabPool();
   const rawPaths = (form.elements['doc_paths_raw']?.value || '').trim();

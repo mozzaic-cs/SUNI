@@ -4650,6 +4650,17 @@ def create_app() -> FastAPI:
         from .. import tts_elevenlabs as _el
         return JSONResponse(await _el.usage())
 
+    @app.get("/api/meetings/devices")
+    async def meetings_devices(admin: dict = Depends(require_admin)):
+        """The audio inputs ffmpeg can name, for the admin's device picker.
+        Listing is a subprocess; off the event loop."""
+        from .. import meetings as _m
+        try:
+            devices = await asyncio.to_thread(_m.list_audio_devices)
+            return JSONResponse({"devices": devices})
+        except _m.MeetingError as e:
+            return JSONResponse({"devices": [], "error": str(e)})
+
     return app
 
 
