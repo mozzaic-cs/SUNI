@@ -274,6 +274,11 @@ DEFAULTS: dict[str, Any] = {
     # (suni/meeting_capture.py), and never run longer than the cap.
     "meeting_auto_stop":    True,
     "meeting_max_minutes":  240,
+    # Upkeep (suni/upkeep): every scan reads diagnostics and the logs and keeps
+    # an incident book in the admin panel's Upkeep tab. It only reads — no
+    # restart, config write or code change happens from it. Off by default.
+    "upkeep_enabled":       False,
+    "upkeep_scan_minutes":  30,
     # auto = whichever device has been MEASURED fastest here, and the CPU until
     # something has been. The CPU is the safe option: it cannot run out of
     # VRAM, cannot fight the language model for a card, and has no driver that

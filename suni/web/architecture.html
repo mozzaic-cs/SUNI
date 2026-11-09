@@ -1108,6 +1108,17 @@ body.simple .section-gap{height:6px!important}
       </div>
     </div>
     <div class="svc">
+      <div class="svc-name">Upkeep <span class="new-badge">new</span></div>
+      <div class="svc-detail">suni/upkeep/ &middot; memory/upkeep.db &middot; every upkeep_scan_minutes (30) when upkeep_enabled<br>
+        An incident book: diagnostics findings + errors in suni_*.log AND startup.log (stderr, where the tracebacks are) &mdash; one row per problem, counted<br>
+        <span style="color:var(--purple)">Fingerprint = exception type + deepest frame in SUNI's code (not the line number); log lines with numbers and quoted values taken out. Reads each log from a cursor, only new whole lines</span><br>
+        <span style="color:var(--purple)">A finding is an incident on its 2nd scan in a row and resolves when the check stops reporting it; an error resolves after 7 quiet days and re-opens if it comes back</span><br>
+        <span style="color:var(--purple)">Also lists what SUNI told someone she could not do (EN + pt-PT refusal patterns) &mdash; per user, in erasure + subject access, never acted on</span><br>
+        <span style="color:var(--gold)">Phase 1 only READS: no restart, config write or code change (a test bans them in the package). Fixes come later, each behind an approval card, and never touch the checks that judge them</span><br>
+        <span style="color:var(--purple)">Admin &rarr; Upkeep: the book, Scan now, dismiss / reopen</span>
+      </div>
+    </div>
+    <div class="svc">
       <div class="svc-name">Listener Watchdog <span class="new-badge">new</span></div>
       <div class="svc-detail">listener_watchdog.py &middot; config listener_watchdog<br>
         Probes the port each tick; exits after 3 consecutive misses so a supervisor restarts<br>

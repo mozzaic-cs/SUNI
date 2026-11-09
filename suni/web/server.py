@@ -1014,6 +1014,7 @@ def create_app() -> FastAPI:
             get_interval=lambda: suni_config.get("doc_scan_interval", 600),
         ))
         asyncio.create_task(_schedule_runner(stop_event))
+        asyncio.create_task(_upkeep_runner(stop_event))
         # News/web monitor
         _monitor_interval = suni_config.get("monitor_interval", 3600)
         from .. import monitor as _monitor_mod
@@ -3742,6 +3743,54 @@ def create_app() -> FastAPI:
         from ..notifications import email_reader as _er
         return JSONResponse({"alerts": _er.alerts()})
 
+    # ── Upkeep: the incident book (read-only towards SUNI herself) ────────────
+    @app.get("/api/upkeep")
+    async def upkeep_api(admin: dict = Depends(require_admin)):
+        from ..upkeep import store as _us
+
+        def _read():
+            return {"enabled": bool(suni_config.get("upkeep_enabled")),
+                    "scan_minutes": suni_config.get("upkeep_scan_minutes", 30),
+                    "last_scan": _us.get_meta("last_scan"),
+                    "counts": _us.counts(),
+                    "incidents": _us.list_incidents(),
+                    "gaps": _us.list_gaps()}
+        return JSONResponse(await asyncio.to_thread(_read))
+
+    @app.post("/api/upkeep/scan")
+    async def upkeep_scan_api(admin: dict = Depends(require_admin)):
+        from ..upkeep import scan as _upkeep_scan
+        return JSONResponse(await asyncio.to_thread(_upkeep_scan.scan))
+
+    @app.post("/api/upkeep/incidents/{incident_id}/{action}")
+    async def upkeep_incident_api(incident_id: str, action: str, request: Request,
+                                  admin: dict = Depends(require_admin)):
+        from ..upkeep import store as _us
+        states = {"dismiss": "dismissed", "reopen": "open"}
+        if action not in states:
+            raise HTTPException(404, "unknown action")
+        try:
+            body = await request.json()
+        except Exception:      # noqa: BLE001
+            body = {}
+        note = str((body or {}).get("note", ""))[:300]
+        row = await asyncio.to_thread(_us.set_state, incident_id, states[action], note,
+                                      admin.get("username", ""), admin.get("id", ""))
+        if row is None:
+            raise HTTPException(404, "no such incident")
+        return JSONResponse(row)
+
+    @app.post("/api/upkeep/gaps/{gap_id}/{action}")
+    async def upkeep_gap_api(gap_id: str, action: str, admin: dict = Depends(require_admin)):
+        from ..upkeep import store as _us
+        states = {"dismiss": "dismissed", "reopen": "open"}
+        if action not in states:
+            raise HTTPException(404, "unknown action")
+        if not await asyncio.to_thread(_us.set_gap_state, gap_id, states[action],
+                                       admin.get("username", ""), admin.get("id", "")):
+            raise HTTPException(404, "no such entry")
+        return JSONResponse({"ok": True})
+
     @app.get("/api/schedules")
     async def schedules_list_api(user: dict = Depends(get_current_user)):
         from .. import schedules as _s
@@ -4110,6 +4159,29 @@ def create_app() -> FastAPI:
     # -----------------------------------------------------------------------
     # Dashboard API
     # -----------------------------------------------------------------------
+
+    async def _upkeep_runner(stop: asyncio.Event) -> None:
+        """An upkeep scan every upkeep_scan_minutes while upkeep_enabled is on.
+
+        The first waits two minutes, so startup is not slowed by it and the
+        errors startup itself produced are in the log by then. The setting is
+        read each round: switching it on in the admin panel needs no restart."""
+        from ..upkeep import scan as _upkeep_scan
+        delay = 120.0
+        while not stop.is_set():
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=delay)
+                break
+            except asyncio.TimeoutError:
+                pass
+            minutes = suni_config.get("upkeep_scan_minutes", 30)
+            delay = max(5.0, float(minutes or 30)) * 60
+            if not suni_config.get("upkeep_enabled"):
+                continue
+            try:
+                await asyncio.to_thread(_upkeep_scan.scan)
+            except Exception as exc:      # noqa: BLE001 — a failed scan waits for the next
+                _log.warning("[UPKEEP] scan failed: %s", exc)
 
     async def _metrics_collector(stop: asyncio.Event) -> None:
         """Sample GPU + Ollama stats every 30 s and append to the history ring buffer."""

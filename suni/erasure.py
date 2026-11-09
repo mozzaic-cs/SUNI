@@ -74,6 +74,8 @@ SUBJECT_TABLES: tuple[tuple[str, str, str, str], ...] = (
     ("monitor.db", "watch_items", "user_id", "monitor_watches"),
     ("projects.db", "project_members", "user_id", "project_memberships"),
     ("projects.db", "projects", "user_id", "projects_owned"),
+    # What SUNI told the person she could not do: the start of their request.
+    ("upkeep.db", "gaps", "user_id", "capability_gaps"),
     ("users.db", "oidc_identities", "user_id", "oidc_identities"),
     ("users.db", "users", "id", "account"),
 )

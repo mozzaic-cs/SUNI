@@ -40,10 +40,15 @@ _ORDER = {BROKEN: 0, SLOW: 1, NOTE: 2, OK: 3}
 
 
 class Finding:
-    __slots__ = ("level", "what", "evidence", "fix")
+    """One thing a check found. `code` names the check and the outcome, and
+    stays the same while `what` carries counts and names: upkeep keys its
+    incidents on it, so the same problem seen twice is one incident."""
+    __slots__ = ("level", "what", "evidence", "fix", "code")
 
-    def __init__(self, level: str, what: str, evidence: str = "", fix: str = ""):
+    def __init__(self, level: str, what: str, evidence: str = "", fix: str = "",
+                 code: str = ""):
         self.level, self.what, self.evidence, self.fix = level, what, evidence, fix
+        self.code = code
 
     def as_text(self) -> str:
         mark = {BROKEN: "BROKEN", SLOW: "SLOW  ", NOTE: "NOTE  ", OK: "ok    "}[self.level]
@@ -116,14 +121,17 @@ def _check_turns(lines: list[str]) -> list[Finding]:
             f"{len(started)} turn(s) began and never finished",
             last,
             "A turn with no [DONE] is stuck in the model call. Check the backend "
-            "below; a request with no timeout used to hang for ever here."))
+            "below; a request with no timeout used to hang for ever here.",
+            code="turn.unfinished"))
     else:
-        out.append(Finding(OK, f"every turn that started also finished ({finished} recently)"))
+        out.append(Finding(OK, f"every turn that started also finished ({finished} recently)",
+                           code="turn.ok"))
     if slowest > 60:
         out.append(Finding(
             SLOW, f"slowest recent turn took {slowest:.0f}s",
             "", "See the prompt/gen breakdown on its [DONE] line: a large "
-                "prompt figure is tool schemas, a long load is a cold model."))
+                "prompt figure is tool schemas, a long load is a cold model.",
+            code="turn.slow"))
     return out
 
 
@@ -132,11 +140,12 @@ def _check_errors(lines: list[str]) -> list[Finding]:
            if ("| ERROR" in ln or "Traceback" in ln or "| WARNING" in ln)
            and "client disconnects filtered" not in ln]
     if not bad:
-        return [Finding(OK, "no errors or warnings in the recent log")]
+        return [Finding(OK, "no errors or warnings in the recent log", code="log.clean")]
     worst = [ln for ln in bad if "| ERROR" in ln or "Traceback" in ln]
     lvl = BROKEN if worst else NOTE
     sample = _scrub((worst or bad)[-1])[:170]
-    return [Finding(lvl, f"{len(bad)} warning(s)/error(s) in the recent log", sample)]
+    return [Finding(lvl, f"{len(bad)} warning(s)/error(s) in the recent log", sample,
+                    code="log.errors")]
 
 
 def _check_backend() -> list[Finding]:
@@ -152,7 +161,7 @@ def _check_backend() -> list[Finding]:
         log = Path.home() / ".ollama" / "logs" / "server.log"
     if not log.exists():
         return [Finding(NOTE, "no Ollama server log found — cannot check the backend",
-                        str(log))]
+                        str(log), code="backend.no_log")]
     # Four megabytes and fifty thousand lines: enough of this log to cover the
     # last hour or so of a busy machine.
     lines = _tail(log, 50_000, window=4_000_000)
@@ -165,7 +174,7 @@ def _check_backend() -> list[Finding]:
             _scrub(evict[-1])[:160],
             "Two models plus the desktop do not fit the card, so each turn pays "
             "a cold load. Free VRAM (close 3D/WebGL pages) or move the embedding "
-            "model to a second GPU."))
+            "model to a second GPU.", code="backend.evicting"))
     offload = [ln for ln in lines if "offloaded" in ln and "layers to GPU" in ln]
     if offload:
         m = re.search(r"offloaded (\d+)/(\d+) layers", offload[-1])
@@ -173,13 +182,15 @@ def _check_backend() -> list[Finding]:
             out.append(Finding(
                 SLOW, f"the model is only partly on the GPU ({m.group(0)})", "",
                 "Layers on the CPU are very slow on a machine without AVX2. "
-                "Free VRAM or use a smaller model."))
+                "Free VRAM or use a smaller model.", code="backend.partial_gpu"))
         elif m:
-            out.append(Finding(OK, f"the model is fully on the GPU ({m.group(0)})"))
+            out.append(Finding(OK, f"the model is fully on the GPU ({m.group(0)})",
+                               code="backend.full_gpu"))
     if not out:
         # Say what was looked at, or "nothing wrong" cannot be told from
         # "nothing read".
-        out.append(Finding(OK, f"the model backend log shows nothing wrong{span}"))
+        out.append(Finding(OK, f"the model backend log shows nothing wrong{span}",
+                           code="backend.ok"))
     return out
 
 
@@ -199,7 +210,8 @@ def _check_config() -> list[Finding]:
         from . import config as _cfg
         from .system_profile import effective_num_ctx
     except Exception as exc:      # noqa: BLE001
-        return [Finding(NOTE, f"could not read the configuration: {_scrub(exc)}")]
+        return [Finding(NOTE, f"could not read the configuration: {_scrub(exc)}",
+                        code="config.unreadable")]
 
     ctx = effective_num_ctx()
     try:
@@ -224,7 +236,8 @@ def _check_config() -> list[Finding]:
         ratio = float(_cfg.get("tool_budget_ratio", 0.45) or 0.45)
         if share <= ratio:
             out.append(Finding(OK, f"every tool fits the window "
-                                   f"({tok} tokens of {ctx}, {share:.0%})"))
+                                   f"({tok} tokens of {ctx}, {share:.0%})",
+                               code="config.tools_fit"))
         else:
             # The budget stops this being fatal; it does not stop it being a
             # fact worth knowing, because the tools that do not fit are cut.
@@ -234,7 +247,8 @@ def _check_config() -> list[Finding]:
                 f"({tok} tokens of {ctx}) and is trimmed to fit",
                 "", "The budget keeps the prompt whole, but the model is only "
                     f"offered what fits in {ratio:.0%}. More context, or fewer "
-                    "tools for this role, means fewer cuts."))
+                    "tools for this role, means fewer cuts.",
+                code="config.tools_trimmed"))
     except Exception:      # noqa: BLE001 — a check that cannot run is not a failure
         pass
 
@@ -242,7 +256,8 @@ def _check_config() -> list[Finding]:
         out.append(Finding(
             BROKEN, "the model client has no request timeout", "",
             "Without one a hung generation waits for ever and takes the turn "
-            "with it, and the circuit breaker never sees a failure to count."))
+            "with it, and the circuit breaker never sees a failure to count.",
+            code="config.no_timeout"))
     return out
 
 
@@ -271,10 +286,12 @@ def _check_channels() -> list[Finding]:
             out.append(Finding(
                 NOTE, f"{name} is on but its allow-list is empty",
                 "", f"Nobody can talk to it yet — that is the fail-closed state. "
-                    f"Message it once and it replies with the id to add."))
+                    f"Message it once and it replies with the id to add.",
+                code=f"channel.{name}.no_allowlist"))
         else:
-            out.append(Finding(OK, f"{name} is on with {len(allowed)} allow-listed"))
-    return out or [Finding(NOTE, "no messaging channels are enabled")]
+            out.append(Finding(OK, f"{name} is on with {len(allowed)} allow-listed",
+                               code=f"channel.{name}.ok"))
+    return out or [Finding(NOTE, "no messaging channels are enabled", code="channel.none")]
 
 
 def _check_runstate() -> list[Finding]:
@@ -284,7 +301,8 @@ def _check_runstate() -> list[Finding]:
         if prev and not prev.get("clean", True):
             return [Finding(NOTE, "the previous run ended without a clean shutdown", "",
                             "It was killed rather than stopped — check the host's "
-                            "service manager if this repeats.")]
+                            "service manager if this repeats.",
+                            code="run.unclean_shutdown")]
     except Exception:      # noqa: BLE001
         pass
     return []
@@ -310,7 +328,7 @@ def run(log_path: str = "") -> dict:
         findings += _check_errors(lines)
     else:
         findings.append(Finding(NOTE, "no application log was readable",
-                                str(path or "—")))
+                                str(path or "—"), code="log.unreadable"))
 
     for label, fn in (("the model backend's own log", _check_backend),
                       ("the live configuration", _check_config),
@@ -321,7 +339,7 @@ def run(log_path: str = "") -> dict:
             findings += fn()
         except Exception as exc:      # noqa: BLE001 — one broken check is not a broken report
             findings.append(Finding(NOTE, f"the {label} check could not run",
-                                    _scrub(exc)[:120]))
+                                    _scrub(exc)[:120], code=f"check.failed.{fn.__name__}"))
 
     findings.sort(key=lambda f: _ORDER[f.level])
     return {

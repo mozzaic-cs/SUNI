@@ -730,6 +730,7 @@ input,textarea{caret-color:var(--cyan)}
     <div class="nav-group" data-i18n="admin.navgrp_system">System</div>
     <button class="tab" onclick="switchTab('config',this)"    data-i18n="admin.nav_config">Configuration</button>
     <button class="tab" onclick="switchTab('logs',this)"      data-i18n="admin.nav_logs">Logs</button>
+    <button class="tab" onclick="switchTab('upkeep',this)"    data-i18n="admin.nav_upkeep">Upkeep</button>
     <button class="tab" onclick="switchTab('benchmarks',this)" data-i18n="admin.btn_benchmarks">Benchmarks</button>
     <a href="/architecture" target="_blank" class="tab" data-i18n="admin.nav_arch" style="text-decoration:none;display:block">Architecture ↗</a>
   </nav>
@@ -2111,6 +2112,54 @@ input,textarea{caret-color:var(--cyan)}
   </div>
 </div>
 
+<!-- ════════════════════ UPKEEP ════════════════════ -->
+<div class="panel" id="panel-upkeep">
+  <div class="card" style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div class="card-title" style="margin:0;border:none" data-i18n="admin.upk_title">Upkeep</div>
+      <span id="upk-status" style="font-size:13px;color:var(--muted)"></span>
+      <button class="tbl-btn" style="margin-left:auto" id="upk-scan-btn" onclick="upkeepScan()" data-i18n="admin.upk_scan">Scan now</button>
+    </div>
+    <div style="font-size:13px;color:var(--muted);margin-top:8px;line-height:1.5" data-i18n="admin.upk_intro">
+      SUNI reads her own diagnostics and logs and keeps a book of what keeps going wrong: one row
+      per problem, however often it happens, with the evidence. It only reads — nothing here
+      restarts, changes a setting or edits code.
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:12px;font-size:13px">
+      <input type="checkbox" id="upk-enabled" onchange="upkeepToggle(this)" style="accent-color:var(--gold)">
+      <span data-i18n="admin.upk_enable">Scan automatically</span>
+    </label>
+  </div>
+  <div class="card" style="margin-bottom:16px;padding:0;overflow:hidden">
+    <table class="data-table" id="upk-table">
+      <thead><tr>
+        <th data-i18n="common.status">Status</th><th data-i18n="admin.upk_col_what">Problem</th>
+        <th data-i18n="admin.upk_col_count">Times</th><th data-i18n="admin.upk_col_last">Last seen</th><th></th>
+      </tr></thead>
+      <tbody id="upk-tbody"></tbody>
+    </table>
+    <div id="upk-empty" style="display:none;padding:24px;text-align:center;color:var(--muted);font-size:13px" data-i18n="admin.upk_empty">
+      Nothing recorded yet.
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title" data-i18n="admin.upk_gaps">What SUNI said she could not do</div>
+    <div style="font-size:13px;color:var(--muted);margin:-4px 0 12px;line-height:1.5" data-i18n="admin.upk_gaps_intro">
+      Requests she answered with "I can't". A list for you to read: nothing here is acted on.
+    </div>
+    <table class="data-table" id="upk-gaps-table">
+      <thead><tr>
+        <th data-i18n="admin.upk_col_request">Asked</th><th data-i18n="admin.upk_col_reply">Her answer</th>
+        <th data-i18n="admin.upk_col_count">Times</th><th data-i18n="admin.upk_col_last">Last seen</th><th></th>
+      </tr></thead>
+      <tbody id="upk-gaps-tbody"></tbody>
+    </table>
+    <div id="upk-gaps-empty" style="display:none;padding:24px;text-align:center;color:var(--muted);font-size:13px" data-i18n="admin.upk_gaps_empty">
+      Nothing yet.
+    </div>
+  </div>
+</div>
+
 <!-- ════════════════════ LOGS ════════════════════ -->
 <div class="panel" id="panel-logs">
   <div class="card" style="margin-bottom:16px">
@@ -2271,6 +2320,7 @@ function _switchTab(name, btn) {
   if (name !== 'config') _setHash(name);
   if (name === 'memory') loadMemoryQueue();
   if (name === 'mail') loadMail();
+  if (name === 'upkeep') loadUpkeep();
   if (name === 'users') loadUsers();
   if (name === 'audit') { loadUsers(); loadAudit(); }
   if (name === 'usage') loadUsage();
@@ -4317,6 +4367,92 @@ async function applyUpdate() {
     btn.disabled = false; btn.textContent = t('admin.upd_now');
     checkForUpdates();
   }
+}
+
+/* ── Upkeep: the incident book ─────────────────────────────────────────────
+   Read-only towards SUNI: dismiss and reopen change the book, nothing else. */
+const _UPK_BADGE = {open: 'warn', watching: 'off', resolved: 'ok', dismissed: 'off'};
+let _upkItems = [], _upkGaps = [];
+async function loadUpkeep() {
+  const r = await _apiFetch('/api/upkeep').catch(() => null);
+  if (!r || !r.ok) { el('upk-status').textContent = r ? await _detail(r) : ''; return; }
+  const d = await r.json();
+  el('upk-enabled').checked = !!d.enabled;
+  const ls = d.last_scan;
+  const parts = [d.enabled ? t('admin.upk_on', {n: d.scan_minutes}) : t('admin.upk_off')];
+  if (ls && ls.at) parts.push(t('admin.upk_last_scan', {when: fmtTime(ls.at), s: ls.took_s ?? '?'}));
+  el('upk-status').textContent = parts.join(' · ');
+  _upkItems = d.incidents || [];
+  el('upk-table').style.display = _upkItems.length ? '' : 'none';
+  el('upk-empty').style.display = _upkItems.length ? 'none' : '';
+  el('upk-tbody').innerHTML = _upkItems.map((x, i) => {
+    const act = x.state === 'dismissed' || x.state === 'resolved'
+      ? `<button class="tbl-btn" onclick="upkeepSet(${i},'reopen')">${esc(t('admin.upk_reopen'))}</button>`
+      : `<button class="tbl-btn" onclick="upkeepSet(${i},'dismiss')">${esc(t('admin.upk_dismiss'))}</button>`;
+    const where = x.location ? `<div style="font-size:12px;color:var(--muted);font-family:var(--font-mono)">${esc(x.location)}</div>` : '';
+    return `<tr>
+      <td><span class="badge ${_UPK_BADGE[x.state] || 'off'}">${esc(t('admin.upk_st_' + x.state))}</span>
+        ${x.state_note ? `<div style="font-size:12px;color:var(--muted);margin-top:4px">${esc(x.state_note.slice(0, 80))}</div>` : ''}</td>
+      <td><strong>${esc(x.title)}</strong>${where}
+        <div style="font-size:12px;color:var(--muted)">${esc(t('admin.upk_kind_' + x.kind))} · ${esc(x.source)}</div></td>
+      <td>${esc(String(x.count))}</td>
+      <td style="white-space:nowrap">${esc(fmtTime(x.last_seen))}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="tbl-btn" onclick="upkeepOpen(${i})">${esc(t('admin.upk_details'))}</button> ${act}</td>
+    </tr>`;
+  }).join('');
+  _upkGaps = d.gaps || [];
+  el('upk-gaps-table').style.display = _upkGaps.length ? '' : 'none';
+  el('upk-gaps-empty').style.display = _upkGaps.length ? 'none' : '';
+  el('upk-gaps-tbody').innerHTML = _upkGaps.map((g, i) => `<tr${g.state === 'dismissed' ? ' style="opacity:.55"' : ''}>
+      <td>${esc(g.request)}</td>
+      <td style="color:var(--muted)">${esc(g.reply)}</td>
+      <td>${esc(String(g.count))}</td>
+      <td style="white-space:nowrap">${esc(fmtTime(g.last_seen))}</td>
+      <td style="text-align:right">${g.state === 'dismissed'
+        ? `<button class="tbl-btn" onclick="upkeepGap(${i},'reopen')">${esc(t('admin.upk_reopen'))}</button>`
+        : `<button class="tbl-btn" onclick="upkeepGap(${i},'dismiss')">${esc(t('admin.upk_dismiss'))}</button>`}</td>
+    </tr>`).join('');
+}
+async function upkeepScan() {
+  const b = el('upk-scan-btn'); b.disabled = true; b.textContent = t('admin.upk_scanning');
+  try {
+    const r = await _apiFetch('/api/upkeep/scan', {method: 'POST'});
+    if (!r.ok) uiAlert(await _detail(r), {error: true});
+  } finally {
+    b.disabled = false; b.textContent = t('admin.upk_scan');
+    loadUpkeep();
+  }
+}
+async function upkeepToggle(box) {
+  const r = await _apiFetch('/api/config', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                           body: JSON.stringify({upkeep_enabled: !!box.checked})});
+  if (!r.ok) { box.checked = !box.checked; uiAlert(await _detail(r), {error: true}); }
+  loadUpkeep();
+}
+async function upkeepSet(i, action) {
+  const x = _upkItems[i]; if (!x) return;
+  const r = await _apiFetch(`/api/upkeep/incidents/${encodeURIComponent(x.id)}/${action}`,
+                            {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
+  if (!r.ok) uiAlert(await _detail(r), {error: true});
+  loadUpkeep();
+}
+async function upkeepGap(i, action) {
+  const g = _upkGaps[i]; if (!g) return;
+  const r = await _apiFetch(`/api/upkeep/gaps/${encodeURIComponent(g.id)}/${action}`, {method: 'POST'});
+  if (!r.ok) uiAlert(await _detail(r), {error: true});
+  loadUpkeep();
+}
+function upkeepOpen(i) {
+  const x = _upkItems[i]; if (!x) return;
+  const row = (k, v) => v ? `<div class="field-hint" style="margin:2px 0"><b>${esc(t(k))}</b> ${esc(v)}</div>` : '';
+  uiDialog({
+    title: x.title, okLabel: t('admin.dlg_ok'), cancel: false,
+    html: row('admin.upk_d_where', x.location) + row('admin.upk_d_source', x.source)
+      + row('admin.upk_d_first', fmtTime(x.first_seen)) + row('admin.upk_d_last', fmtTime(x.last_seen))
+      + row('admin.upk_d_count', String(x.count))
+      + `<pre style="white-space:pre-wrap;font-family:var(--font-mono);font-size:12px;max-height:340px;overflow:auto;background:rgba(255,255,255,.03);padding:10px;border-radius:4px;margin-top:10px">${esc(x.evidence || '—')}</pre>`,
+  });
 }
 
 /* ── Schedules ──────────────────────────────────────────────────────────────

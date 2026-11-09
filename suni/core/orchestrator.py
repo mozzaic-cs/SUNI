@@ -1913,15 +1913,25 @@ class Orchestrator:
         if memory_override is not None:
             self.memory = memory_override
         try:
-            return await self.run(user_input, context,
-                                  user_role=user_role, conv_mode=conv_mode,
-                                  response_language=response_language,
-                                  user_mcp_servers=user_mcp_servers,
-                                  event_cb=event_cb, user_id=user_id,
-                                  images=images,
-                                  claude_api_key=claude_api_key, agent_profile=agent_profile,
-                                  dry_run=dry_run, fanout_profiles=fanout_profiles,
-                                  memory_for=memory_for)
+            result = await self.run(user_input, context,
+                                    user_role=user_role, conv_mode=conv_mode,
+                                    response_language=response_language,
+                                    user_mcp_servers=user_mcp_servers,
+                                    event_cb=event_cb, user_id=user_id,
+                                    images=images,
+                                    claude_api_key=claude_api_key, agent_profile=agent_profile,
+                                    dry_run=dry_run, fanout_profiles=fanout_profiles,
+                                    memory_for=memory_for)
+            # Upkeep notes what she said she could not do; off the loop, as
+            # a sqlite write, and never in the way of the reply.
+            if isinstance(result, str):
+                try:
+                    from ..upkeep import gaps as _gaps
+                    asyncio.get_running_loop().run_in_executor(
+                        None, _gaps.note_reply, user_id, user_input, result)
+                except Exception:      # noqa: BLE001 — e.g. the executor is shutting down
+                    pass
+            return result
         except _bhealth.BackendUnavailableError as exc:
             # Breaker is open — the local model backend is down. Return a clean,
             # user-facing message. run() yields a STRING (_run_inner returns

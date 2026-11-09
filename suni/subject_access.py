@@ -43,6 +43,7 @@ EXPORT_COLUMNS: dict[str, tuple[str, ...]] = {
     "users": ("id", "username", "role", "active", "created_at", "last_login",
               "auth_source"),
     "oidc_identities": ("issuer", "sub", "created_at"),
+    "gaps": ("request", "reply", "first_seen", "last_seen", "count"),
     "conversations": ("id", "title", "created_at", "updated_at"),
     "messages": ("id", "conversation_id", "role", "content", "ts"),
     "schedules": ("id", "name", "prompt", "agent_slug", "cadence", "delivery",
