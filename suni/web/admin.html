@@ -2122,13 +2122,23 @@ input,textarea{caret-color:var(--cyan)}
     </div>
     <div style="font-size:13px;color:var(--muted);margin-top:8px;line-height:1.5" data-i18n="admin.upk_intro">
       SUNI reads her own diagnostics and logs and keeps a book of what keeps going wrong: one row
-      per problem, however often it happens, with the evidence. It only reads — nothing here
-      restarts, changes a setting or edits code.
+      per problem, however often it happens, with the evidence. The only things it may fix on its
+      own are a channel whose connection died and a local Ollama that is not running — and only
+      if you allow it below. It never changes a setting or edits code.
     </div>
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:12px;font-size:13px">
       <input type="checkbox" id="upk-enabled" onchange="upkeepToggle(this)" style="accent-color:var(--gold)">
       <span data-i18n="admin.upk_enable">Scan automatically</span>
     </label>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;flex-wrap:wrap">
+      <span data-i18n="admin.upk_level">Fixes:</span>
+      <select id="upk-level" onchange="upkeepLevel(this)" style="max-width:100%">
+        <option value="0" data-i18n="admin.upk_level_0">Off</option>
+        <option value="1" data-i18n="admin.upk_level_1">Dry run — say what it would do</option>
+        <option value="2" data-i18n="admin.upk_level_2">On — fix what it can</option>
+      </select>
+    </label>
+    <div id="upk-busy" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
   </div>
   <div class="card" style="margin-bottom:16px;padding:0;overflow:hidden">
     <table class="data-table" id="upk-table">
@@ -2140,6 +2150,19 @@ input,textarea{caret-color:var(--cyan)}
     </table>
     <div id="upk-empty" style="display:none;padding:24px;text-align:center;color:var(--muted);font-size:13px" data-i18n="admin.upk_empty">
       Nothing recorded yet.
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title" data-i18n="admin.upk_actions">What upkeep did</div>
+    <table class="data-table" id="upk-act-table">
+      <thead><tr>
+        <th data-i18n="admin.upk_col_when">When</th><th data-i18n="admin.upk_col_action">Fix</th>
+        <th data-i18n="admin.upk_col_outcome">Result</th>
+      </tr></thead>
+      <tbody id="upk-act-tbody"></tbody>
+    </table>
+    <div id="upk-act-empty" style="display:none;padding:16px;text-align:center;color:var(--muted);font-size:13px" data-i18n="admin.upk_actions_empty">
+      Nothing yet.
     </div>
   </div>
   <div class="card">
@@ -4372,6 +4395,7 @@ async function applyUpdate() {
 /* ── Upkeep: the incident book ─────────────────────────────────────────────
    Read-only towards SUNI: dismiss and reopen change the book, nothing else. */
 const _UPK_BADGE = {open: 'warn', watching: 'off', resolved: 'ok', dismissed: 'off'};
+const _UPK_OUT_BADGE = {would: 'info', fixed: 'ok', failed: 'err', refused: 'warn', gave_up: 'warn'};
 let _upkItems = [], _upkGaps = [];
 async function loadUpkeep() {
   const r = await _apiFetch('/api/upkeep').catch(() => null);
@@ -4382,6 +4406,17 @@ async function loadUpkeep() {
   const parts = [d.enabled ? t('admin.upk_on', {n: d.scan_minutes}) : t('admin.upk_off')];
   if (ls && ls.at) parts.push(t('admin.upk_last_scan', {when: fmtTime(ls.at), s: ls.took_s ?? '?'}));
   el('upk-status').textContent = parts.join(' · ');
+  el('upk-level').value = String(d.level || 0);
+  el('upk-busy').textContent = (d.busy && d.busy.length)
+    ? t('admin.upk_busy', {why: d.busy.join('; ')}) : t('admin.upk_idle');
+  const acts = d.actions || [];
+  el('upk-act-table').style.display = acts.length ? '' : 'none';
+  el('upk-act-empty').style.display = acts.length ? 'none' : '';
+  el('upk-act-tbody').innerHTML = acts.map(a => `<tr>
+      <td style="white-space:nowrap">${esc(fmtTime(a.at))}</td>
+      <td>${esc(a.detail || a.remedy)}${a.mode === 'dry' ? ` <span class="badge off">${esc(t('admin.upk_mode_dry'))}</span>` : ''}</td>
+      <td><span class="badge ${_UPK_OUT_BADGE[a.outcome] || 'off'}">${esc(t('admin.upk_out_' + a.outcome))}</span></td>
+    </tr>`).join('');
   _upkItems = d.incidents || [];
   el('upk-table').style.display = _upkItems.length ? '' : 'none';
   el('upk-empty').style.display = _upkItems.length ? 'none' : '';
@@ -4428,6 +4463,12 @@ async function upkeepToggle(box) {
   const r = await _apiFetch('/api/config', {method: 'POST', headers: {'Content-Type': 'application/json'},
                                            body: JSON.stringify({upkeep_enabled: !!box.checked})});
   if (!r.ok) { box.checked = !box.checked; uiAlert(await _detail(r), {error: true}); }
+  loadUpkeep();
+}
+async function upkeepLevel(sel) {
+  const r = await _apiFetch('/api/config', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                           body: JSON.stringify({upkeep_level: Number(sel.value)})});
+  if (!r.ok) uiAlert(await _detail(r), {error: true});
   loadUpkeep();
 }
 async function upkeepSet(i, action) {

@@ -44,9 +44,15 @@ def log_paths() -> list[Path]:
 
 def _scan_findings() -> tuple[int, set[str]]:
     from .. import diagnostics
+    from . import health
     result = diagnostics.run()
+    found = list(result["findings"])
+    try:
+        found += health.findings()
+    except Exception as exc:      # noqa: BLE001
+        log.warning("[UPKEEP] health checks failed: %s", exc)
     present: set[str] = set()
-    for f in result["findings"]:
+    for f in found:
         if f.level not in _TRACKED_LEVELS or not f.code or f.code in _SKIP_CODES:
             continue
         id = store.fingerprint("finding", f.code)
@@ -56,7 +62,7 @@ def _scan_findings() -> tuple[int, set[str]]:
                      evidence=evidence, source="diagnostics", initial_state="watching")
     store.promote_watching(present)
     store.findings_seen(present)
-    return len(result["findings"]), present
+    return len(found), present
 
 
 def _scan_logs(first_scan: bool) -> tuple[int, list[dict]]:

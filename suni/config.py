@@ -275,10 +275,13 @@ DEFAULTS: dict[str, Any] = {
     "meeting_auto_stop":    True,
     "meeting_max_minutes":  240,
     # Upkeep (suni/upkeep): every scan reads diagnostics and the logs and keeps
-    # an incident book in the admin panel's Upkeep tab. It only reads — no
-    # restart, config write or code change happens from it. Off by default.
+    # an incident book in the admin panel's Upkeep tab. Off by default.
+    # upkeep_level: what it may do about what it finds (suni/upkeep/remedies.py)
+    # — 0 nothing, 1 dry run (says what it would do), 2 restart a dead channel
+    # or start a stopped local Ollama. Never a config write or a code change.
     "upkeep_enabled":       False,
     "upkeep_scan_minutes":  30,
+    "upkeep_level":         0,
     # auto = whichever device has been MEASURED fastest here, and the CPU until
     # something has been. The CPU is the safe option: it cannot run out of
     # VRAM, cannot fight the language model for a card, and has no driver that

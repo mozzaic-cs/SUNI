@@ -65,6 +65,18 @@ CREATE TABLE IF NOT EXISTS cursors (
     offset      INTEGER NOT NULL,
     head        TEXT NOT NULL DEFAULT ''    -- hash of the first bytes: a new file
 );
+-- What upkeep did, or in dry run would have done, about an incident.
+CREATE TABLE IF NOT EXISTS actions (
+    n           INTEGER PRIMARY KEY AUTOINCREMENT,
+    at          TEXT NOT NULL,
+    incident_id TEXT NOT NULL,
+    remedy      TEXT NOT NULL,
+    target      TEXT NOT NULL DEFAULT '',
+    mode        TEXT NOT NULL,              -- dry | act
+    outcome     TEXT NOT NULL,              -- would | fixed | failed | refused | gave_up
+    detail      TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_actions_incident ON actions(incident_id, at);
 CREATE TABLE IF NOT EXISTS meta (
     key         TEXT PRIMARY KEY,
     value       TEXT NOT NULL
@@ -258,6 +270,35 @@ def set_gap_state(id: str, state: str, by: str = "", by_id: str = "") -> bool:
     if n:
         _audit(f"upkeep.gap.{state}", "", id, by_id, by)
     return bool(n)
+
+
+# ── what upkeep did about it ─────────────────────────────────────────────────
+
+TRIES = ("would", "fixed", "failed")
+
+
+def add_action(incident_id: str, remedy: str, target: str, mode: str, outcome: str,
+               detail: str = "") -> None:
+    with _conn() as c:
+        c.execute("INSERT INTO actions (at, incident_id, remedy, target, mode, outcome, "
+                  "detail) VALUES (?,?,?,?,?,?,?)",
+                  (now(), incident_id, remedy, target, mode, outcome, detail[:500]))
+    if mode == "act":
+        _audit(f"upkeep.remedy.{outcome}", detail[:300], incident_id)
+
+
+def actions_since(incident_id: str, hours: float, mode: str) -> list[dict]:
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat(timespec="seconds")
+    with _conn() as c:
+        return [dict(r) for r in c.execute(
+            "SELECT * FROM actions WHERE incident_id=? AND mode=? AND at >= ? ORDER BY n",
+            (incident_id, mode, cutoff)).fetchall()]
+
+
+def list_actions(limit: int = 50) -> list[dict]:
+    with _conn() as c:
+        return [dict(r) for r in c.execute(
+            "SELECT * FROM actions ORDER BY n DESC LIMIT ?", (int(limit),)).fetchall()]
 
 
 # ── where each log was read up to ────────────────────────────────────────────

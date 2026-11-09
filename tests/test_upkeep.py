@@ -11,7 +11,7 @@ import pytest
 
 from suni import diagnostics as D
 from suni import erasure
-from suni.upkeep import gaps, logscan, scan, store
+from suni.upkeep import gaps, health, logscan, scan, store
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
@@ -32,6 +32,9 @@ def tb(n=212):
 @pytest.fixture(autouse=True)
 def _book(tmp_path, monkeypatch):
     monkeypatch.setattr(store, "UPKEEP_DB", str(tmp_path / "upkeep.db"))
+    # The live probes (this machine's Ollama, the server's channels) are
+    # test_upkeep_remedies' business; here a scan sees only the fixtures.
+    monkeypatch.setattr(health, "findings", lambda: [])
     yield
 
 
@@ -310,9 +313,15 @@ def test_a_turn_notes_its_reply():
 # ── it only reads ────────────────────────────────────────────────────────────
 
 def test_upkeep_changes_nothing_but_its_own_book():
-    """Phase 1 watches. Restarting, writing config or running anything is a
-    later phase, behind an approval — not something to slip in here."""
-    for f in (ROOT / "suni" / "upkeep").glob("*.py"):
+    """The scan watches. Acting is remedies.py's alone (held to its own list in
+    test_upkeep_remedies); restarting, writing config or running anything must
+    not slip into the parts that only read."""
+    readers = {"__init__.py", "store.py", "logscan.py", "scan.py", "gaps.py", "health.py",
+               "idle.py"}
+    present = {f.name for f in (ROOT / "suni" / "upkeep").glob("*.py")}
+    assert present - readers == {"remedies.py"}, "a new upkeep module must be classified"
+    for name in readers:
+        f = ROOT / "suni" / "upkeep" / name
         src = f.read_text(encoding="utf-8")
         for banned in ("subprocess", "os.system", "config.save", "_cfg.set", ".write_text(",
                        "write_bytes(", "shutil.", "os.remove", "unlink("):

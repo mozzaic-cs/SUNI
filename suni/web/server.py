@@ -787,6 +787,31 @@ def create_app() -> FastAPI:
         elif running:
             await _stop_channel(name)
 
+    def _channel_status() -> dict:
+        """For upkeep: which channels should run, and whether their task still is."""
+        out = {}
+        for name, (_run, _dispatch, configured_fn, _keys) in _CHANNELS.items():
+            entry = _channel_tasks.get(name)
+            task = entry[0] if entry else None
+            err = ""
+            if task is not None and task.done():
+                try:
+                    exc = task.exception()
+                    err = f"{exc.__class__.__name__}: {exc}"[:200] if exc else "it returned"
+                except (asyncio.CancelledError, asyncio.InvalidStateError):
+                    err = "it was cancelled"
+            try:
+                should = bool(suni_config.get(f"{name}_enabled")) and configured_fn()
+            except Exception:      # noqa: BLE001
+                should = False
+            out[name] = {"should": should,
+                         "running": task is not None and not task.done(), "error": err}
+        return out
+
+    from ..upkeep import health as _upkeep_health, remedies as _upkeep_remedies
+    _upkeep_health.register_channel_status(_channel_status)
+    _upkeep_remedies.register_channel_restart(_start_channel)
+
 
     # ── Scheduled invocations ──────────────────────────────────────────────
     async def _schedule_runner(stop_event):
@@ -3746,14 +3771,17 @@ def create_app() -> FastAPI:
     # ── Upkeep: the incident book (read-only towards SUNI herself) ────────────
     @app.get("/api/upkeep")
     async def upkeep_api(admin: dict = Depends(require_admin)):
-        from ..upkeep import store as _us
+        from ..upkeep import idle as _ui, store as _us
 
         def _read():
             return {"enabled": bool(suni_config.get("upkeep_enabled")),
                     "scan_minutes": suni_config.get("upkeep_scan_minutes", 30),
+                    "level": int(suni_config.get("upkeep_level", 0) or 0),
+                    "busy": _ui.busy_reasons(),
                     "last_scan": _us.get_meta("last_scan"),
                     "counts": _us.counts(),
                     "incidents": _us.list_incidents(),
+                    "actions": _us.list_actions(),
                     "gaps": _us.list_gaps()}
         return JSONResponse(await asyncio.to_thread(_read))
 
@@ -4182,6 +4210,15 @@ def create_app() -> FastAPI:
                 await asyncio.to_thread(_upkeep_scan.scan)
             except Exception as exc:      # noqa: BLE001 — a failed scan waits for the next
                 _log.warning("[UPKEEP] scan failed: %s", exc)
+            # Fixes run here, on the event loop, not in the scan's thread: a
+            # channel restart creates asyncio tasks.
+            try:
+                from ..upkeep import remedies as _remedies
+                level = int(suni_config.get("upkeep_level", 0) or 0)
+                for d in await _remedies.run(level):
+                    _log.info("[UPKEEP] %s: %s", d["incident"], d["outcome"])
+            except Exception as exc:      # noqa: BLE001
+                _log.warning("[UPKEEP] remedies failed: %s", exc)
 
     async def _metrics_collector(stop: asyncio.Event) -> None:
         """Sample GPU + Ollama stats every 30 s and append to the history ring buffer."""

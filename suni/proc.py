@@ -46,6 +46,11 @@ def run(*args, **kwargs):
     return subprocess.run(*args, **no_window(**kwargs))
 
 
+def popen(*args, **kwargs):
+    """subprocess.Popen, minus the window: for a program left running."""
+    return subprocess.Popen(*args, **no_window(**kwargs))
+
+
 async def exec_(*args, **kwargs):
     """asyncio.create_subprocess_exec, minus the window."""
     return await asyncio.create_subprocess_exec(*args, **no_window(**kwargs))

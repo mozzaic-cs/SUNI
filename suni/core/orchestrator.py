@@ -1912,6 +1912,10 @@ class Orchestrator:
         original_memory = self.memory
         if memory_override is not None:
             self.memory = memory_override
+        # Counted for upkeep's idle check: nothing that interrupts SUNI may run
+        # while somebody is talking to her.
+        from ..upkeep import idle as _idle
+        _idle.turn_started()
         try:
             result = await self.run(user_input, context,
                                     user_role=user_role, conv_mode=conv_mode,
@@ -1945,6 +1949,7 @@ class Orchestrator:
             raise
         finally:
             self.memory = original_memory
+            _idle.turn_finished()
 
     def _tool_permissions(self, user_role: str, conv_mode: str,
                           grants: dict | None) -> tuple[list | None, list]:
