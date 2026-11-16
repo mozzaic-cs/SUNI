@@ -18,6 +18,9 @@
 /logs/
 /backups/
 /files/
+# An instance's private add-on (suni/overlay.py): its owner's own code, which
+# may have its own git history but never belongs in this one.
+/personal/
 
 # ── Credentials ──────────────────────────────────────────────────────────────
 .env

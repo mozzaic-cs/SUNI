@@ -70,6 +70,11 @@ EXPORT_COLUMNS: dict[str, tuple[str, ...]] = {
                   "mode", "tools_called", "tool_errors", "duration_s",
                   "approved_by", "prompt_tokens", "gen_tokens", "agent_slug"),
 }
+# A private add-on's tables are in SUBJECT_TABLES (erasure._with_overlay);
+# their allowlists come from the add-on, never replacing a built-in one.
+from . import overlay as _overlay
+for _t, _cols in _overlay.export_columns().items():
+    EXPORT_COLUMNS.setdefault(_t, _cols)
 
 # Per-user settings worth returning. The encrypted fields
 # (anthropic_api_key, smtp_pass) are deliberately absent.

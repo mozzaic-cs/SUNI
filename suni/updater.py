@@ -27,7 +27,9 @@ ROOT = Path(__file__).resolve().parent.parent
 # Directories a pull must never touch. Asserted at preflight rather than trusted:
 # a .gitignore edit upstream could start tracking one of these, and the check
 # costs nothing.
-PROTECTED = ("memory", "logs", "files", "certs", "backups", ".env")
+PROTECTED = ("memory", "logs", "files", "certs", "backups", ".env",
+             # an instance's private add-on (suni/overlay.py): its owner's code
+             "personal")
 
 # Modules whose SQLite schema migrates itself on connect (PRAGMA table_info +
 # ALTER). The rest create tables if absent but cannot add a column to a table

@@ -80,6 +80,22 @@ SUBJECT_TABLES: tuple[tuple[str, str, str, str], ...] = (
     ("users.db", "users", "id", "account"),
 )
 
+
+def _with_overlay(base: tuple) -> tuple:
+    """A private add-on's own user-keyed tables (suni/overlay.py) join the same
+    inventory, ahead of the account rows, which still go last."""
+    from . import overlay as _overlay
+    extra = tuple(r for r in _overlay.subject_tables()
+                  if (r[0], r[1]) not in {(b[0], b[1]) for b in base})
+    if not extra:
+        return base
+    head = tuple(r for r in base if r[0] != "users.db")
+    tail = tuple(r for r in base if r[0] == "users.db")
+    return head + extra + tail
+
+
+SUBJECT_TABLES = _with_overlay(SUBJECT_TABLES)
+
 # Tables with NO user column, reachable only through a parent. `messages` is the
 # whole reason this constant exists: keyed on conversation_id, it is invisible to
 # any "WHERE user_id=?" sweep, so deleting the parent first strands every message

@@ -148,6 +148,33 @@ def _lang_instruction(response_language: str = "") -> str | None:
     return f"Always reply in the language with BCP-47 code '{lang}'."
 
 _log = get_logger(__name__)
+
+# How deep in _safe_run this task is: a turn that delegates to an agent calls
+# _safe_run again, and only the outer one is somebody's turn.
+import contextvars as _contextvars
+_TURN_DEPTH: _contextvars.ContextVar[int] = _contextvars.ContextVar("suni_turn_depth", default=0)
+_CHANNEL_PREFIXES = ("telegram", "discord", "slack", "whatsapp")
+
+
+def _turn_source(explicit: str, user_id: str) -> str:
+    """Where a turn came from, or "" for one no person is waiting on."""
+    if explicit:
+        return explicit
+    prefix = (user_id or "").split("_", 1)[0]
+    return prefix if prefix in _CHANNEL_PREFIXES else ""
+
+
+def _report_turn(info: dict) -> None:
+    """Hand a finished turn to the private add-on, if there is one, off the loop."""
+    try:
+        from .. import overlay as _overlay
+        if not _overlay.active():
+            return
+        asyncio.get_running_loop().run_in_executor(None, _overlay.on_turn, info)
+    except Exception:      # noqa: BLE001 — a turn must never fail on this
+        pass
+
+
 # SYSTEM notes written fresh for each turn (see run()): cleared before they
 # are re-added, or every turn adds another copy to the session's context.
 _PER_TURN_NOTES = frozenset({"lang", "agent-profile", "skills", "router", "whoami"})
@@ -1907,6 +1934,7 @@ class Orchestrator:
         dry_run: bool = False,   # show what it WOULD do; execute nothing
         fanout_profiles: list[dict] | None = None,
         memory_for=None,
+        turn_source: str = "",   # "web" from the chat endpoint; channels are told by user_id
     ) -> str:
         """Wrapper that guarantees any unhandled exception is logged."""
         original_memory = self.memory
@@ -1916,6 +1944,13 @@ class Orchestrator:
         # while somebody is talking to her.
         from ..upkeep import idle as _idle
         _idle.turn_started()
+        # A person's turn, told apart from the runs nested inside it (agents,
+        # fan-out) and from the ones nobody is waiting on (schedules,
+        # background tasks): only the outermost user-facing call is reported.
+        _source = "" if _TURN_DEPTH.get() else _turn_source(turn_source, user_id)
+        _depth_tok = _TURN_DEPTH.set(_TURN_DEPTH.get() + 1)
+        _t0 = time.perf_counter()
+        _outcome, _reply = "crash", ""
         try:
             result = await self.run(user_input, context,
                                     user_role=user_role, conv_mode=conv_mode,
@@ -1935,13 +1970,18 @@ class Orchestrator:
                         None, _gaps.note_reply, user_id, user_input, result)
                 except Exception:      # noqa: BLE001 — e.g. the executor is shutting down
                     pass
+            _outcome, _reply = "ok", result if isinstance(result, str) else ""
             return result
+        except asyncio.CancelledError:
+            _outcome = "cancelled"    # the Stop button, or the client went away
+            raise
         except _bhealth.BackendUnavailableError as exc:
             # Breaker is open — the local model backend is down. Return a clean,
             # user-facing message. run() yields a STRING (_run_inner returns
             # response.content), so this handler must too — returning a Message
             # here would break the caller's str handling (response.split()).
             _log.warning("[BACKEND] fast-fail (breaker open): %s", exc)
+            _outcome = "backend_down"
             return ("⚠ The local model backend is temporarily unavailable. "
                     "It's being checked automatically — please try again in a moment.")
         except Exception as exc:
@@ -1949,7 +1989,17 @@ class Orchestrator:
             raise
         finally:
             self.memory = original_memory
+            _TURN_DEPTH.reset(_depth_tok)
             _idle.turn_finished()
+            if _source:
+                _report_turn({
+                    "source": _source, "user_id": user_id or "", "user_role": user_role,
+                    "conv_mode": conv_mode, "language": response_language or "",
+                    "request": user_input if isinstance(user_input, str) else "",
+                    "reply": _reply, "outcome": _outcome,
+                    "seconds": round(time.perf_counter() - _t0, 2),
+                    "at": time.time(),
+                })
 
     def _tool_permissions(self, user_role: str, conv_mode: str,
                           grants: dict | None) -> tuple[list | None, list]:

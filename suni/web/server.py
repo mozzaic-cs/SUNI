@@ -2502,6 +2502,7 @@ def create_app() -> FastAPI:
                         user_id=user["id"],
                         claude_api_key=_claude_api_key,
                         images=_image_paths,
+                        turn_source="web",
                         fanout_profiles=_fanout_profiles or None,
                         # Memory: left as the caller's, which is what invoke_agent
                         # already does for a single delegation. Giving each
@@ -3065,6 +3066,21 @@ def create_app() -> FastAPI:
         return Response(
             content=(Path(__file__).parent / "approval_ui.js").read_text(encoding="utf-8"),
             media_type="application/javascript; charset=utf-8")
+
+    @app.get("/overlay.js")
+    async def overlay_js():
+        """The private add-on's script for the built-in pages (suni/overlay.py).
+        Empty without an add-on; every page loads it either way."""
+        from .. import overlay as _overlay
+        return Response(content=await asyncio.to_thread(_overlay.page_script),
+                        media_type="application/javascript; charset=utf-8",
+                        headers={"Cache-Control": "no-store, must-revalidate"})
+
+    # Routes the private add-on adds; by convention all under /api/personal/,
+    # where no public route lives.
+    from .. import overlay as _overlay_mod
+    _overlay_mod.mount(app, {"get_current_user": get_current_user,
+                             "require_admin": require_admin})
 
     @app.get("/persona-image")
     async def persona_image():
@@ -4210,6 +4226,9 @@ def create_app() -> FastAPI:
                 await asyncio.to_thread(_upkeep_scan.scan)
             except Exception as exc:      # noqa: BLE001 — a failed scan waits for the next
                 _log.warning("[UPKEEP] scan failed: %s", exc)
+            from .. import overlay as _overlay
+            if _overlay.active():
+                await asyncio.to_thread(_overlay.after_upkeep_scan)
             # Fixes run here, on the event loop, not in the scan's thread: a
             # channel restart creates asyncio tasks.
             try:
