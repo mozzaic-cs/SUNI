@@ -3080,7 +3080,8 @@ def create_app() -> FastAPI:
     # where no public route lives.
     from .. import overlay as _overlay_mod
     _overlay_mod.mount(app, {"get_current_user": get_current_user,
-                             "require_admin": require_admin})
+                             "require_admin": require_admin,
+                             "registry": registry})
 
     @app.get("/persona-image")
     async def persona_image():

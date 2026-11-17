@@ -11,7 +11,8 @@ in the add-on; a missing one is a no-op:
 
   SUBJECT_TABLES     extra (db, table, user column, label) rows for erasure
   EXPORT_COLUMNS     {table: columns} for subject access, one per table above
-  mount(app, deps)   add HTTP routes; deps holds the auth dependencies
+  mount(app, deps)   add HTTP routes; deps holds the auth dependencies and the
+                     tool registry (read it; never execute through it)
   on_turn(info)      after every user-facing turn, OFF the event loop
   after_upkeep_scan()  after each upkeep scan, in the scan's thread
   page_script()      JavaScript served at /overlay.js on the built-in pages
