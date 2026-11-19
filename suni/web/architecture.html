@@ -1114,8 +1114,19 @@ body.simple .section-gap{height:6px!important}
         <span style="color:var(--purple)">Fingerprint = exception type + deepest frame in SUNI's code (not the line number); log lines with numbers and quoted values taken out. Reads each log from a cursor, only new whole lines</span><br>
         <span style="color:var(--purple)">A finding is an incident on its 2nd scan in a row and resolves when the check stops reporting it; an error resolves after 7 quiet days and re-opens if it comes back</span><br>
         <span style="color:var(--purple)">Also lists what SUNI told someone she could not do (EN + pt-PT refusal patterns) &mdash; per user, in erasure + subject access, never acted on</span><br>
-        <span style="color:var(--gold)">Phase 1 only READS: no restart, config write or code change (a test bans them in the package). Fixes come later, each behind an approval card, and never touch the checks that judge them</span><br>
-        <span style="color:var(--purple)">Admin &rarr; Upkeep: the book, Scan now, dismiss / reopen</span>
+        <span style="color:var(--gold)">The book itself only READS: no restart, config write or code change (a test bans them in the package)</span><br>
+        <span style="color:var(--teal)">Phase 2 &middot; remedies.py: a short FIXED list of fixes, each harmless to do twice &mdash; restart a channel that is down, start Ollama when it is not running. Each one re-runs the incident's own probe afterwards; never stops or kills a program (an Ollama running but not answering is the user's, and goes to a person)</span> <span class="new-badge" style="font-size:7.5px">new</span><br>
+        <span style="color:var(--teal)">upkeep_level: 0 off (default) &middot; 1 dry run, the book says what it WOULD do under the same limits &middot; 2 act. Limits per incident (e.g. 3 tries in 6 h); when they run out, or a fix refuses, the incident stays open "needs a person" and upkeep stops trying</span> <span class="new-badge" style="font-size:7.5px">new</span><br>
+        <span style="color:var(--gold)">Never restarts SUNI herself (a restart from inside the scheduled task dies halfway); never touches the checks that judge a fix</span><br>
+        <span style="color:var(--purple)">Admin &rarr; Upkeep: the book, what each fix did or would do, Scan now, dismiss / reopen</span>
+      </div>
+    </div>
+    <div class="svc">
+      <div class="svc-name">Private add-on hook <span class="new-badge">new</span></div>
+      <div class="svc-detail">overlay.py &middot; personal/suni_personal, if the folder exists<br>
+        One instance's own features, outside the public code: gitignored, never touched by the updater, may keep its own git history<br>
+        <span style="color:var(--purple)">Named hook points, each optional: routes under /api/personal/ (mount, given the auth dependencies and the tool registry to READ), after each user-facing turn (off the event loop), after each upkeep scan, /overlay.js on the built-in pages, extra tables for erasure and subject access</span><br>
+        <span style="color:var(--gold)">Every call is wrapped: an add-on that raises or fails to import is logged and treated as none. A clone never has the folder (a test checks it is never tracked)</span>
       </div>
     </div>
     <div class="svc">
